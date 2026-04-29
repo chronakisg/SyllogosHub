@@ -83,13 +83,18 @@ export function useCurrentClub(): CurrentClubState {
       ]);
       if (cancelled) return;
       // eslint-disable-next-line no-console
-      console.log("[useCurrentClub] loadFor result", {
+      console.log(
+        "[useCurrentClub] loadFor result | clubId=",
         clubId,
-        clubsError: cRes.error?.message ?? null,
-        clubsData: cRes.data,
-        settingsError: sRes.error?.message ?? null,
-        settingsData: sRes.data,
-      });
+        "| clubsError=",
+        cRes.error?.message ?? "null",
+        "| clubsData=",
+        cRes.data ? JSON.stringify(cRes.data) : "null",
+        "| settingsError=",
+        sRes.error?.message ?? "null",
+        "| settingsData=",
+        sRes.data ? JSON.stringify(sRes.data) : "null"
+      );
       const club = (cRes.data as Club | null) ?? null;
       const settings = (sRes.data as ClubSettings | null) ?? null;
       cache.set(clubId, { club, settings });
@@ -120,12 +125,16 @@ export function useCurrentClub(): CurrentClubState {
           .maybeSingle();
         if (cancelled) return;
         // eslint-disable-next-line no-console
-        console.log("[useCurrentClub] member lookup", {
-          authEmail: lookupEmail,
-          error: memRes.error?.message ?? null,
-          memberRow: memRes.data,
-          impersonate,
-        });
+        console.log(
+          "[useCurrentClub] member lookup | authEmail=",
+          lookupEmail,
+          "| error=",
+          memRes.error?.message ?? "null",
+          "| memberRow=",
+          memRes.data ? JSON.stringify(memRes.data) : "null",
+          "| impersonate=",
+          impersonate ?? "null"
+        );
         const memberRow = memRes.data as
           | {
               id: string;
