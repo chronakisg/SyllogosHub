@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getBrowserClient } from "@/lib/supabase/client";
 import { useRole, type Permission, type RoleState } from "@/lib/hooks/useRole";
 import { useClubSettings } from "@/lib/hooks/useClubSettings";
@@ -42,10 +42,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const role = useRole();
   const { settings: club } = useClubSettings();
-  const { club: currentClub } = useCurrentClub();
+  const currentClub = useCurrentClub();
   const [signingOut, setSigningOut] = useState(false);
 
-  const headerTitle = currentClub?.name || club.club_name;
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log("[AppShell] useCurrentClub →", {
+      clubId: currentClub.clubId,
+      clubName: currentClub.club?.name ?? null,
+      settingsId: currentClub.settings?.id ?? null,
+      loading: currentClub.loading,
+    });
+  }, [currentClub]);
+
+  const headerTitle = currentClub.club?.name || club.club_name;
 
   if (pathname === "/login") {
     return <>{children}</>;
@@ -100,18 +110,31 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </span>
           </Link>
         </div>
-        <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+        <nav className="min-h-0 flex-1 overflow-hidden px-3 pb-3 lg:overflow-y-auto">
           <ul className="flex gap-1 overflow-x-auto lg:flex-col lg:gap-0.5 lg:overflow-x-visible">
-            {navItems.map((item) => (
-              <li key={item.href} className="shrink-0 lg:shrink">
-                <Link
-                  href={item.href}
-                  className="block whitespace-nowrap rounded-md px-3 py-2 text-sm text-foreground/80 transition-colors hover:bg-foreground/5 hover:text-foreground"
-                >
-                  {item.label}
-                </Link>
-              </li>
-            ))}
+            {navItems.map((item) => {
+              const active =
+                item.href === "/"
+                  ? pathname === "/"
+                  : pathname === item.href ||
+                    pathname.startsWith(item.href + "/");
+              return (
+                <li key={item.href} className="shrink-0 lg:shrink">
+                  <Link
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
+                    className={
+                      "block w-full whitespace-nowrap rounded-md px-3 py-2 text-sm transition-colors " +
+                      (active
+                        ? "bg-[var(--brand-primary)] text-white"
+                        : "text-foreground/80 hover:bg-foreground/5 hover:text-foreground")
+                    }
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </nav>
         <div className="shrink-0 border-t border-border p-3">

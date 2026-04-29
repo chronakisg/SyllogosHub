@@ -35,6 +35,10 @@ export const FALLBACK_SETTINGS: ClubSettings = {
 function applyCssVars(s: ClubSettings | null) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
+  // Set only brand variables. The @theme inline mapping in globals.css
+  // already exposes them as Tailwind classes (bg-accent, etc.). Setting
+  // --color-* directly would override the @theme mappings and break
+  // unrelated text/background colors that share the same token names.
   root.style.setProperty(
     "--brand-primary",
     s?.primary_color || DEFAULT_PRIMARY
@@ -45,18 +49,6 @@ function applyCssVars(s: ClubSettings | null) {
   );
   root.style.setProperty(
     "--brand-accent",
-    s?.accent_color || DEFAULT_ACCENT
-  );
-  root.style.setProperty(
-    "--color-primary",
-    s?.primary_color || DEFAULT_PRIMARY
-  );
-  root.style.setProperty(
-    "--color-secondary",
-    s?.secondary_color || DEFAULT_SECONDARY
-  );
-  root.style.setProperty(
-    "--color-accent",
     s?.accent_color || DEFAULT_ACCENT
   );
 }

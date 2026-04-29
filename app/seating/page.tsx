@@ -89,7 +89,8 @@ function SeatingView() {
     eventParam
   );
   const [loadedEventId, setLoadedEventId] = useState<string | null>(null);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [eventsLoaded, setEventsLoaded] = useState(false);
+  const initialLoading = clubLoading || (clubId !== null && !eventsLoaded);
   const [error, setError] = useState<string | null>(null);
   const eventLoading =
     selectedEventId != null && loadedEventId !== selectedEventId;
@@ -192,11 +193,7 @@ function SeatingView() {
   );
 
   useEffect(() => {
-    if (clubLoading) return;
-    if (!clubId) {
-      setInitialLoading(false);
-      return;
-    }
+    if (clubLoading || !clubId) return;
     let cancelled = false;
     (async () => {
       try {
@@ -218,7 +215,7 @@ function SeatingView() {
         if (cancelled) return;
         setError(errorMessage(err, "Σφάλμα φόρτωσης εκδηλώσεων."));
       } finally {
-        if (!cancelled) setInitialLoading(false);
+        if (!cancelled) setEventsLoaded(true);
       }
     })();
     return () => {
@@ -536,7 +533,7 @@ function SeatingView() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[96rem]">
+    <div className="mx-auto w-full max-w-384">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-sm text-muted">Εκδηλώσεις</p>
@@ -1029,7 +1026,7 @@ function TableCard({
         >
           −
         </button>
-        <span className="min-w-[3.5rem] text-center">
+        <span className="min-w-14 text-center">
           {table.capacity} θέσεις
         </span>
         <button
@@ -1511,7 +1508,10 @@ function GuestsPanel({
   onClose: () => void;
   onChange: (guests: Guest[]) => void | Promise<void>;
 }) {
-  const guests = reservation.guests ?? [];
+  const guests = useMemo(
+    () => reservation.guests ?? [],
+    [reservation.guests]
+  );
   const capacity = tableCapacity ?? reservation.pax_count;
 
   const [search, setSearch] = useState("");
