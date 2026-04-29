@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -14,6 +15,8 @@ import { useRole } from "@/lib/hooks/useRole";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
 import type {
+  ApprovalStatus,
+  DiscountRule,
   Event as EventRow,
   Member,
   Payment,
@@ -24,6 +27,7 @@ import type {
   PaymentType,
   Reservation,
 } from "@/lib/supabase/types";
+import { calculateDiscount } from "@/lib/utils/discounts";
 
 type Tab = "payments" | "reservations";
 
@@ -115,6 +119,42 @@ export default function FinancesPage() {
 
       {tab === "payments" ? <PaymentsTab /> : <ReservationsTab />}
     </div>
+  );
+}
+
+function ApprovalBadge({
+  status,
+  reason,
+}: {
+  status: ApprovalStatus;
+  reason: string | null;
+}) {
+  if (status === "not_required") return null;
+  const cfg =
+    status === "pending"
+      ? {
+          cls: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+          label: "🟡 Εκκρεμεί",
+        }
+      : status === "approved"
+        ? {
+            cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+            label: "🟢 Εγκρίθηκε",
+          }
+        : {
+            cls: "bg-red-500/10 text-red-700 dark:text-red-300",
+            label: "🔴 Απορρίφθηκε",
+          };
+  return (
+    <span
+      title={reason ?? undefined}
+      className={
+        "inline-block rounded-full px-2 py-0.5 text-[10px] font-medium " +
+        cfg.cls
+      }
+    >
+      {cfg.label}
+    </span>
   );
 }
 
@@ -212,6 +252,17 @@ type BulkForm = {
   selected: Set<string>;
 };
 
+type BulkPreviewRow = {
+  member_id: string;
+  member_name: string;
+  rule_label: string | null;
+  original_amount: number;
+  discount_percent: number;
+  computed_amount: number;
+  final_amount: string;
+  override_reason: string;
+};
+
 const emptyBulkForm: BulkForm = {
   template_id: "",
   type: "monthly_fee",
@@ -222,10 +273,12 @@ const emptyBulkForm: BulkForm = {
 };
 
 function PaymentsTab() {
+  const role = useRole();
   const { clubId, loading: clubLoading } = useCurrentClub();
   const [members, setMembers] = useState<Member[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [templates, setTemplates] = useState<PaymentTemplate[]>([]);
+  const [discountRules, setDiscountRules] = useState<DiscountRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -250,8 +303,10 @@ function PaymentsTab() {
 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkForm, setBulkForm] = useState<BulkForm>(emptyBulkForm);
+  const [bulkStep, setBulkStep] = useState<"config" | "preview">("config");
   const [bulkSaving, setBulkSaving] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkPreview, setBulkPreview] = useState<BulkPreviewRow[]>([]);
 
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => {
@@ -264,7 +319,7 @@ function PaymentsTab() {
     if (!clubId) return;
     try {
       const supabase = getBrowserClient();
-      const [mRes, pRes, tRes] = await Promise.all([
+      const [mRes, pRes, tRes, dRes] = await Promise.all([
         supabase
           .from("members")
           .select("*")
@@ -281,11 +336,17 @@ function PaymentsTab() {
           .select("*")
           .eq("club_id", clubId)
           .order("label", { ascending: true }),
+        supabase
+          .from("discount_rules")
+          .select("*")
+          .eq("club_id", clubId),
       ]);
       if (mRes.error) throw mRes.error;
       if (pRes.error) throw pRes.error;
       if (tRes.error) throw tRes.error;
+      if (dRes.error) throw dRes.error;
       setTemplates(tRes.data ?? []);
+      setDiscountRules((dRes.data ?? []) as DiscountRule[]);
 
       const rows = (pRes.data ?? []).map((row) => {
         const r = row as Payment & {
@@ -299,6 +360,11 @@ function PaymentsTab() {
           payment_date: r.payment_date,
           type: r.type,
           period: r.period,
+          original_amount: r.original_amount,
+          override_reason: r.override_reason,
+          approval_status: r.approval_status,
+          approved_by: r.approved_by,
+          approved_at: r.approved_at,
           created_at: r.created_at,
           member_first_name: r.members?.first_name ?? null,
           member_last_name: r.members?.last_name ?? null,
@@ -512,6 +578,8 @@ function PaymentsTab() {
 
   function openBulk() {
     setBulkForm({ ...emptyBulkForm, selected: new Set<string>() });
+    setBulkStep("config");
+    setBulkPreview([]);
     setBulkError(null);
     setBulkOpen(true);
   }
@@ -520,11 +588,43 @@ function PaymentsTab() {
     setBulkOpen(false);
     setBulkError(null);
   }
-  async function handleBulkSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setBulkError(null);
+
+  function buildPreview(): BulkPreviewRow[] {
     const ids = Array.from(bulkForm.selected);
-    if (ids.length === 0) {
+    const amount = Number(bulkForm.amount.replace(",", "."));
+    if (!Number.isFinite(amount) || amount < 0) return [];
+    return ids
+      .map((id) => {
+        const member = members.find((m) => m.id === id);
+        if (!member) return null;
+        const family = member.family_id
+          ? members.filter((m) => m.family_id === member.family_id)
+          : [];
+        const result = calculateDiscount({
+          member,
+          family,
+          baseAmount: amount,
+          context: "subscription",
+          rules: discountRules,
+        });
+        return {
+          member_id: id,
+          member_name: `${member.last_name} ${member.first_name}`.trim(),
+          rule_label: result.ruleLabel,
+          original_amount: result.originalAmount,
+          discount_percent: result.discountPercent,
+          computed_amount: result.finalAmount,
+          final_amount: String(result.finalAmount),
+          override_reason: "",
+        } satisfies BulkPreviewRow;
+      })
+      .filter((x): x is BulkPreviewRow => !!x)
+      .sort((a, b) => a.member_name.localeCompare(b.member_name, "el"));
+  }
+
+  function goToPreview() {
+    setBulkError(null);
+    if (bulkForm.selected.size === 0) {
       setBulkError("Επιλέξτε τουλάχιστον ένα μέλος.");
       return;
     }
@@ -533,20 +633,50 @@ function PaymentsTab() {
       setBulkError("Το ποσό πρέπει να είναι μη αρνητικός αριθμός.");
       return;
     }
-    if (!bulkForm.payment_date) {
-      setBulkError("Η ημερομηνία είναι υποχρεωτική.");
+    if (!bulkForm.period.trim()) {
+      setBulkError("Η περίοδος είναι υποχρεωτική.");
       return;
     }
+    setBulkPreview(buildPreview());
+    setBulkStep("preview");
+  }
+
+  async function handleBulkSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBulkError(null);
     if (!clubId) {
       setBulkError("Δεν έχει εντοπιστεί σύλλογος.");
       return;
     }
+    if (!role.memberId) {
+      setBulkError("Δεν έχει εντοπιστεί χρήστης.");
+      return;
+    }
+    // Validate overrides have reasons
+    for (const row of bulkPreview) {
+      const finalNum = Number(row.final_amount.replace(",", "."));
+      if (!Number.isFinite(finalNum) || finalNum < 0) {
+        setBulkError(`Άκυρο ποσό για ${row.member_name}.`);
+        return;
+      }
+      if (
+        Math.abs(finalNum - row.computed_amount) > 0.005 &&
+        !row.override_reason.trim()
+      ) {
+        setBulkError(
+          `Συμπληρώστε λόγο αλλαγής για ${row.member_name}.`
+        );
+        return;
+      }
+    }
+
     setBulkSaving(true);
     try {
       const supabase = getBrowserClient();
       const period = bulkForm.period.trim() || null;
+      const ids = bulkPreview.map((p) => p.member_id);
 
-      // Find existing payments matching member+type+period to skip duplicates
+      // Find duplicates
       let existingIds = new Set<string>();
       if (period) {
         const { data: existing, error: eErr } = await supabase
@@ -560,25 +690,50 @@ function PaymentsTab() {
         existingIds = new Set((existing ?? []).map((r) => r.member_id));
       }
 
-      const toInsert = ids.filter((id) => !existingIds.has(id));
-      const skipped = ids.length - toInsert.length;
+      const isPrivileged = role.isSystemAdmin || role.isPresident;
+      const inserts: PaymentInsert[] = [];
+      let pendingCount = 0;
 
-      if (toInsert.length > 0) {
-        const inserts: PaymentInsert[] = toInsert.map((member_id) => ({
+      for (const row of bulkPreview) {
+        if (existingIds.has(row.member_id)) continue;
+        const finalAmount = Number(row.final_amount.replace(",", "."));
+        const isOverride =
+          Math.abs(finalAmount - row.computed_amount) > 0.005;
+        const approvalStatus = !isOverride
+          ? "not_required"
+          : isPrivileged
+            ? "approved"
+            : "pending";
+        if (approvalStatus === "pending") pendingCount++;
+        inserts.push({
           club_id: clubId,
-          member_id,
-          amount,
+          member_id: row.member_id,
+          amount: finalAmount,
+          original_amount: row.original_amount,
+          override_reason: isOverride ? row.override_reason.trim() : null,
+          approval_status: approvalStatus,
+          approved_by:
+            !isOverride || isPrivileged ? role.memberId : null,
+          approved_at:
+            !isOverride || isPrivileged ? new Date().toISOString() : null,
           type: bulkForm.type,
           period,
           payment_date: bulkForm.payment_date,
-        }));
-        const { error: iErr } = await supabase.from("payments").insert(inserts);
+        });
+      }
+
+      const skipped = bulkPreview.length - inserts.length;
+
+      if (inserts.length > 0) {
+        const { error: iErr } = await supabase
+          .from("payments")
+          .insert(inserts);
         if (iErr) throw iErr;
       }
 
       setBulkOpen(false);
       setToast(
-        `Δημιουργήθηκαν ${toInsert.length} πληρωμές, παραλείφθηκαν ${skipped} (διπλότυπες).`
+        `Δημιουργήθηκαν ${inserts.length} πληρωμές. Παραλείφθηκαν ${skipped} (διπλότυπες). ${pendingCount} χρειάζονται έγκριση.`
       );
       await load();
     } catch (err) {
@@ -586,6 +741,15 @@ function PaymentsTab() {
     } finally {
       setBulkSaving(false);
     }
+  }
+
+  function updatePreviewRow(
+    member_id: string,
+    patch: Partial<BulkPreviewRow>
+  ) {
+    setBulkPreview((rows) =>
+      rows.map((r) => (r.member_id === member_id ? { ...r, ...patch } : r))
+    );
   }
 
   const activeMembers = useMemo(
@@ -702,19 +866,20 @@ function PaymentsTab() {
                 <th className="px-4 py-3">Τύπος</th>
                 <th className="px-4 py-3">Περίοδος</th>
                 <th className="px-4 py-3 text-right">Ποσό</th>
+                <th className="px-4 py-3">Έγκριση</th>
                 <th className="px-4 py-3 text-right">Ενέργειες</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted">
                     Φόρτωση…
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted">
                     {payments.length === 0
                       ? "Δεν υπάρχουν ακόμη πληρωμές."
                       : "Δεν βρέθηκαν πληρωμές για τα φίλτρα."}
@@ -738,6 +903,12 @@ function PaymentsTab() {
                       <td className="px-4 py-3 text-muted">{p.period ?? "—"}</td>
                       <td className="px-4 py-3 text-right font-medium">
                         {eur.format(Number(p.amount))}
+                      </td>
+                      <td className="px-4 py-3">
+                        <ApprovalBadge
+                          status={p.approval_status}
+                          reason={p.override_reason}
+                        />
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="inline-flex justify-end gap-2">
@@ -811,6 +982,12 @@ function PaymentsTab() {
           templates={templates}
           form={bulkForm}
           setForm={setBulkForm}
+          step={bulkStep}
+          preview={bulkPreview}
+          updatePreviewRow={updatePreviewRow}
+          onNext={goToPreview}
+          onBack={() => setBulkStep("config")}
+          isPrivileged={role.isSystemAdmin || role.isPresident}
           saving={bulkSaving}
           formError={bulkError}
           onClose={closeBulk}
@@ -1047,6 +1224,12 @@ function BulkChargeModal({
   templates,
   form,
   setForm,
+  step,
+  preview,
+  updatePreviewRow,
+  onNext,
+  onBack,
+  isPrivileged,
   saving,
   formError,
   onClose,
@@ -1056,6 +1239,12 @@ function BulkChargeModal({
   templates: PaymentTemplate[];
   form: BulkForm;
   setForm: React.Dispatch<React.SetStateAction<BulkForm>>;
+  step: "config" | "preview";
+  preview: BulkPreviewRow[];
+  updatePreviewRow: (id: string, patch: Partial<BulkPreviewRow>) => void;
+  onNext: () => void;
+  onBack: () => void;
+  isPrivileged: boolean;
   saving: boolean;
   formError: string | null;
   onClose: () => void;
@@ -1122,15 +1311,27 @@ function BulkChargeModal({
         className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl border border-border bg-surface p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-1 text-lg font-semibold">Μαζική Χρέωση</h2>
+        <h2 className="mb-1 text-lg font-semibold">
+          Μαζική Χρέωση {step === "preview" ? "— Προεπισκόπηση" : ""}
+        </h2>
         <p className="mb-4 text-xs text-muted">
-          Δημιουργήστε ταυτόχρονα πληρωμή για πολλά μέλη.
+          {step === "config"
+            ? "Επιλέξτε πρότυπο, περίοδο και μέλη."
+            : "Επιβεβαιώστε ή τροποποιήστε τα ποσά πριν την οριστικοποίηση."}
         </p>
 
         <form
           onSubmit={onSubmit}
           className="flex min-h-0 flex-1 flex-col gap-4"
         >
+          {step === "preview" ? (
+            <BulkPreviewTable
+              preview={preview}
+              update={updatePreviewRow}
+              isPrivileged={isPrivileged}
+            />
+          ) : (
+          <>
           <Field label="Πρότυπο" required>
             <select
               required
@@ -1266,6 +1467,8 @@ function BulkChargeModal({
               )}
             </ul>
           </div>
+          </>
+          )}
 
           {formError && (
             <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
@@ -1273,27 +1476,175 @@ function BulkChargeModal({
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+            {step === "preview" && (
+              <PreviewSummary
+                preview={preview}
+                isPrivileged={isPrivileged}
+              />
+            )}
             <button
               type="button"
-              onClick={onClose}
+              onClick={step === "preview" ? onBack : onClose}
               disabled={saving}
               className="rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background disabled:opacity-50"
             >
-              Ακύρωση
+              {step === "preview" ? "Πίσω" : "Ακύρωση"}
             </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-            >
-              {saving
-                ? "Αποθήκευση…"
-                : `Καταχώρηση ${form.selected.size > 0 ? `(${form.selected.size})` : ""}`}
-            </button>
+            {step === "config" ? (
+              <button
+                type="button"
+                onClick={onNext}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+              >
+                Επόμενο →
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={saving}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                {saving ? "Αποθήκευση…" : "Δημιουργία Χρεώσεων"}
+              </button>
+            )}
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+function BulkPreviewTable({
+  preview,
+  update,
+  isPrivileged,
+}: {
+  preview: BulkPreviewRow[];
+  update: (id: string, patch: Partial<BulkPreviewRow>) => void;
+  isPrivileged: boolean;
+}) {
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border">
+      <table className="w-full text-left text-sm">
+        <thead className="border-b border-border bg-background/30 text-xs uppercase tracking-wider text-muted">
+          <tr>
+            <th className="px-3 py-2">Όνομα</th>
+            <th className="px-3 py-2">Κανόνας</th>
+            <th className="px-3 py-2 text-right">Αρχικό</th>
+            <th className="px-3 py-2 text-right">Έκπτ.</th>
+            <th className="px-3 py-2 text-right">Τελικό</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {preview.map((row) => {
+            const finalNum = Number(row.final_amount.replace(",", "."));
+            const isOverride =
+              Number.isFinite(finalNum) &&
+              Math.abs(finalNum - row.computed_amount) > 0.005;
+            const needsReason = isOverride && !row.override_reason.trim();
+            return (
+              <Fragment key={row.member_id}>
+                <tr
+                  className={isOverride ? "bg-amber-500/5" : ""}
+                >
+                  <td className="px-3 py-2 font-medium">
+                    {row.member_name}
+                  </td>
+                  <td className="px-3 py-2 text-xs text-muted">
+                    {row.rule_label ?? "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right text-muted">
+                    {eur.format(row.original_amount)}
+                  </td>
+                  <td className="px-3 py-2 text-right text-muted">
+                    {row.discount_percent > 0
+                      ? `−${row.discount_percent}%`
+                      : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={row.final_amount}
+                      onChange={(e) =>
+                        update(row.member_id, {
+                          final_amount: e.target.value,
+                        })
+                      }
+                      className="w-24 rounded border border-border bg-background px-2 py-1 text-right text-sm"
+                    />
+                  </td>
+                </tr>
+                {isOverride && (
+                  <tr className="bg-amber-500/5">
+                    <td colSpan={5} className="px-3 pb-2">
+                      <label className="block">
+                        <span className="mb-1 block text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                          Λόγος αλλαγής{" "}
+                          <span className="text-danger">*</span>
+                          {!isPrivileged &&
+                            " — θα χρειαστεί έγκριση προέδρου"}
+                        </span>
+                        <textarea
+                          required
+                          rows={2}
+                          value={row.override_reason}
+                          onChange={(e) =>
+                            update(row.member_id, {
+                              override_reason: e.target.value,
+                            })
+                          }
+                          className={
+                            "w-full rounded border bg-background px-2 py-1 text-xs " +
+                            (needsReason
+                              ? "border-danger/60"
+                              : "border-border")
+                          }
+                          placeholder="π.χ. Οικονομική δυσκολία οικογένειας"
+                        />
+                      </label>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PreviewSummary({
+  preview,
+  isPrivileged,
+}: {
+  preview: BulkPreviewRow[];
+  isPrivileged: boolean;
+}) {
+  const total = preview.reduce((s, r) => {
+    const n = Number(r.final_amount.replace(",", "."));
+    return s + (Number.isFinite(n) ? n : 0);
+  }, 0);
+  const overrides = preview.filter((r) => {
+    const n = Number(r.final_amount.replace(",", "."));
+    return Number.isFinite(n) && Math.abs(n - r.computed_amount) > 0.005;
+  }).length;
+  return (
+    <div className="mr-auto text-xs text-muted">
+      <p>
+        Σύνολο:{" "}
+        <strong className="text-foreground">{eur.format(total)}</strong> από{" "}
+        {preview.length} πληρωμές
+      </p>
+      {overrides > 0 && !isPrivileged && (
+        <p className="mt-0.5 text-amber-700 dark:text-amber-400">
+          ⚠️ {overrides}{" "}
+          {overrides === 1 ? "πληρωμή χρειάζεται" : "πληρωμές χρειάζονται"}{" "}
+          έγκριση προέδρου
+        </p>
+      )}
     </div>
   );
 }

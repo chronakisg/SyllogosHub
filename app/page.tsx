@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
+import { useRole } from "@/lib/hooks/useRole";
 import type {
   CalendarEvent,
   CalendarEventCategory,
@@ -134,15 +135,44 @@ function markCancellationsDisabled(err: unknown): void {
 
 export default function DashboardPage() {
   const { clubId, loading: clubLoading } = useCurrentClub();
+  const role = useRole();
   const [stats, setStats] = useState<DashboardStats>({
     activeMembers: null,
     monthRevenue: null,
     pendingPayments: null,
   });
+  const [pendingApprovalsCount, setPendingApprovalsCount] = useState<
+    number | null
+  >(null);
   const [todayItems, setTodayItems] = useState<TodayItem[] | null>(null);
   const [pendingMembers, setPendingMembers] = useState<PendingMember[]>([]);
   const [pendingModalOpen, setPendingModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isPrivileged = role.isSystemAdmin || role.isPresident;
+
+  useEffect(() => {
+    if (clubLoading || !clubId || !isPrivileged) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = getBrowserClient();
+        const { count, error: cErr } = await supabase
+          .from("payments")
+          .select("id", { count: "exact", head: true })
+          .eq("club_id", clubId)
+          .eq("approval_status", "pending");
+        if (cancelled) return;
+        if (cErr) return;
+        setPendingApprovalsCount(count ?? 0);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [clubId, clubLoading, isPrivileged]);
 
   useEffect(() => {
     if (clubLoading || !clubId) return;
@@ -367,6 +397,31 @@ export default function DashboardPage() {
           }
         />
       </div>
+
+      {isPrivileged &&
+        pendingApprovalsCount != null &&
+        pendingApprovalsCount > 0 && (
+          <Link
+            href="/finances/approvals"
+            className="mt-4 block rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 transition hover:border-amber-500/60"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                  ⚠️ Εκκρεμούν Εγκρίσεις
+                </p>
+                <p className="mt-1 text-xl font-semibold">
+                  {pendingApprovalsCount}{" "}
+                  {pendingApprovalsCount === 1 ? "πληρωμή" : "πληρωμές"} με
+                  overrides
+                </p>
+              </div>
+              <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                Διαχείριση →
+              </span>
+            </div>
+          </Link>
+        )}
 
       <TodayCard items={todayItems} />
 

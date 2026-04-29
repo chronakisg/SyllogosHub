@@ -6,6 +6,7 @@ import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
+import { calculateAge, generateUuid } from "@/lib/utils/discounts";
 import {
   BOARD_POSITIONS,
   DEPARTMENTS,
@@ -17,6 +18,8 @@ import {
 
 type MemberWithDepartments = Member & { departments: string[] };
 
+type FamilyMode = "none" | "new" | "link";
+
 type FormState = {
   first_name: string;
   last_name: string;
@@ -27,6 +30,10 @@ type FormState = {
   board_position: string;
   is_president: boolean;
   departments: string[];
+  birth_date: string;
+  family_mode: FamilyMode;
+  family_id: string | null;
+  link_member_id: string;
 };
 
 const EMPTY_FORM: FormState = {
@@ -39,6 +46,10 @@ const EMPTY_FORM: FormState = {
   board_position: "",
   is_president: false,
   departments: [],
+  birth_date: "",
+  family_mode: "none",
+  family_id: null,
+  link_member_id: "",
 };
 
 const inputClass =
@@ -59,6 +70,8 @@ export default function MembersPage() {
   const [departmentFilter, setDepartmentFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<"all" | MemberStatus>("all");
   const [boardOnly, setBoardOnly] = useState(false);
+  const [ageFilter, setAgeFilter] = useState<"all" | "child" | "adult">("all");
+  const [familyOnly, setFamilyOnly] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MemberWithDepartments | null>(null);
@@ -117,11 +130,26 @@ export default function MembersPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b, "el"));
   }, [members]);
 
+  const familyCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const x of members) {
+      if (x.family_id) m.set(x.family_id, (m.get(x.family_id) ?? 0) + 1);
+    }
+    return m;
+  }, [members]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return members.filter((m) => {
       if (statusFilter !== "all" && m.status !== statusFilter) return false;
       if (boardOnly && !m.is_board_member) return false;
+      if (familyOnly && !m.family_id) return false;
+      if (ageFilter !== "all") {
+        const age = calculateAge(m.birth_date);
+        if (age == null) return false;
+        if (ageFilter === "child" && age >= 18) return false;
+        if (ageFilter === "adult" && age < 18) return false;
+      }
       if (departmentFilter && !m.departments.includes(departmentFilter))
         return false;
       if (q) {
@@ -140,13 +168,23 @@ export default function MembersPage() {
       }
       return true;
     });
-  }, [members, search, statusFilter, boardOnly, departmentFilter]);
+  }, [
+    members,
+    search,
+    statusFilter,
+    boardOnly,
+    familyOnly,
+    ageFilter,
+    departmentFilter,
+  ]);
 
   function clearFilters() {
     setSearch("");
     setDepartmentFilter("");
     setStatusFilter("all");
     setBoardOnly(false);
+    setAgeFilter("all");
+    setFamilyOnly(false);
   }
 
   function openCreate() {
@@ -168,6 +206,10 @@ export default function MembersPage() {
       board_position: member.board_position ?? "",
       is_president: member.is_president,
       departments: member.departments,
+      birth_date: member.birth_date ?? "",
+      family_mode: member.family_id ? "link" : "none",
+      family_id: member.family_id,
+      link_member_id: "",
     });
     setFormError(null);
     setModalOpen(true);
@@ -241,6 +283,43 @@ export default function MembersPage() {
         ? form.board_position.trim() || null
         : null;
 
+    if (!clubId) {
+      setFormError("Δεν έχει εντοπιστεί σύλλογος.");
+      return;
+    }
+
+    // Resolve family_id based on selected mode
+    let resolvedFamilyId: string | null = null;
+    if (form.family_mode === "new") {
+      resolvedFamilyId = generateUuid();
+    } else if (form.family_mode === "link") {
+      if (!form.link_member_id) {
+        setFormError("Επιλέξτε μέλος για σύνδεση οικογένειας.");
+        return;
+      }
+      const target = members.find((m) => m.id === form.link_member_id);
+      if (!target) {
+        setFormError("Δεν βρέθηκε το επιλεγμένο μέλος.");
+        return;
+      }
+      if (target.family_id) {
+        resolvedFamilyId = target.family_id;
+      } else {
+        // Generate fresh family_id and update target as well
+        resolvedFamilyId = generateUuid();
+        const supabase = getBrowserClient();
+        const { error: updErr } = await supabase
+          .from("members")
+          .update({ family_id: resolvedFamilyId })
+          .eq("id", target.id)
+          .eq("club_id", clubId);
+        if (updErr) {
+          setFormError(errorMessage(updErr, "Σφάλμα σύνδεσης οικογένειας."));
+          return;
+        }
+      }
+    }
+
     const payload = {
       first_name,
       last_name,
@@ -250,12 +329,9 @@ export default function MembersPage() {
       is_board_member: isBoardMember,
       board_position: boardPosition,
       is_president: form.is_president,
+      birth_date: form.birth_date || null,
+      family_id: resolvedFamilyId,
     };
-
-    if (!clubId) {
-      setFormError("Δεν έχει εντοπιστεί σύλλογος.");
-      return;
-    }
 
     setSaving(true);
     try {
@@ -333,7 +409,9 @@ export default function MembersPage() {
     !!search ||
     !!departmentFilter ||
     statusFilter !== "all" ||
-    boardOnly;
+    boardOnly ||
+    ageFilter !== "all" ||
+    familyOnly;
 
   if (role.loading) {
     return (
@@ -423,6 +501,22 @@ export default function MembersPage() {
             <option value="inactive">Ανενεργά</option>
           </select>
         </div>
+        <div className="min-w-[10rem]">
+          <label className="mb-1 block text-xs font-medium text-muted">
+            Ηλικιακή κατηγορία
+          </label>
+          <select
+            value={ageFilter}
+            onChange={(e) =>
+              setAgeFilter(e.target.value as "all" | "child" | "adult")
+            }
+            className={inputClass}
+          >
+            <option value="all">Όλα</option>
+            <option value="child">Παιδιά (&lt;18)</option>
+            <option value="adult">Ενήλικες (18+)</option>
+          </select>
+        </div>
         <label className="flex items-center gap-2 self-end pb-2 text-sm">
           <input
             type="checkbox"
@@ -431,6 +525,15 @@ export default function MembersPage() {
             className="h-4 w-4 rounded border-border"
           />
           Μόνο Δ.Σ.
+        </label>
+        <label className="flex items-center gap-2 self-end pb-2 text-sm">
+          <input
+            type="checkbox"
+            checked={familyOnly}
+            onChange={(e) => setFamilyOnly(e.target.checked)}
+            className="h-4 w-4 rounded border-border"
+          />
+          Μόνο οικογένειες
         </label>
         <button
           type="button"
@@ -454,6 +557,7 @@ export default function MembersPage() {
             <thead className="border-b border-border bg-background/50 text-xs uppercase tracking-wider text-muted">
               <tr>
                 <th className="px-4 py-3">Ονοματεπώνυμο</th>
+                <th className="px-4 py-3">Ηλικία</th>
                 <th className="px-4 py-3">Τηλέφωνο</th>
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Τμήματα</th>
@@ -464,13 +568,13 @@ export default function MembersPage() {
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted">
                     Φόρτωση…
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted">
                     {members.length === 0
                       ? "Δεν υπάρχουν ακόμη μέλη. Πατήστε «Νέο Μέλος» για να ξεκινήσετε."
                       : "Δεν βρέθηκαν αποτελέσματα για τα φίλτρα."}
@@ -498,12 +602,28 @@ export default function MembersPage() {
                             Πρόεδρος
                           </span>
                         )}
+                        {m.family_id && (
+                          <span
+                            title={`Οικογένεια — ${familyCounts.get(m.family_id) ?? 1} μέλη`}
+                            className="text-sm"
+                            aria-label="Οικογένεια"
+                          >
+                            👪
+                          </span>
+                        )}
                       </div>
                       {m.is_board_member && m.board_position && !m.is_president && (
                         <p className="mt-0.5 text-[11px] text-muted">
                           {m.board_position}
                         </p>
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-muted">
+                      {(() => {
+                        const age = calculateAge(m.birth_date);
+                        if (age == null) return "—";
+                        return age < 18 ? `${age} (Παιδί)` : String(age);
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-muted">{m.phone ?? "—"}</td>
                     <td className="px-4 py-3 text-muted">{m.email ?? "—"}</td>
@@ -557,6 +677,7 @@ export default function MembersPage() {
           editing={editing}
           form={form}
           setForm={setForm}
+          members={members}
           saving={saving}
           formError={formError}
           onClose={closeModal}
@@ -593,6 +714,7 @@ function MemberModal({
   editing,
   form,
   setForm,
+  members,
   saving,
   formError,
   onClose,
@@ -601,6 +723,7 @@ function MemberModal({
   editing: Member | null;
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  members: MemberWithDepartments[];
   saving: boolean;
   formError: string | null;
   onClose: () => void;
@@ -613,6 +736,42 @@ function MemberModal({
         : { ...s, departments: [...s.departments, d] }
     );
   }
+
+  const [familySearch, setFamilySearch] = useState("");
+  const [familySearchDebounced, setFamilySearchDebounced] = useState("");
+  useEffect(() => {
+    const t = setTimeout(
+      () => setFamilySearchDebounced(familySearch.trim()),
+      300
+    );
+    return () => clearTimeout(t);
+  }, [familySearch]);
+
+  const familyMatches = useMemo(() => {
+    const q = familySearchDebounced.toLowerCase();
+    if (!q) return [] as MemberWithDepartments[];
+    return members
+      .filter((m) => m.id !== editing?.id)
+      .filter((m) =>
+        `${m.last_name} ${m.first_name}`.toLowerCase().includes(q)
+      )
+      .slice(0, 8);
+  }, [members, familySearchDebounced, editing?.id]);
+
+  const linkedTarget = useMemo(
+    () =>
+      form.link_member_id
+        ? members.find((m) => m.id === form.link_member_id) ?? null
+        : null,
+    [members, form.link_member_id]
+  );
+
+  const linkedFamilySize = useMemo(() => {
+    if (!linkedTarget?.family_id) return 0;
+    return members.filter((m) => m.family_id === linkedTarget.family_id).length;
+  }, [members, linkedTarget]);
+
+  const age = calculateAge(form.birth_date || null);
 
   return (
     <div
@@ -682,6 +841,126 @@ function MemberModal({
               />
             </Field>
           </div>
+
+          <Field label="Ημερομηνία Γέννησης">
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={form.birth_date}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, birth_date: e.target.value }))
+                }
+                className={inputClass}
+              />
+              {age != null && (
+                <span className="shrink-0 text-xs text-muted">
+                  ({age} ετών)
+                </span>
+              )}
+            </div>
+          </Field>
+
+          <fieldset className="rounded-lg border border-border p-3">
+            <legend className="px-2 text-xs font-semibold uppercase tracking-wider text-muted">
+              Οικογένεια
+            </legend>
+            <div className="space-y-2 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="family_mode"
+                  checked={form.family_mode === "none"}
+                  onChange={() =>
+                    setForm((s) => ({
+                      ...s,
+                      family_mode: "none",
+                      family_id: null,
+                      link_member_id: "",
+                    }))
+                  }
+                  className="h-4 w-4"
+                />
+                Χωρίς οικογένεια
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="family_mode"
+                  checked={form.family_mode === "new"}
+                  onChange={() =>
+                    setForm((s) => ({
+                      ...s,
+                      family_mode: "new",
+                      family_id: null,
+                      link_member_id: "",
+                    }))
+                  }
+                  className="h-4 w-4"
+                />
+                Νέα οικογένεια
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="family_mode"
+                  checked={form.family_mode === "link"}
+                  onChange={() =>
+                    setForm((s) => ({ ...s, family_mode: "link" }))
+                  }
+                  className="h-4 w-4"
+                />
+                Σύνδεση με υπάρχον μέλος
+              </label>
+
+              {form.family_mode === "link" && (
+                <div className="mt-2 space-y-2">
+                  <input
+                    type="search"
+                    value={familySearch}
+                    onChange={(e) => setFamilySearch(e.target.value)}
+                    placeholder="Αναζήτηση μέλους…"
+                    className={inputClass}
+                  />
+                  {familySearchDebounced && familyMatches.length > 0 && (
+                    <ul className="max-h-40 overflow-y-auto rounded-lg border border-border">
+                      {familyMatches.map((m) => (
+                        <li key={m.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setForm((s) => ({
+                                ...s,
+                                link_member_id: m.id,
+                              }));
+                              setFamilySearch("");
+                              setFamilySearchDebounced("");
+                            }}
+                            className="block w-full px-3 py-2 text-left text-sm hover:bg-foreground/5"
+                          >
+                            {m.last_name} {m.first_name}
+                            {m.family_id && (
+                              <span className="ml-2 text-[10px] text-muted">
+                                (ήδη σε οικογένεια)
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {linkedTarget && (
+                    <p className="rounded-md border border-accent/30 bg-accent/10 p-2 text-xs text-accent">
+                      Θα συνδεθεί με: {linkedTarget.last_name}{" "}
+                      {linkedTarget.first_name}
+                      {linkedFamilySize > 1
+                        ? ` και ${linkedFamilySize - 1} άλλα μέλη`
+                        : ""}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </fieldset>
 
           <Field label="Τμήματα">
             <div className="flex flex-wrap gap-2">

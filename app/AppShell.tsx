@@ -24,6 +24,11 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/seating", label: "Πλάνο Τραπεζιών", permission: "seating" },
   { href: "/finances", label: "Οικονομικά", permission: "finances" },
   {
+    href: "/finances/discounts",
+    label: "Εκπτώσεις",
+    permission: "finances",
+  },
+  {
     href: "/permissions",
     label: "Δικαιώματα",
     permission: null,

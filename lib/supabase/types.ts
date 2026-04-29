@@ -30,6 +30,8 @@ export type Member = {
   board_position: string | null;
   is_president: boolean;
   is_system_admin: boolean;
+  birth_date: string | null;
+  family_id: string | null;
   created_at: string;
 };
 
@@ -46,6 +48,8 @@ export type MemberInsert = {
   board_position?: string | null;
   is_president?: boolean;
   is_system_admin?: boolean;
+  birth_date?: string | null;
+  family_id?: string | null;
   created_at?: string;
 };
 
@@ -67,6 +71,12 @@ export type MemberDepartmentInsert = {
 
 export type MemberDepartmentUpdate = Partial<Omit<MemberDepartment, "id">>;
 
+export type ApprovalStatus =
+  | "not_required"
+  | "pending"
+  | "approved"
+  | "rejected";
+
 export type Payment = {
   id: string;
   club_id: string | null;
@@ -75,6 +85,11 @@ export type Payment = {
   payment_date: string;
   type: PaymentType;
   period: string | null;
+  original_amount: number | null;
+  override_reason: string | null;
+  approval_status: ApprovalStatus;
+  approved_by: string | null;
+  approved_at: string | null;
   created_at: string;
 };
 
@@ -86,10 +101,50 @@ export type PaymentInsert = {
   payment_date?: string;
   type: PaymentType;
   period?: string | null;
+  original_amount?: number | null;
+  override_reason?: string | null;
+  approval_status?: ApprovalStatus;
+  approved_by?: string | null;
+  approved_at?: string | null;
   created_at?: string;
 };
 
 export type PaymentUpdate = Partial<Omit<Payment, "id" | "created_at">>;
+
+export type DiscountContext = "subscription" | "event_ticket";
+export type DiscountRuleType = "age_based" | "sibling_order";
+
+export type DiscountRule = {
+  id: string;
+  club_id: string | null;
+  context: DiscountContext;
+  rule_type: DiscountRuleType;
+  age_max: number | null;
+  sibling_position: number | null;
+  discount_percent: number;
+  label: string;
+  display_order: number;
+  active: boolean;
+  created_at: string;
+};
+
+export type DiscountRuleInsert = {
+  id?: string;
+  club_id?: string | null;
+  context: DiscountContext;
+  rule_type: DiscountRuleType;
+  age_max?: number | null;
+  sibling_position?: number | null;
+  discount_percent: number;
+  label: string;
+  display_order?: number;
+  active?: boolean;
+  created_at?: string;
+};
+
+export type DiscountRuleUpdate = Partial<
+  Omit<DiscountRule, "id" | "created_at">
+>;
 
 export type EntertainmentType =
   | "dj"
@@ -566,6 +621,12 @@ export type Database = {
         Row: PaymentTemplate;
         Insert: PaymentTemplateInsert;
         Update: PaymentTemplateUpdate;
+        Relationships: [];
+      };
+      discount_rules: {
+        Row: DiscountRule;
+        Insert: DiscountRuleInsert;
+        Update: DiscountRuleUpdate;
         Relationships: [];
       };
       club_settings: {
