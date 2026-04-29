@@ -11,6 +11,7 @@ import {
 } from "react";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
 import type {
   ContributionType,
@@ -42,7 +43,7 @@ type DetailsForm = {
 
 type TicketRow = {
   id?: string;
-  category: string;
+  label: string;
   price: string;
 };
 
@@ -70,8 +71,8 @@ const ENTERTAINMENT_OPTIONS: Array<{
 
 const CONTRIBUTION_OPTIONS: Array<{ value: ContributionType; label: string }> = [
   { value: "money", label: "Χρήματα" },
-  { value: "goods", label: "Προϊόν" },
-  { value: "services", label: "Υπηρεσία" },
+  { value: "product", label: "Προϊόν" },
+  { value: "service", label: "Υπηρεσία" },
   { value: "venue", label: "Χώρος" },
   { value: "other", label: "Άλλο" },
 ];
@@ -112,6 +113,7 @@ function sponsorDisplayName(
 
 export default function EventsPage() {
   const role = useRole();
+  const { clubId, loading: clubLoading } = useCurrentClub();
   const [events, setEvents] = useState<EventWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -121,11 +123,13 @@ export default function EventsPage() {
   const [editing, setEditing] = useState<EventRow | null>(null);
 
   const loadEvents = useCallback(async () => {
+    if (!clubId) return;
     try {
       const supabase = getBrowserClient();
       const { data, error: qErr } = await supabase
         .from("events")
         .select("*")
+        .eq("club_id", clubId)
         .order("event_date", { ascending: false });
       if (qErr) throw qErr;
       const rows = (data ?? []) as EventRow[];
@@ -154,11 +158,12 @@ export default function EventsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [clubId]);
 
   useEffect(() => {
+    if (clubLoading) return;
     loadEvents();
-  }, [loadEvents]);
+  }, [loadEvents, clubLoading]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -352,6 +357,7 @@ export default function EventsPage() {
       {modalOpen && (
         <EventModal
           editing={editing}
+          clubId={clubId}
           onClose={closeModal}
           onSaved={async () => {
             closeModal();
@@ -367,10 +373,12 @@ type Tab = "details" | "tickets" | "sponsors";
 
 function EventModal({
   editing,
+  clubId,
   onClose,
   onSaved,
 }: {
   editing: EventRow | null;
+  clubId: string | null;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 }) {
@@ -444,7 +452,7 @@ function EventModal({
         setTickets(
           ticketRows.map((t) => ({
             id: t.id,
-            category: t.category,
+            label: t.label,
             price: String(t.price),
           }))
         );
@@ -496,7 +504,7 @@ function EventModal({
   }, [editing]);
 
   function addTicket() {
-    setTickets((s) => [...s, { category: "", price: "" }]);
+    setTickets((s) => [...s, { label: "", price: "" }]);
   }
   function removeTicket(i: number) {
     setTickets((s) => s.filter((_, idx) => idx !== i));
@@ -546,7 +554,7 @@ function EventModal({
     const cleanTickets: Array<EventTicketPriceInsert> = [];
     for (let i = 0; i < tickets.length; i++) {
       const t = tickets[i];
-      const cat = t.category.trim();
+      const cat = t.label.trim();
       const priceNum = Number(t.price.replace(",", "."));
       if (!cat) {
         setTab("tickets");
@@ -560,10 +568,15 @@ function EventModal({
       }
       cleanTickets.push({
         event_id: "",
-        category: cat,
+        label: cat,
         price: priceNum,
         display_order: i,
       });
+    }
+
+    if (!clubId) {
+      setFormError("Δεν έχει εντοπιστεί σύλλογος. Συνδεθείτε ξανά.");
+      return;
     }
 
     setSaving(true);
@@ -585,12 +598,14 @@ function EventModal({
         const { error: uErr } = await supabase
           .from("events")
           .update(update)
-          .eq("id", editing.id);
+          .eq("id", editing.id)
+          .eq("club_id", clubId);
         if (uErr) throw uErr;
         eventId = editing.id;
       } else {
         const insert: EventInsert = {
           ...eventPayload,
+          club_id: clubId,
           venue_map_config: { tables: [] },
         };
         const { data: ins, error: iErr } = await supabase
@@ -609,7 +624,11 @@ function EventModal({
         .eq("event_id", eventId);
       if (dtErr) throw dtErr;
       if (cleanTickets.length > 0) {
-        const rows = cleanTickets.map((t) => ({ ...t, event_id: eventId }));
+        const rows = cleanTickets.map((t) => ({
+          ...t,
+          event_id: eventId,
+          club_id: clubId,
+        }));
         const { error: itErr } = await supabase
           .from("event_ticket_prices")
           .insert(rows);
@@ -625,6 +644,7 @@ function EventModal({
       if (sponsorships.length > 0) {
         const rows: EventSponsorInsert[] = sponsorships.map((s) => ({
           event_id: eventId,
+          club_id: clubId,
           sponsor_id: s.sponsor_id,
           contribution_type: s.contribution_type,
           contribution_value: s.contribution_value
@@ -734,6 +754,7 @@ function EventModal({
         <SponsorPicker
           members={members}
           memberLookup={memberLookup}
+          clubId={clubId}
           onClose={() => setPickerOpen(false)}
           onPick={(row) => {
             addSponsorship(row);
@@ -903,9 +924,9 @@ function TicketsTab({
                   <td className="px-3 py-2">
                     <input
                       type="text"
-                      value={t.category}
+                      value={t.label}
                       onChange={(e) =>
-                        onUpdate(i, { category: e.target.value })
+                        onUpdate(i, { label: e.target.value })
                       }
                       placeholder="π.χ. Ενήλικας"
                       className={inputClass}
@@ -1122,11 +1143,13 @@ type PickerMode = "member" | "external";
 function SponsorPicker({
   members,
   memberLookup,
+  clubId,
   onClose,
   onPick,
 }: {
   members: Member[];
   memberLookup: Map<string, Member>;
+  clubId: string | null;
   onClose: () => void;
   onPick: (row: SponsorshipRow) => void;
 }) {
@@ -1165,6 +1188,11 @@ function SponsorPicker({
       return;
     }
 
+    if (!clubId) {
+      setErr("Δεν έχει εντοπιστεί σύλλογος.");
+      return;
+    }
+
     setSaving(true);
     try {
       const supabase = getBrowserClient();
@@ -1176,6 +1204,7 @@ function SponsorPicker({
           .from("sponsors")
           .select("*")
           .eq("member_id", memberId)
+          .eq("club_id", clubId)
           .maybeSingle();
         if (qErr) throw qErr;
         if (existing) {
@@ -1183,6 +1212,7 @@ function SponsorPicker({
         } else {
           const m = memberLookup.get(memberId);
           const insert: SponsorInsert = {
+            club_id: clubId,
             member_id: memberId,
             external_name: null,
             contact_phone: m?.phone ?? null,
@@ -1198,6 +1228,7 @@ function SponsorPicker({
         }
       } else {
         const insert: SponsorInsert = {
+          club_id: clubId,
           member_id: null,
           external_name: externalName.trim(),
           contact_phone: externalPhone.trim() || null,

@@ -11,6 +11,7 @@ import {
 import Link from "next/link";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
 import type {
   Event as EventRow,
@@ -203,6 +204,7 @@ const emptyBulkForm: BulkForm = {
 };
 
 function PaymentsTab() {
+  const { clubId, loading: clubLoading } = useCurrentClub();
   const [members, setMembers] = useState<Member[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [templates, setTemplates] = useState<PaymentTemplate[]>([]);
@@ -241,21 +243,25 @@ function PaymentsTab() {
   }, [toast]);
 
   const load = useCallback(async () => {
+    if (!clubId) return;
     try {
       const supabase = getBrowserClient();
       const [mRes, pRes, tRes] = await Promise.all([
         supabase
           .from("members")
           .select("*")
+          .eq("club_id", clubId)
           .order("last_name", { ascending: true })
           .order("first_name", { ascending: true }),
         supabase
           .from("payments")
           .select("*, members!inner(first_name,last_name)")
+          .eq("club_id", clubId)
           .order("payment_date", { ascending: false }),
         supabase
           .from("payment_templates")
           .select("*")
+          .eq("club_id", clubId)
           .order("label", { ascending: true }),
       ]);
       if (mRes.error) throw mRes.error;
@@ -269,6 +275,7 @@ function PaymentsTab() {
         };
         return {
           id: r.id,
+          club_id: r.club_id,
           member_id: r.member_id,
           amount: r.amount,
           payment_date: r.payment_date,
@@ -288,11 +295,12 @@ function PaymentsTab() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [clubId]);
 
   useEffect(() => {
+    if (clubLoading) return;
     load();
-  }, [load]);
+  }, [load, clubLoading]);
 
   const filtered = useMemo(() => {
     return payments.filter((p) => {
@@ -345,7 +353,13 @@ function PaymentsTab() {
       return;
     }
 
+    if (!clubId) {
+      setFormError("Δεν έχει εντοπιστεί σύλλογος.");
+      return;
+    }
+
     const insert: PaymentInsert = {
+      club_id: clubId,
       member_id,
       amount,
       type: form.type,
@@ -371,13 +385,14 @@ function PaymentsTab() {
     const ok = window.confirm(
       "Διαγραφή πληρωμής; Η ενέργεια δεν αναιρείται."
     );
-    if (!ok) return;
+    if (!ok || !clubId) return;
     try {
       const supabase = getBrowserClient();
       const { error: dErr } = await supabase
         .from("payments")
         .delete()
-        .eq("id", p.id);
+        .eq("id", p.id)
+        .eq("club_id", clubId);
       if (dErr) throw dErr;
       await load();
     } catch (err) {
@@ -420,6 +435,10 @@ function PaymentsTab() {
       setTemplateError("Το ποσό πρέπει να είναι μη αρνητικός αριθμός.");
       return;
     }
+    if (!clubId) {
+      setTemplateError("Δεν έχει εντοπιστεί σύλλογος.");
+      return;
+    }
     setTemplateSaving(true);
     try {
       const supabase = getBrowserClient();
@@ -432,10 +451,12 @@ function PaymentsTab() {
         const { error: uErr } = await supabase
           .from("payment_templates")
           .update(update)
-          .eq("id", editingTemplate.id);
+          .eq("id", editingTemplate.id)
+          .eq("club_id", clubId);
         if (uErr) throw uErr;
       } else {
         const insert: PaymentTemplateInsert = {
+          club_id: clubId,
           label,
           amount,
           payment_type: templateForm.payment_type,
@@ -456,12 +477,14 @@ function PaymentsTab() {
   }
   async function handleTemplateDelete(t: PaymentTemplate) {
     if (!window.confirm(`Διαγραφή προτύπου «${t.label}»;`)) return;
+    if (!clubId) return;
     try {
       const supabase = getBrowserClient();
       const { error: dErr } = await supabase
         .from("payment_templates")
         .delete()
-        .eq("id", t.id);
+        .eq("id", t.id)
+        .eq("club_id", clubId);
       if (dErr) throw dErr;
       await load();
     } catch (err) {
@@ -496,6 +519,10 @@ function PaymentsTab() {
       setBulkError("Η ημερομηνία είναι υποχρεωτική.");
       return;
     }
+    if (!clubId) {
+      setBulkError("Δεν έχει εντοπιστεί σύλλογος.");
+      return;
+    }
     setBulkSaving(true);
     try {
       const supabase = getBrowserClient();
@@ -507,6 +534,7 @@ function PaymentsTab() {
         const { data: existing, error: eErr } = await supabase
           .from("payments")
           .select("member_id")
+          .eq("club_id", clubId)
           .eq("type", bulkForm.type)
           .eq("period", period)
           .in("member_id", ids);
@@ -519,6 +547,7 @@ function PaymentsTab() {
 
       if (toInsert.length > 0) {
         const inserts: PaymentInsert[] = toInsert.map((member_id) => ({
+          club_id: clubId,
           member_id,
           amount,
           type: bulkForm.type,
@@ -1414,6 +1443,7 @@ function PaymentModal({
 // ────────────────────────────────────────────────────────────
 
 function ReservationsTab() {
+  const { clubId, loading: clubLoading } = useCurrentClub();
   const [events, setEvents] = useState<EventRow[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -1423,6 +1453,7 @@ function ReservationsTab() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (clubLoading || !clubId) return;
     let cancelled = false;
     (async () => {
       try {
@@ -1430,6 +1461,7 @@ function ReservationsTab() {
         const { data, error: qErr } = await supabase
           .from("events")
           .select("*")
+          .eq("club_id", clubId)
           .order("event_date", { ascending: false });
         if (cancelled) return;
         if (qErr) throw qErr;
@@ -1446,7 +1478,7 @@ function ReservationsTab() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [clubId, clubLoading]);
 
   useEffect(() => {
     if (!selectedEventId) {
@@ -1479,6 +1511,7 @@ function ReservationsTab() {
   }, [selectedEventId]);
 
   async function togglePaid(r: Reservation) {
+    if (!clubId) return;
     const next = !r.is_paid;
     setUpdatingId(r.id);
     setReservations((prev) =>
@@ -1489,7 +1522,8 @@ function ReservationsTab() {
       const { error: uErr } = await supabase
         .from("reservations")
         .update({ is_paid: next })
-        .eq("id", r.id);
+        .eq("id", r.id)
+        .eq("club_id", clubId);
       if (uErr) throw uErr;
     } catch (err) {
       setReservations((prev) =>

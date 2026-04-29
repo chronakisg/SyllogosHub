@@ -6,6 +6,7 @@ import { useState } from "react";
 import { getBrowserClient } from "@/lib/supabase/client";
 import { useRole, type Permission, type RoleState } from "@/lib/hooks/useRole";
 import { useClubSettings } from "@/lib/hooks/useClubSettings";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 
 type NavItem = {
   href: string;
@@ -41,7 +42,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const role = useRole();
   const { settings: club } = useClubSettings();
+  const { club: currentClub } = useCurrentClub();
   const [signingOut, setSigningOut] = useState(false);
+
+  const headerTitle = currentClub?.name || club.club_name;
 
   if (pathname === "/login") {
     return <>{children}</>;
@@ -78,16 +82,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={club.logo_url}
-                alt={club.club_name}
+                alt={headerTitle}
                 className="h-8 w-8 rounded-lg object-cover"
               />
             ) : (
               <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-sm font-semibold text-white">
-                {(club.club_name?.[0] ?? "Σ").toUpperCase()}
+                {(headerTitle?.[0] ?? "Σ").toUpperCase()}
               </span>
             )}
-            <span className="truncate font-semibold tracking-tight">
-              {club.club_name}
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate font-semibold tracking-tight">
+                {headerTitle}
+              </span>
+              <span className="truncate text-[10px] uppercase tracking-wider text-muted">
+                SyllogosHub
+              </span>
             </span>
           </Link>
         </div>

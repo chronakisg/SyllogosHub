@@ -1,21 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getBrowserClient } from "@/lib/supabase/client";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import type { ClubSettings } from "@/lib/supabase/types";
 
 export const DEFAULT_CLUB_NAME = "SyllogosHub";
-export const DEFAULT_PRIMARY = "#2563eb";
-export const DEFAULT_SECONDARY = "#1e40af";
+export const DEFAULT_PRIMARY = "#800000";
+export const DEFAULT_SECONDARY = "#000000";
 export const DEFAULT_ACCENT = "#f59e0b";
 
 export const FALLBACK_SETTINGS: ClubSettings = {
   id: "",
+  club_id: null,
   club_name: DEFAULT_CLUB_NAME,
   logo_url: null,
   primary_color: DEFAULT_PRIMARY,
   secondary_color: DEFAULT_SECONDARY,
   accent_color: DEFAULT_ACCENT,
+  theme_preset: "classic",
+  favicon_url: null,
+  custom_domain: null,
+  metadata: null,
   address: null,
   phone: null,
   email: null,
@@ -25,18 +30,6 @@ export const FALLBACK_SETTINGS: ClubSettings = {
   tax_id: null,
   founded_year: null,
   updated_at: new Date(0).toISOString(),
-};
-
-type CacheState = {
-  settings: ClubSettings | null;
-  inFlight: Promise<ClubSettings | null> | null;
-  listeners: Set<(s: ClubSettings | null) => void>;
-};
-
-const cache: CacheState = {
-  settings: null,
-  inFlight: null,
-  listeners: new Set(),
 };
 
 function applyCssVars(s: ClubSettings | null) {
@@ -54,68 +47,51 @@ function applyCssVars(s: ClubSettings | null) {
     "--brand-accent",
     s?.accent_color || DEFAULT_ACCENT
   );
+  root.style.setProperty(
+    "--color-primary",
+    s?.primary_color || DEFAULT_PRIMARY
+  );
+  root.style.setProperty(
+    "--color-secondary",
+    s?.secondary_color || DEFAULT_SECONDARY
+  );
+  root.style.setProperty(
+    "--color-accent",
+    s?.accent_color || DEFAULT_ACCENT
+  );
 }
 
-async function fetchSettings(): Promise<ClubSettings | null> {
-  const supabase = getBrowserClient();
-  const { data, error } = await supabase
-    .from("club_settings")
-    .select("*")
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) return null;
-  return (data as ClubSettings) ?? null;
-}
-
-function notify(s: ClubSettings | null) {
-  cache.settings = s;
-  applyCssVars(s);
-  for (const l of cache.listeners) l(s);
-}
-
-export async function refreshClubSettings(): Promise<ClubSettings | null> {
-  const next = await fetchSettings();
-  notify(next);
-  return next;
+export async function refreshClubSettings(): Promise<void> {
+  // No-op: useCurrentClub re-runs on auth change. For explicit refresh of
+  // settings after a /settings save, call this from the settings page.
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("syllogoshub:refresh-club"));
+  }
 }
 
 export function useClubSettings(): {
   settings: ClubSettings;
   loading: boolean;
-  refresh: () => Promise<ClubSettings | null>;
+  refresh: () => Promise<void>;
 } {
-  const [state, setState] = useState<ClubSettings | null>(cache.settings);
-  const [loading, setLoading] = useState<boolean>(cache.settings === null);
+  const { settings, loading } = useCurrentClub();
+  const [, force] = useState(0);
 
   useEffect(() => {
-    let mounted = true;
-    cache.listeners.add(setState);
+    applyCssVars(settings);
+  }, [settings]);
 
-    if (cache.settings) {
-      applyCssVars(cache.settings);
-      setLoading(false);
-    } else {
-      const promise =
-        cache.inFlight ??
-        (cache.inFlight = fetchSettings().finally(() => {
-          cache.inFlight = null;
-        }));
-      promise.then((next) => {
-        if (!mounted) return;
-        notify(next);
-        setLoading(false);
-      });
+  useEffect(() => {
+    function handler() {
+      force((n) => n + 1);
     }
-
-    return () => {
-      mounted = false;
-      cache.listeners.delete(setState);
-    };
+    window.addEventListener("syllogoshub:refresh-club", handler);
+    return () =>
+      window.removeEventListener("syllogoshub:refresh-club", handler);
   }, []);
 
   return {
-    settings: state ?? FALLBACK_SETTINGS,
+    settings: settings ?? FALLBACK_SETTINGS,
     loading,
     refresh: refreshClubSettings,
   };

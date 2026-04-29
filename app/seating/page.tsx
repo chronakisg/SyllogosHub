@@ -12,6 +12,7 @@ import {
 } from "react";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
 import type {
   Event as EventRow,
@@ -80,6 +81,7 @@ export default function SeatingPage() {
 
 function SeatingView() {
   const role = useRole();
+  const { clubId, loading: clubLoading } = useCurrentClub();
   const searchParams = useSearchParams();
   const eventParam = searchParams.get("event");
   const [events, setEvents] = useState<EventRow[]>([]);
@@ -112,6 +114,7 @@ function SeatingView() {
   const [members, setMembers] = useState<Member[]>([]);
 
   useEffect(() => {
+    if (!clubId) return;
     let cancelled = false;
     (async () => {
       try {
@@ -119,6 +122,7 @@ function SeatingView() {
         const { data, error: qErr } = await supabase
           .from("members")
           .select("*")
+          .eq("club_id", clubId)
           .eq("status", "active")
           .order("last_name", { ascending: true })
           .order("first_name", { ascending: true });
@@ -132,7 +136,7 @@ function SeatingView() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [clubId]);
 
   const tablesByNumber = useMemo(() => {
     const m = new Map<number, VenueTable>();
@@ -156,25 +160,43 @@ function SeatingView() {
       .sort((a, b) => a.group_name.localeCompare(b.group_name, "el"));
   }, [reservations, groupSearch]);
 
-  const loadEventData = useCallback(async (eventId: string) => {
-    try {
-      const supabase = getBrowserClient();
-      const [evRes, resRes] = await Promise.all([
-        supabase.from("events").select("*").eq("id", eventId).single(),
-        supabase.from("reservations").select("*").eq("event_id", eventId),
-      ]);
-      if (evRes.error) throw evRes.error;
-      if (resRes.error) throw resRes.error;
-      setError(null);
-      setVenueConfig(parseVenueConfig(evRes.data.venue_map_config));
-      setReservations(resRes.data ?? []);
-      setLoadedEventId(eventId);
-    } catch (err) {
-      setError(errorMessage(err, "Σφάλμα φόρτωσης δεδομένων."));
-    }
-  }, []);
+  const loadEventData = useCallback(
+    async (eventId: string) => {
+      if (!clubId) return;
+      try {
+        const supabase = getBrowserClient();
+        const [evRes, resRes] = await Promise.all([
+          supabase
+            .from("events")
+            .select("*")
+            .eq("id", eventId)
+            .eq("club_id", clubId)
+            .single(),
+          supabase
+            .from("reservations")
+            .select("*")
+            .eq("event_id", eventId)
+            .eq("club_id", clubId),
+        ]);
+        if (evRes.error) throw evRes.error;
+        if (resRes.error) throw resRes.error;
+        setError(null);
+        setVenueConfig(parseVenueConfig(evRes.data.venue_map_config));
+        setReservations(resRes.data ?? []);
+        setLoadedEventId(eventId);
+      } catch (err) {
+        setError(errorMessage(err, "Σφάλμα φόρτωσης δεδομένων."));
+      }
+    },
+    [clubId]
+  );
 
   useEffect(() => {
+    if (clubLoading) return;
+    if (!clubId) {
+      setInitialLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -182,6 +204,7 @@ function SeatingView() {
         const { data, error: qErr } = await supabase
           .from("events")
           .select("*")
+          .eq("club_id", clubId)
           .order("event_date", { ascending: false });
         if (cancelled) return;
         if (qErr) throw qErr;
@@ -201,18 +224,27 @@ function SeatingView() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [clubId, clubLoading]);
 
   useEffect(() => {
-    if (!selectedEventId) return;
+    if (!selectedEventId || !clubId) return;
     const eventId = selectedEventId;
     let cancelled = false;
     (async () => {
       try {
         const supabase = getBrowserClient();
         const [evRes, resRes] = await Promise.all([
-          supabase.from("events").select("*").eq("id", eventId).single(),
-          supabase.from("reservations").select("*").eq("event_id", eventId),
+          supabase
+            .from("events")
+            .select("*")
+            .eq("id", eventId)
+            .eq("club_id", clubId)
+            .single(),
+          supabase
+            .from("reservations")
+            .select("*")
+            .eq("event_id", eventId)
+            .eq("club_id", clubId),
         ]);
         if (cancelled) return;
         if (evRes.error) throw evRes.error;
@@ -229,7 +261,7 @@ function SeatingView() {
     return () => {
       cancelled = true;
     };
-  }, [selectedEventId]);
+  }, [selectedEventId, clubId]);
 
   useEffect(() => {
     if (!selectedEventId) return;
@@ -282,38 +314,41 @@ function SeatingView() {
         )
       );
       setSelectedReservationId(null);
+      if (!clubId) return;
       try {
         const supabase = getBrowserClient();
         const { error: uErr } = await supabase
           .from("reservations")
           .update({ table_number: tableNumber })
-          .eq("id", reservationId);
+          .eq("id", reservationId)
+          .eq("club_id", clubId);
         if (uErr) throw uErr;
       } catch (err) {
         setError(errorMessage(err, "Σφάλμα κατά την ανάθεση παρέας."));
         if (selectedEventId) loadEventData(selectedEventId);
       }
     },
-    [loadEventData, selectedEventId]
+    [loadEventData, selectedEventId, clubId]
   );
 
   const saveVenueConfig = useCallback(
     async (next: VenueMapConfig) => {
-      if (!selectedEventId) return;
+      if (!selectedEventId || !clubId) return;
       setVenueConfig(next);
       try {
         const supabase = getBrowserClient();
         const { error: uErr } = await supabase
           .from("events")
           .update({ venue_map_config: next })
-          .eq("id", selectedEventId);
+          .eq("id", selectedEventId)
+          .eq("club_id", clubId);
         if (uErr) throw uErr;
       } catch (err) {
         setError(errorMessage(err, "Σφάλμα αποθήκευσης διαμόρφωσης χώρου."));
         if (selectedEventId) loadEventData(selectedEventId);
       }
     },
-    [selectedEventId, loadEventData]
+    [selectedEventId, loadEventData, clubId]
   );
 
   const handleAddTable = useCallback(
@@ -382,6 +417,7 @@ function SeatingView() {
 
   const handleUpdateGuests = useCallback(
     async (reservationId: string, guests: Guest[]) => {
+      if (!clubId) return;
       const previous = reservations;
       setReservations((prev) =>
         prev.map((r) => (r.id === reservationId ? { ...r, guests } : r))
@@ -391,14 +427,15 @@ function SeatingView() {
         const { error: uErr } = await supabase
           .from("reservations")
           .update({ guests })
-          .eq("id", reservationId);
+          .eq("id", reservationId)
+          .eq("club_id", clubId);
         if (uErr) throw uErr;
       } catch (err) {
         setReservations(previous);
         setError(errorMessage(err, "Σφάλμα αποθήκευσης καλεσμένων."));
       }
     },
-    [reservations]
+    [reservations, clubId]
   );
 
   const handleRemoveTable = useCallback(
@@ -431,10 +468,11 @@ function SeatingView() {
       pax_count: number;
       is_paid: boolean;
     }) => {
-      if (!selectedEventId) return;
+      if (!selectedEventId || !clubId) return;
       try {
         const supabase = getBrowserClient();
         const { error: iErr } = await supabase.from("reservations").insert({
+          club_id: clubId,
           event_id: selectedEventId,
           group_name: input.group_name,
           pax_count: input.pax_count,
@@ -446,16 +484,18 @@ function SeatingView() {
         setError(errorMessage(err, "Σφάλμα δημιουργίας παρέας."));
       }
     },
-    [selectedEventId]
+    [selectedEventId, clubId]
   );
 
   const handleCreateEvent = useCallback(
     async (input: { event_name: string; event_date: string }) => {
+      if (!clubId) return;
       try {
         const supabase = getBrowserClient();
         const { data, error: iErr } = await supabase
           .from("events")
           .insert({
+            club_id: clubId,
             event_name: input.event_name,
             event_date: input.event_date,
             venue_map_config: { tables: [] },
@@ -471,7 +511,7 @@ function SeatingView() {
         setError(errorMessage(err, "Σφάλμα δημιουργίας εκδήλωσης."));
       }
     },
-    []
+    [clubId]
   );
 
   const activeEvent =

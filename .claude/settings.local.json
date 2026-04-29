@@ -15,7 +15,11 @@
       "Bash(netstat -ano)",
       "Bash(grep -E -q \"Ready in|Error|EADDRINUSE|Failed to compile\" \"C:\\\\\\\\Users\\\\\\\\chron\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\claude\\\\\\\\D--Projects-syllogoshub\\\\\\\\d808e7d3-116d-4fbe-978f-3ea118676953\\\\\\\\tasks\\\\\\\\bhcy1qeen.output\")",
       "Bash(npm install *)",
-      "Bash(taskkill *)"
+      "Bash(taskkill *)",
+      "Bash(npx next *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }

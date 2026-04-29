@@ -4,21 +4,65 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
 import { useClubSettings } from "@/lib/hooks/useClubSettings";
-import type { Event as EventRow, Reservation } from "@/lib/supabase/types";
+import type {
+  ContributionType,
+  Event as EventRow,
+  EventTicketPrice,
+  Reservation,
+} from "@/lib/supabase/types";
 
 const eur = new Intl.NumberFormat("el-GR", {
   style: "currency",
   currency: "EUR",
 });
 
+type SponsorJoinRow = {
+  contribution_type: ContributionType;
+  contribution_value: number | null;
+  contribution_description: string | null;
+  sponsors: {
+    id: string;
+    member_id: string | null;
+    external_name: string | null;
+    members: { first_name: string; last_name: string } | null;
+  } | null;
+};
+
+type SponsorSummary = {
+  name: string;
+  isMember: boolean;
+  contribution_type: ContributionType;
+  contribution_value: number | null;
+  contribution_description: string | null;
+};
+
 type SummaryData = {
   event: EventRow;
   reservations: Reservation[];
+  ticketPrices: EventTicketPrice[];
+  sponsors: SponsorSummary[];
 };
 
 type VenueTable = { id: string; capacity?: number };
+
+const CONTRIBUTION_LABEL: Record<ContributionType, string> = {
+  money: "Χρήματα",
+  product: "Προϊόν",
+  service: "Υπηρεσία",
+  venue: "Χώρος",
+  other: "Άλλο",
+};
+
+const ENTERTAINMENT_LABEL: Record<string, string> = {
+  dj: "DJ",
+  band: "Μπάντα",
+  orchestra: "Ορχήστρα",
+  live: "Live",
+  other: "Άλλο",
+};
 
 function venueTables(raw: unknown): VenueTable[] {
   if (!raw || typeof raw !== "object") return [];
@@ -30,6 +74,7 @@ export default function EventSummaryPage() {
   const params = useParams<{ eventId: string }>();
   const eventId = params?.eventId;
   const role = useRole();
+  const currentClub = useCurrentClub();
   const { settings: club } = useClubSettings();
 
   const [data, setData] = useState<SummaryData | null>(null);
@@ -42,24 +87,67 @@ export default function EventSummaryPage() {
 
   useEffect(() => {
     if (!eventId || role.loading || !allowed) return;
+    if (currentClub.loading) return;
     let cancelled = false;
     (async () => {
       try {
         const supabase = getBrowserClient();
-        const [eRes, rRes] = await Promise.all([
-          supabase.from("events").select("*").eq("id", eventId).single(),
+        let eventQuery = supabase
+          .from("events")
+          .select("*")
+          .eq("id", eventId);
+        if (currentClub.clubId)
+          eventQuery = eventQuery.eq("club_id", currentClub.clubId);
+
+        const [eRes, rRes, tRes, spRes] = await Promise.all([
+          eventQuery.single(),
           supabase
             .from("reservations")
             .select("*")
             .eq("event_id", eventId)
             .order("group_name", { ascending: true }),
+          supabase
+            .from("event_ticket_prices")
+            .select("*")
+            .eq("event_id", eventId)
+            .order("display_order", { ascending: true }),
+          supabase
+            .from("event_sponsors")
+            .select(
+              "contribution_type, contribution_value, contribution_description, sponsors(id, member_id, external_name, members(first_name, last_name))"
+            )
+            .eq("event_id", eventId),
         ]);
         if (cancelled) return;
         if (eRes.error) throw eRes.error;
         if (rRes.error) throw rRes.error;
+        if (tRes.error) throw tRes.error;
+        if (spRes.error) throw spRes.error;
+
+        const sponsorRows = ((spRes.data ?? []) as unknown as SponsorJoinRow[])
+          .map<SponsorSummary | null>((row) => {
+            const sp = row.sponsors;
+            if (!sp) return null;
+            const isMember = !!sp.member_id;
+            const name =
+              isMember && sp.members
+                ? `${sp.members.last_name} ${sp.members.first_name}`.trim()
+                : (sp.external_name ?? "—");
+            return {
+              name,
+              isMember,
+              contribution_type: row.contribution_type,
+              contribution_value: row.contribution_value,
+              contribution_description: row.contribution_description,
+            };
+          })
+          .filter((x): x is SponsorSummary => !!x);
+
         setData({
           event: eRes.data as EventRow,
           reservations: (rRes.data ?? []) as Reservation[],
+          ticketPrices: (tRes.data ?? []) as EventTicketPrice[],
+          sponsors: sponsorRows,
         });
       } catch (err) {
         if (!cancelled)
@@ -71,9 +159,9 @@ export default function EventSummaryPage() {
     return () => {
       cancelled = true;
     };
-  }, [eventId, role.loading, allowed]);
+  }, [eventId, role.loading, allowed, currentClub.loading, currentClub.clubId]);
 
-  if (role.loading || loading) {
+  if (role.loading || loading || currentClub.loading) {
     return (
       <div className="mx-auto max-w-3xl p-10 text-center text-muted">
         Φόρτωση…
@@ -91,7 +179,7 @@ export default function EventSummaryPage() {
     );
   }
 
-  const { event, reservations } = data;
+  const { event, reservations, ticketPrices, sponsors } = data;
   const sortedReservations = [...reservations].sort((a, b) =>
     a.group_name.localeCompare(b.group_name, "el")
   );
@@ -102,19 +190,16 @@ export default function EventSummaryPage() {
     0
   );
   const totalGroups = reservations.length;
-  const paidGroups = reservations.filter((r) => r.is_paid);
-  const paidGroupCount = paidGroups.length;
+  const paidGroupCount = reservations.filter((r) => r.is_paid).length;
   const pendingGroupCount = totalGroups - paidGroupCount;
-  const ticketPrice =
-    event.ticket_price != null ? Number(event.ticket_price) : null;
-  const paidRevenue =
-    ticketPrice != null ? paidGroupCount * ticketPrice : null;
-  const pendingRevenue =
-    ticketPrice != null ? pendingGroupCount * ticketPrice : null;
-  const expectedRevenue =
-    paidRevenue != null && pendingRevenue != null
-      ? paidRevenue + pendingRevenue
-      : null;
+
+  const sponsorMonetary = sponsors.reduce(
+    (s, sp) =>
+      sp.contribution_type === "money" && sp.contribution_value != null
+        ? s + sp.contribution_value
+        : s,
+    0
+  );
 
   return (
     <div className="mx-auto max-w-4xl p-6 print:max-w-none print:p-0">
@@ -154,18 +239,40 @@ export default function EventSummaryPage() {
           {event.location && (
             <SummaryRow label="📍 Τοποθεσία">{event.location}</SummaryRow>
           )}
-          {event.sponsors && (
-            <SummaryRow label="Χορηγοί">
-              <span className="whitespace-pre-wrap">{event.sponsors}</span>
+          {event.entertainment_type && (
+            <SummaryRow label="🎵 Ψυχαγωγία">
+              {ENTERTAINMENT_LABEL[event.entertainment_type] ??
+                event.entertainment_type}
+              {event.entertainment_name ? `: ${event.entertainment_name}` : ""}
             </SummaryRow>
           )}
-          {ticketPrice != null && (
-            <SummaryRow label="Κόστος Πρόσκλησης">
-              {eur.format(ticketPrice)}/άτομο
-            </SummaryRow>
-          )}
-          {!event.location && !event.sponsors && ticketPrice == null && (
+          {!event.location && !event.entertainment_type && (
             <p className="text-sm text-muted">—</p>
+          )}
+        </SummaryCard>
+
+        <SummaryCard title="Τιμές Πρόσκλησης">
+          {ticketPrices.length === 0 ? (
+            <p className="text-sm text-muted">
+              Δεν έχουν οριστεί κατηγορίες τιμών.
+            </p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="border-b border-border text-xs uppercase tracking-wider text-muted">
+                <tr>
+                  <th className="py-2 text-left">Κατηγορία</th>
+                  <th className="py-2 text-right">Τιμή</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {ticketPrices.map((t) => (
+                  <tr key={t.id}>
+                    <td className="py-2 font-medium">{t.label}</td>
+                    <td className="py-2 text-right">{eur.format(t.price)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </SummaryCard>
 
@@ -180,32 +287,55 @@ export default function EventSummaryPage() {
         </SummaryCard>
 
         <SummaryCard title="Οικονομικά">
-          {ticketPrice == null ? (
-            <p className="text-sm text-muted">
-              Δεν έχει οριστεί κόστος πρόσκλησης.
+          <p className="text-sm text-muted">
+            Έσοδα: μη υπολογίσιμα — ορίστε τιμές και συνδέστε reservations με
+            κατηγορία τιμής.
+          </p>
+          {sponsors.length > 0 && (
+            <p className="mt-2 text-sm">
+              <span className="text-muted">Χορηγίες σε χρήμα: </span>
+              <span className="font-semibold">
+                {eur.format(sponsorMonetary)}
+              </span>
             </p>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-3">
-              <FinanceCell
-                label="Έσοδα"
-                value={eur.format(paidRevenue ?? 0)}
-                hint={`${paidGroupCount} × ${eur.format(ticketPrice)}`}
-                tone="success"
-              />
-              <FinanceCell
-                label="Εκκρεμή"
-                value={eur.format(pendingRevenue ?? 0)}
-                hint={`${pendingGroupCount} × ${eur.format(ticketPrice)}`}
-                tone="warning"
-              />
-              <FinanceCell
-                label="Σύνολο Αναμενόμενο"
-                value={eur.format(expectedRevenue ?? 0)}
-                hint={`${totalGroups} παρέες`}
-              />
-            </div>
           )}
         </SummaryCard>
+
+        {sponsors.length > 0 && (
+          <SummaryCard title="Χορηγοί">
+            <table className="w-full text-sm">
+              <thead className="border-b border-border text-xs uppercase tracking-wider text-muted">
+                <tr>
+                  <th className="py-2 text-left">Όνομα</th>
+                  <th className="py-2 text-left">Τύπος</th>
+                  <th className="py-2 text-left">Προσφορά</th>
+                  <th className="py-2 text-right">Αξία</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {sponsors.map((s, i) => (
+                  <tr key={i}>
+                    <td className="py-2 font-medium">{s.name}</td>
+                    <td className="py-2 text-muted">
+                      {s.isMember ? "Μέλος" : "Εξωτερικός"}
+                    </td>
+                    <td className="py-2 text-muted">
+                      {CONTRIBUTION_LABEL[s.contribution_type]}
+                      {s.contribution_description
+                        ? ` · ${s.contribution_description}`
+                        : ""}
+                    </td>
+                    <td className="py-2 text-right">
+                      {s.contribution_value != null
+                        ? eur.format(s.contribution_value)
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </SummaryCard>
+        )}
 
         <SummaryCard title="Παρέες">
           {sortedReservations.length === 0 ? (
@@ -321,32 +451,6 @@ function Stat({
       <p className="mt-1 text-2xl font-semibold tracking-tight">
         {value.toLocaleString("el-GR")}
       </p>
-    </div>
-  );
-}
-
-function FinanceCell({
-  label,
-  value,
-  hint,
-  tone,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  tone?: "success" | "warning";
-}) {
-  const toneClass =
-    tone === "success"
-      ? "border-emerald-500/30 bg-emerald-500/5"
-      : tone === "warning"
-        ? "border-amber-500/30 bg-amber-500/5"
-        : "border-border bg-background/40";
-  return (
-    <div className={"rounded-lg border p-4 " + toneClass}>
-      <p className="text-xs text-muted">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tracking-tight">{value}</p>
-      {hint && <p className="mt-1 text-[11px] text-muted">{hint}</p>}
     </div>
   );
 }

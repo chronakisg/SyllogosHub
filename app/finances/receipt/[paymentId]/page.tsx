@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useClubSettings } from "@/lib/hooks/useClubSettings";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import type { Member, Payment, PaymentType } from "@/lib/supabase/types";
 
 const PAYMENT_TYPE_LABEL: Record<PaymentType, string> = {
@@ -25,6 +26,7 @@ export default function ReceiptPage() {
   const params = useParams<{ paymentId: string }>();
   const paymentId = params?.paymentId;
   const { settings: club } = useClubSettings();
+  const { clubId, loading: clubLoading } = useCurrentClub();
 
   const [data, setData] = useState<ReceiptData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,6 +34,7 @@ export default function ReceiptPage() {
 
   useEffect(() => {
     if (!paymentId) return;
+    if (clubLoading || !clubId) return;
     let cancelled = false;
     (async () => {
       try {
@@ -40,6 +43,7 @@ export default function ReceiptPage() {
           .from("payments")
           .select("*, members(first_name,last_name,email,phone)")
           .eq("id", paymentId)
+          .eq("club_id", clubId)
           .single();
         if (cancelled) return;
         if (qErr) throw qErr;
@@ -49,6 +53,7 @@ export default function ReceiptPage() {
         setData({
           payment: {
             id: r.id,
+            club_id: r.club_id,
             member_id: r.member_id,
             amount: r.amount,
             payment_date: r.payment_date,
@@ -68,7 +73,7 @@ export default function ReceiptPage() {
     return () => {
       cancelled = true;
     };
-  }, [paymentId]);
+  }, [paymentId, clubId, clubLoading]);
 
   if (loading) {
     return (

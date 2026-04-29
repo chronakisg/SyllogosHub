@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useClubSettings } from "@/lib/hooks/useClubSettings";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import type { Event as EventRow, Reservation } from "@/lib/supabase/types";
 
 export default function EntranceListPage() {
@@ -24,6 +25,7 @@ function EntranceListView() {
   const params = useSearchParams();
   const eventId = params.get("event");
   const { settings: club } = useClubSettings();
+  const { clubId, loading: clubLoading } = useCurrentClub();
 
   const [event, setEvent] = useState<EventRow | null>(null);
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -36,16 +38,28 @@ function EntranceListView() {
       setLoading(false);
       return;
     }
+    if (clubLoading) return;
+    if (!clubId) {
+      setError("Δεν έχει εντοπιστεί σύλλογος.");
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
         const supabase = getBrowserClient();
         const [evRes, rRes] = await Promise.all([
-          supabase.from("events").select("*").eq("id", eventId).single(),
+          supabase
+            .from("events")
+            .select("*")
+            .eq("id", eventId)
+            .eq("club_id", clubId)
+            .single(),
           supabase
             .from("reservations")
             .select("*")
-            .eq("event_id", eventId),
+            .eq("event_id", eventId)
+            .eq("club_id", clubId),
         ]);
         if (cancelled) return;
         if (evRes.error) throw evRes.error;
@@ -62,7 +76,7 @@ function EntranceListView() {
     return () => {
       cancelled = true;
     };
-  }, [eventId]);
+  }, [eventId, clubId, clubLoading]);
 
   const sorted = useMemo(
     () =>

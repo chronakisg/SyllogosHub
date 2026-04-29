@@ -10,6 +10,7 @@ import {
 } from "react";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
 import type {
   Member,
@@ -49,6 +50,7 @@ function displayName(s: SponsorWithStats): string {
 
 export default function SponsorsPage() {
   const role = useRole();
+  const { clubId, loading: clubLoading } = useCurrentClub();
   const [sponsors, setSponsors] = useState<SponsorWithStats[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [search, setSearch] = useState("");
@@ -62,17 +64,23 @@ export default function SponsorsPage() {
   const [formError, setFormError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (!clubId) return;
     try {
       const supabase = getBrowserClient();
       const [sRes, eRes, mRes] = await Promise.all([
         supabase
           .from("sponsors")
           .select("*, members(first_name,last_name)")
+          .eq("club_id", clubId)
           .order("external_name", { ascending: true, nullsFirst: false }),
-        supabase.from("event_sponsors").select("sponsor_id"),
+        supabase
+          .from("event_sponsors")
+          .select("sponsor_id")
+          .eq("club_id", clubId),
         supabase
           .from("members")
           .select("*")
+          .eq("club_id", clubId)
           .eq("status", "active")
           .order("last_name", { ascending: true }),
       ]);
@@ -103,11 +111,12 @@ export default function SponsorsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [clubId]);
 
   useEffect(() => {
+    if (clubLoading) return;
     load();
-  }, [load]);
+  }, [load, clubLoading]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -155,6 +164,10 @@ export default function SponsorsPage() {
       setFormError("Συμπληρώστε όνομα ή επιλέξτε μέλος.");
       return;
     }
+    if (!clubId) {
+      setFormError("Δεν έχει εντοπιστεί σύλλογος.");
+      return;
+    }
     setSaving(true);
     try {
       const supabase = getBrowserClient();
@@ -170,10 +183,11 @@ export default function SponsorsPage() {
         const { error: uErr } = await supabase
           .from("sponsors")
           .update(update)
-          .eq("id", editing.id);
+          .eq("id", editing.id)
+          .eq("club_id", clubId);
         if (uErr) throw uErr;
       } else {
-        const insert: SponsorInsert = payload;
+        const insert: SponsorInsert = { ...payload, club_id: clubId };
         const { error: iErr } = await supabase.from("sponsors").insert(insert);
         if (iErr) throw iErr;
       }
@@ -194,12 +208,14 @@ export default function SponsorsPage() {
         ? `Ο χορηγός «${name}» συνδέεται με ${s.event_count} εκδηλώσεις. Οι σχέσεις θα διαγραφούν επίσης. `
         : `Διαγραφή χορηγού «${name}»; `;
     if (!window.confirm(warn + "Η ενέργεια δεν αναιρείται.")) return;
+    if (!clubId) return;
     try {
       const supabase = getBrowserClient();
       const { error: dErr } = await supabase
         .from("sponsors")
         .delete()
-        .eq("id", s.id);
+        .eq("id", s.id)
+        .eq("club_id", clubId);
       if (dErr) throw dErr;
       await load();
     } catch (err) {

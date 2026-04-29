@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
 import {
   BOARD_POSITIONS,
@@ -49,6 +50,7 @@ function displayName(m: { first_name: string; last_name: string }): string {
 
 export default function MembersPage() {
   const role = useRole();
+  const { clubId, loading: clubLoading } = useCurrentClub();
   const [members, setMembers] = useState<MemberWithDepartments[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,15 +67,20 @@ export default function MembersPage() {
   const [formError, setFormError] = useState<string | null>(null);
 
   const loadMembers = useCallback(async () => {
+    if (!clubId) return;
     try {
       const supabase = getBrowserClient();
       const [mRes, dRes] = await Promise.all([
         supabase
           .from("members")
           .select("*")
+          .eq("club_id", clubId)
           .order("last_name", { ascending: true })
           .order("first_name", { ascending: true }),
-        supabase.from("member_departments").select("*"),
+        supabase
+          .from("member_departments")
+          .select("*")
+          .eq("club_id", clubId),
       ]);
       if (mRes.error) throw mRes.error;
       if (dRes.error) throw dRes.error;
@@ -97,11 +104,12 @@ export default function MembersPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [clubId]);
 
   useEffect(() => {
+    if (clubLoading) return;
     loadMembers();
-  }, [loadMembers]);
+  }, [loadMembers, clubLoading]);
 
   const allDepartments = useMemo(() => {
     const set = new Set<string>();
@@ -174,11 +182,13 @@ export default function MembersPage() {
   }
 
   async function syncDepartments(memberId: string, next: string[]) {
+    if (!clubId) throw new Error("Δεν έχει εντοπιστεί σύλλογος.");
     const supabase = getBrowserClient();
     const { data: existing, error: exErr } = await supabase
       .from("member_departments")
       .select("id, department")
-      .eq("member_id", memberId);
+      .eq("member_id", memberId)
+      .eq("club_id", clubId);
     if (exErr) throw exErr;
 
     const existingMap = new Map(
@@ -192,7 +202,11 @@ export default function MembersPage() {
     }
     const toInsert = next
       .filter((d) => !existingMap.has(d))
-      .map((department) => ({ member_id: memberId, department }));
+      .map((department) => ({
+        club_id: clubId,
+        member_id: memberId,
+        department,
+      }));
 
     if (toDelete.length > 0) {
       const { error: dErr } = await supabase
@@ -238,6 +252,11 @@ export default function MembersPage() {
       is_president: form.is_president,
     };
 
+    if (!clubId) {
+      setFormError("Δεν έχει εντοπιστεί σύλλογος.");
+      return;
+    }
+
     setSaving(true);
     try {
       const supabase = getBrowserClient();
@@ -247,11 +266,12 @@ export default function MembersPage() {
         const { error: upErr } = await supabase
           .from("members")
           .update(update)
-          .eq("id", editing.id);
+          .eq("id", editing.id)
+          .eq("club_id", clubId);
         if (upErr) throw upErr;
         memberId = editing.id;
       } else {
-        const insert: MemberInsert = payload;
+        const insert: MemberInsert = { ...payload, club_id: clubId };
         const { data, error: insErr } = await supabase
           .from("members")
           .insert(insert)
@@ -276,13 +296,14 @@ export default function MembersPage() {
     const confirmed = window.confirm(
       `Διαγραφή του μέλους "${displayName(member)}"; Η ενέργεια δεν αναιρείται.`
     );
-    if (!confirmed) return;
+    if (!confirmed || !clubId) return;
     try {
       const supabase = getBrowserClient();
       const { error: delErr } = await supabase
         .from("members")
         .delete()
-        .eq("id", member.id);
+        .eq("id", member.id)
+        .eq("club_id", clubId);
       if (delErr) throw delErr;
       await loadMembers();
     } catch (err) {

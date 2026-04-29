@@ -10,6 +10,7 @@ import {
 } from "react";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { isAdmin, useRole } from "@/lib/hooks/useRole";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import type {
   CalendarEvent,
   CalendarEventCancellation,
@@ -165,6 +166,7 @@ function timeRangeText(it: CalendarItem): string | null {
 
 export default function CalendarPage() {
   const role = useRole();
+  const { clubId, loading: clubLoading } = useCurrentClub();
   const [memberId, setMemberId] = useState<string | null>(null);
 
   const [view, setView] = useState<CalendarView>("month");
@@ -230,18 +232,24 @@ export default function CalendarPage() {
   }, [role.email]);
 
   const load = useCallback(async () => {
+    if (!clubId) return;
     try {
       const supabase = getBrowserClient();
       const [cRes, xRes, eRes, mRes] = await Promise.all([
-        supabase.from("calendar_events").select("*"),
-        supabase.from("calendar_event_cancellations").select("*"),
+        supabase.from("calendar_events").select("*").eq("club_id", clubId),
+        supabase
+          .from("calendar_event_cancellations")
+          .select("*")
+          .eq("club_id", clubId),
         supabase
           .from("events")
           .select("id, event_name, event_date")
+          .eq("club_id", clubId)
           .order("event_date", { ascending: true }),
         supabase
           .from("members")
           .select("*")
+          .eq("club_id", clubId)
           .eq("status", "active")
           .order("last_name", { ascending: true })
           .order("first_name", { ascending: true }),
@@ -260,11 +268,12 @@ export default function CalendarPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [clubId]);
 
   useEffect(() => {
+    if (clubLoading) return;
     load();
-  }, [load]);
+  }, [load, clubLoading]);
 
   const cancelledByEvent = useMemo(() => {
     const m = new Map<string, Set<string>>();
@@ -407,6 +416,7 @@ export default function CalendarPage() {
   }
 
   async function handleSave(input: CalendarEventInsert & { id?: string }) {
+    if (!clubId) throw new Error("Δεν έχει εντοπιστεί σύλλογος.");
     const supabase = getBrowserClient();
     if (input.id) {
       const { id, ...rest } = input;
@@ -414,12 +424,13 @@ export default function CalendarPage() {
       const { error: uErr } = await supabase
         .from("calendar_events")
         .update(update)
-        .eq("id", id);
+        .eq("id", id)
+        .eq("club_id", clubId);
       if (uErr) throw uErr;
     } else {
       const { error: iErr } = await supabase
         .from("calendar_events")
-        .insert(input);
+        .insert({ ...input, club_id: clubId });
       if (iErr) throw iErr;
     }
     await load();
@@ -430,13 +441,14 @@ export default function CalendarPage() {
     const ok = window.confirm(
       `Διαγραφή του «${item.title}»; Αν είναι επαναλαμβανόμενο, διαγράφεται όλη η σεζόν.`
     );
-    if (!ok) return;
+    if (!ok || !clubId) return;
     try {
       const supabase = getBrowserClient();
       const { error: dErr } = await supabase
         .from("calendar_events")
         .delete()
-        .eq("id", item.raw.id);
+        .eq("id", item.raw.id)
+        .eq("club_id", clubId);
       if (dErr) throw dErr;
       setDetailItem(null);
       await load();
@@ -449,6 +461,7 @@ export default function CalendarPage() {
     if (item.source !== "calendar" || !item.raw) return;
     if (!item.raw.is_recurring) {
       // For non-recurring, toggle the parent status field instead.
+      if (!clubId) return;
       try {
         const supabase = getBrowserClient();
         const next: CalendarEventStatus =
@@ -456,7 +469,8 @@ export default function CalendarPage() {
         const { error: uErr } = await supabase
           .from("calendar_events")
           .update({ status: next })
-          .eq("id", item.raw.id);
+          .eq("id", item.raw.id)
+          .eq("club_id", clubId);
         if (uErr) throw uErr;
         setDetailItem(null);
         await load();
@@ -467,6 +481,7 @@ export default function CalendarPage() {
     }
 
     const dk = dayKey(item.occurrenceDate);
+    if (!clubId) return;
     try {
       const supabase = getBrowserClient();
       const existing = cancellations.find(
@@ -477,12 +492,14 @@ export default function CalendarPage() {
         const { error: dErr } = await supabase
           .from("calendar_event_cancellations")
           .delete()
-          .eq("id", existing.id);
+          .eq("id", existing.id)
+          .eq("club_id", clubId);
         if (dErr) throw dErr;
       } else {
         const { error: iErr } = await supabase
           .from("calendar_event_cancellations")
           .insert({
+            club_id: clubId,
             calendar_event_id: item.raw.id,
             cancelled_date: dk,
           });

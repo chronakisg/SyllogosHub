@@ -1,8 +1,25 @@
 export type MemberStatus = "active" | "inactive";
 export type PaymentType = "monthly_fee" | "annual";
 
+export type Club = {
+  id: string;
+  slug: string;
+  name: string;
+  created_at: string;
+};
+
+export type ClubInsert = {
+  id?: string;
+  slug: string;
+  name: string;
+  created_at?: string;
+};
+
+export type ClubUpdate = Partial<Omit<Club, "id" | "created_at">>;
+
 export type Member = {
   id: string;
+  club_id: string | null;
   first_name: string;
   last_name: string;
   phone: string | null;
@@ -18,6 +35,7 @@ export type Member = {
 
 export type MemberInsert = {
   id?: string;
+  club_id?: string | null;
   first_name: string;
   last_name: string;
   phone?: string | null;
@@ -35,22 +53,23 @@ export type MemberUpdate = Partial<Omit<Member, "id" | "created_at">>;
 
 export type MemberDepartment = {
   id: string;
+  club_id: string | null;
   member_id: string;
   department: string;
 };
 
 export type MemberDepartmentInsert = {
   id?: string;
+  club_id?: string | null;
   member_id: string;
   department: string;
 };
 
-export type MemberDepartmentUpdate = Partial<
-  Omit<MemberDepartment, "id">
->;
+export type MemberDepartmentUpdate = Partial<Omit<MemberDepartment, "id">>;
 
 export type Payment = {
   id: string;
+  club_id: string | null;
   member_id: string;
   amount: number;
   payment_date: string;
@@ -61,6 +80,7 @@ export type Payment = {
 
 export type PaymentInsert = {
   id?: string;
+  club_id?: string | null;
   member_id: string;
   amount: number;
   payment_date?: string;
@@ -72,21 +92,22 @@ export type PaymentInsert = {
 export type PaymentUpdate = Partial<Omit<Payment, "id" | "created_at">>;
 
 export type EntertainmentType =
-  | "band"
   | "dj"
+  | "band"
   | "orchestra"
   | "live"
   | "other";
 
 export type ContributionType =
   | "money"
-  | "goods"
-  | "services"
+  | "product"
+  | "service"
   | "venue"
   | "other";
 
 export type Event = {
   id: string;
+  club_id: string | null;
   event_name: string;
   event_date: string;
   venue_map_config: Record<string, unknown>;
@@ -98,6 +119,7 @@ export type Event = {
 
 export type EventInsert = {
   id?: string;
+  club_id?: string | null;
   event_name: string;
   event_date: string;
   venue_map_config?: Record<string, unknown>;
@@ -111,8 +133,9 @@ export type EventUpdate = Partial<Omit<Event, "id" | "created_at">>;
 
 export type EventTicketPrice = {
   id: string;
+  club_id: string | null;
   event_id: string;
-  category: string;
+  label: string;
   price: number;
   display_order: number;
   created_at: string;
@@ -120,8 +143,9 @@ export type EventTicketPrice = {
 
 export type EventTicketPriceInsert = {
   id?: string;
+  club_id?: string | null;
   event_id: string;
-  category: string;
+  label: string;
   price: number;
   display_order?: number;
   created_at?: string;
@@ -133,6 +157,7 @@ export type EventTicketPriceUpdate = Partial<
 
 export type Sponsor = {
   id: string;
+  club_id: string | null;
   member_id: string | null;
   external_name: string | null;
   contact_phone: string | null;
@@ -143,6 +168,7 @@ export type Sponsor = {
 
 export type SponsorInsert = {
   id?: string;
+  club_id?: string | null;
   member_id?: string | null;
   external_name?: string | null;
   contact_phone?: string | null;
@@ -155,6 +181,7 @@ export type SponsorUpdate = Partial<Omit<Sponsor, "id" | "created_at">>;
 
 export type EventSponsor = {
   id: string;
+  club_id: string | null;
   event_id: string;
   sponsor_id: string;
   contribution_type: ContributionType;
@@ -165,6 +192,7 @@ export type EventSponsor = {
 
 export type EventSponsorInsert = {
   id?: string;
+  club_id?: string | null;
   event_id: string;
   sponsor_id: string;
   contribution_type: ContributionType;
@@ -179,6 +207,7 @@ export type EventSponsorUpdate = Partial<
 
 export type PaymentTemplate = {
   id: string;
+  club_id: string | null;
   label: string;
   amount: number;
   payment_type: PaymentType;
@@ -186,6 +215,7 @@ export type PaymentTemplate = {
 
 export type PaymentTemplateInsert = {
   id?: string;
+  club_id?: string | null;
   label: string;
   amount: number;
   payment_type: PaymentType;
@@ -200,6 +230,7 @@ export type Guest = {
 
 export type Reservation = {
   id: string;
+  club_id: string | null;
   event_id: string;
   group_name: string;
   pax_count: number;
@@ -211,6 +242,7 @@ export type Reservation = {
 
 export type ReservationInsert = {
   id?: string;
+  club_id?: string | null;
   event_id: string;
   group_name: string;
   pax_count: number;
@@ -228,6 +260,7 @@ export type CalendarRecurrencePattern = "weekly";
 
 export type CalendarEvent = {
   id: string;
+  club_id: string | null;
   title: string;
   description: string | null;
   category: CalendarEventCategory;
@@ -247,6 +280,7 @@ export type CalendarEvent = {
 
 export type CalendarEventInsert = {
   id?: string;
+  club_id?: string | null;
   title: string;
   description?: string | null;
   category: CalendarEventCategory;
@@ -270,6 +304,7 @@ export type CalendarEventUpdate = Partial<
 
 export type CalendarEventCancellation = {
   id: string;
+  club_id: string | null;
   calendar_event_id: string;
   cancelled_date: string;
   created_at: string;
@@ -277,6 +312,7 @@ export type CalendarEventCancellation = {
 
 export type CalendarEventCancellationInsert = {
   id?: string;
+  club_id?: string | null;
   calendar_event_id: string;
   cancelled_date: string;
   created_at?: string;
@@ -311,6 +347,7 @@ export type PermissionScope = "all" | "own" | "department";
 
 export type MemberPermission = {
   id: string;
+  club_id: string | null;
   member_id: string;
   module: PermissionModule;
   action: PermissionAction;
@@ -321,6 +358,7 @@ export type MemberPermission = {
 
 export type MemberPermissionInsert = {
   id?: string;
+  club_id?: string | null;
   member_id: string;
   module: PermissionModule;
   action: PermissionAction;
@@ -333,13 +371,20 @@ export type MemberPermissionUpdate = Partial<
   Omit<MemberPermission, "id" | "created_at">
 >;
 
+export type ThemePreset = "classic" | "cretan" | "nature" | "custom";
+
 export type ClubSettings = {
   id: string;
+  club_id: string | null;
   club_name: string;
   logo_url: string | null;
   primary_color: string;
   secondary_color: string;
   accent_color: string;
+  theme_preset: ThemePreset | null;
+  favicon_url: string | null;
+  custom_domain: string | null;
+  metadata: Record<string, unknown> | null;
   address: string | null;
   phone: string | null;
   email: string | null;
@@ -353,11 +398,16 @@ export type ClubSettings = {
 
 export type ClubSettingsInsert = {
   id?: string;
+  club_id?: string | null;
   club_name?: string;
   logo_url?: string | null;
   primary_color?: string;
   secondary_color?: string;
   accent_color?: string;
+  theme_preset?: ThemePreset | null;
+  favicon_url?: string | null;
+  custom_domain?: string | null;
+  metadata?: Record<string, unknown> | null;
   address?: string | null;
   phone?: string | null;
   email?: string | null;
@@ -375,12 +425,14 @@ export type UserRoleName = "admin" | "treasurer" | "member";
 
 export type UserRoleRow = {
   user_id: string;
+  club_id: string | null;
   role: UserRoleName;
   created_at: string;
 };
 
 export type UserRoleInsert = {
   user_id: string;
+  club_id?: string | null;
   role: UserRoleName;
   created_at?: string;
 };
@@ -393,11 +445,25 @@ export type Database = {
   };
   public: {
     Tables: {
+      clubs: {
+        Row: Club;
+        Insert: ClubInsert;
+        Update: ClubUpdate;
+        Relationships: [];
+      };
       members: {
         Row: Member;
         Insert: MemberInsert;
         Update: MemberUpdate;
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "members_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       member_departments: {
         Row: MemberDepartment;

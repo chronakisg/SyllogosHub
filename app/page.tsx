@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import type {
   CalendarEvent,
   CalendarEventCategory,
@@ -132,6 +133,7 @@ function markCancellationsDisabled(err: unknown): void {
 }
 
 export default function DashboardPage() {
+  const { clubId, loading: clubLoading } = useCurrentClub();
   const [stats, setStats] = useState<DashboardStats>({
     activeMembers: null,
     monthRevenue: null,
@@ -143,8 +145,10 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (clubLoading || !clubId) return;
     let cancelled = false;
     async function loadStats() {
+      if (!clubId) return;
       try {
         const supabase = getBrowserClient();
         const period = currentPeriod();
@@ -153,17 +157,20 @@ export default function DashboardPage() {
           supabase
             .from("members")
             .select("id,first_name,last_name,phone")
+            .eq("club_id", clubId)
             .eq("status", "active")
             .order("last_name", { ascending: true })
             .order("first_name", { ascending: true }),
           supabase
             .from("payments")
             .select("amount")
+            .eq("club_id", clubId)
             .eq("type", "monthly_fee")
             .eq("period", period),
           supabase
             .from("payments")
             .select("member_id")
+            .eq("club_id", clubId)
             .eq("type", "monthly_fee")
             .eq("period", period),
         ]);
@@ -198,6 +205,7 @@ export default function DashboardPage() {
     }
 
     async function loadToday() {
+      if (!clubId) return;
       try {
         const supabase = getBrowserClient();
         const now = new Date();
@@ -217,6 +225,7 @@ export default function DashboardPage() {
         const oneOffRes = await supabase
           .from("calendar_events")
           .select("*")
+          .eq("club_id", clubId)
           .eq("is_recurring", false)
           .gte("start_datetime", startOfDay.toISOString())
           .lt("start_datetime", startOfTomorrow.toISOString());
@@ -233,6 +242,7 @@ export default function DashboardPage() {
             : supabase
                 .from("calendar_events")
                 .select("*")
+                .eq("club_id", clubId)
                 .eq("is_recurring", true)
                 .lte("start_season_date", todayStr)
                 .gte("end_season_date", todayStr),
@@ -241,6 +251,7 @@ export default function DashboardPage() {
             : supabase
                 .from("calendar_event_cancellations")
                 .select("calendar_event_id")
+                .eq("club_id", clubId)
                 .eq("cancelled_date", todayStr),
         ]);
 
@@ -299,7 +310,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [clubId, clubLoading]);
 
   return (
     <div className="mx-auto w-full max-w-6xl">

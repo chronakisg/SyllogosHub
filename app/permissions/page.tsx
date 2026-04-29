@@ -9,6 +9,7 @@ import {
 } from "react";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
 import type {
   Member,
@@ -81,6 +82,7 @@ const inputClass =
 
 export default function PermissionsPage() {
   const role = useRole();
+  const { clubId } = useCurrentClub();
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [matrix, setMatrix] = useState<Map<CellKey, CellState>>(
@@ -95,7 +97,7 @@ export default function PermissionsPage() {
   const isPrivileged = role.isSystemAdmin || role.isPresident;
 
   useEffect(() => {
-    if (role.loading || !isPrivileged) return;
+    if (role.loading || !isPrivileged || !clubId) return;
     let cancelled = false;
     (async () => {
       try {
@@ -103,6 +105,7 @@ export default function PermissionsPage() {
         const { data, error: qErr } = await supabase
           .from("members")
           .select("*")
+          .eq("club_id", clubId)
           .order("last_name", { ascending: true })
           .order("first_name", { ascending: true });
         if (cancelled) return;
@@ -118,7 +121,7 @@ export default function PermissionsPage() {
     return () => {
       cancelled = true;
     };
-  }, [role.loading, isPrivileged]);
+  }, [role.loading, isPrivileged, clubId]);
 
   const loadMatrix = useCallback(async (memberId: string) => {
     setError(null);
@@ -176,6 +179,10 @@ export default function PermissionsPage() {
 
   async function handleSave() {
     if (!selectedId) return;
+    if (!clubId) {
+      setError("Δεν έχει εντοπιστεί σύλλογος.");
+      return;
+    }
     setError(null);
     setInfo(null);
 
@@ -191,6 +198,7 @@ export default function PermissionsPage() {
           return;
         }
         inserts.push({
+          club_id: clubId,
           member_id: selectedId,
           module: m.id,
           action: a.id,
