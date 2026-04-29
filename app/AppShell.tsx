@@ -47,12 +47,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // eslint-disable-next-line no-console
-    console.log("[AppShell] useCurrentClub →", {
-      clubId: currentClub.clubId,
-      clubName: currentClub.club?.name ?? null,
-      settingsId: currentClub.settings?.id ?? null,
-      loading: currentClub.loading,
-    });
+    console.log(
+      "[AppShell] useCurrentClub.loading=",
+      currentClub.loading,
+      "clubId=",
+      currentClub.clubId,
+      "clubName=",
+      currentClub.club?.name ?? null,
+      "settingsId=",
+      currentClub.settings?.id ?? null
+    );
   }, [currentClub]);
 
   const headerTitle = currentClub.club?.name || club.club_name;

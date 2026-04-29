@@ -87,6 +87,8 @@ export function useCurrentClub(): CurrentClubState {
       if (cancelled) return;
       const user = userData.user;
       if (!user) {
+        // eslint-disable-next-line no-console
+        console.log("[useCurrentClub] no auth user");
         setState(SIGNED_OUT);
         return;
       }
@@ -97,14 +99,26 @@ export function useCurrentClub(): CurrentClubState {
       const impersonate = readImpersonateClubId();
 
       if (lookupEmail) {
-        const { data: m } = await supabase
+        const memRes = await supabase
           .from("members")
-          .select("club_id, is_system_admin")
+          .select("id, club_id, is_system_admin, email")
           .ilike("email", lookupEmail)
           .maybeSingle();
         if (cancelled) return;
-        const memberRow = m as
-          | { club_id: string | null; is_system_admin: boolean | null }
+        // eslint-disable-next-line no-console
+        console.log("[useCurrentClub] member lookup", {
+          authEmail: lookupEmail,
+          error: memRes.error?.message ?? null,
+          memberRow: memRes.data,
+          impersonate,
+        });
+        const memberRow = memRes.data as
+          | {
+              id: string;
+              club_id: string | null;
+              is_system_admin: boolean | null;
+              email: string | null;
+            }
           | null;
         if (memberRow?.is_system_admin && impersonate) {
           clubId = impersonate;
@@ -114,10 +128,14 @@ export function useCurrentClub(): CurrentClubState {
       }
 
       if (!clubId) {
+        // eslint-disable-next-line no-console
+        console.log("[useCurrentClub] resolved clubId=null → SIGNED_OUT");
         setState({ ...SIGNED_OUT, loading: false });
         return;
       }
 
+      // eslint-disable-next-line no-console
+      console.log("[useCurrentClub] resolved clubId", clubId);
       await loadFor(clubId);
     }
 
