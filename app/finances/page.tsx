@@ -1,0 +1,1670 @@
+"use client";
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import Link from "next/link";
+import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
+import { useRole } from "@/lib/hooks/useRole";
+import { AccessDenied } from "@/lib/auth/AccessDenied";
+import type {
+  Event as EventRow,
+  Member,
+  Payment,
+  PaymentInsert,
+  PaymentTemplate,
+  PaymentTemplateInsert,
+  PaymentTemplateUpdate,
+  PaymentType,
+  Reservation,
+} from "@/lib/supabase/types";
+
+type Tab = "payments" | "reservations";
+
+const inputClass =
+  "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
+
+const PAYMENT_TYPE_LABEL: Record<PaymentType, string> = {
+  monthly_fee: "Μηνιαία Συνδρομή",
+  annual: "Ετήσια Συνδρομή",
+};
+
+const eur = new Intl.NumberFormat("el-GR", {
+  style: "currency",
+  currency: "EUR",
+});
+
+function memberName(m: Pick<Member, "first_name" | "last_name">): string {
+  return `${m.last_name} ${m.first_name}`.trim();
+}
+
+function currentMonthPeriod(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  return `${yyyy}-${mm}`;
+}
+
+function currentYearPeriod(): string {
+  return String(new Date().getFullYear());
+}
+
+export default function FinancesPage() {
+  const [tab, setTab] = useState<Tab>("payments");
+  const role = useRole();
+
+  if (role.loading) {
+    return (
+      <div className="mx-auto w-full max-w-6xl p-10 text-center text-muted">
+        Φόρτωση…
+      </div>
+    );
+  }
+
+  if (!role.userId) {
+    return (
+      <div className="mx-auto w-full max-w-2xl">
+        <div className="rounded-xl border border-border bg-surface p-6 text-sm">
+          <h1 className="text-lg font-semibold">Παρακαλώ συνδεθείτε</h1>
+          <p className="mt-2 text-muted">
+            Η ενότητα «Οικονομικά» απαιτεί σύνδεση. Συνδεθείτε με τον
+            λογαριασμό σας για να συνεχίσετε.
+          </p>
+          <Link
+            href="/login?redirect=/finances"
+            className="mt-4 inline-block rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
+          >
+            Σύνδεση
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (!role.permissions.includes("finances")) {
+    return <AccessDenied />;
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-6xl">
+      <header className="mb-6">
+        <p className="text-sm text-muted">Οικονομικά</p>
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+          Οικονομική Διαχείριση
+        </h1>
+        <p className="mt-1 text-sm text-muted">
+          Καταχωρήστε πληρωμές μελών και διαχειριστείτε την κατάσταση
+          πληρωμής των κρατήσεων.
+        </p>
+      </header>
+
+      <div className="mb-6 inline-flex rounded-lg border border-border bg-surface p-1 text-sm">
+        <TabButton current={tab} value="payments" onSelect={setTab}>
+          Πληρωμές Μελών
+        </TabButton>
+        <TabButton current={tab} value="reservations" onSelect={setTab}>
+          Κρατήσεις Εκδηλώσεων
+        </TabButton>
+      </div>
+
+      {tab === "payments" ? <PaymentsTab /> : <ReservationsTab />}
+    </div>
+  );
+}
+
+function TabButton({
+  current,
+  value,
+  onSelect,
+  children,
+}: {
+  current: Tab;
+  value: Tab;
+  onSelect: (v: Tab) => void;
+  children: ReactNode;
+}) {
+  const active = current === value;
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(value)}
+      className={
+        "rounded-md px-4 py-1.5 transition " +
+        (active
+          ? "bg-accent text-white shadow-sm"
+          : "text-foreground/80 hover:bg-foreground/5")
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+// ────────────────────────────────────────────────────────────
+// Tab 1 — Πληρωμές Μελών
+// ────────────────────────────────────────────────────────────
+
+type PaymentRow = Payment & {
+  member_first_name: string | null;
+  member_last_name: string | null;
+};
+
+type PaymentForm = {
+  member_id: string;
+  amount: string;
+  type: PaymentType;
+  period: string;
+  payment_date: string;
+};
+
+function emptyPaymentForm(): PaymentForm {
+  return {
+    member_id: "",
+    amount: "",
+    type: "monthly_fee",
+    period: currentMonthPeriod(),
+    payment_date: new Date().toISOString().slice(0, 10),
+  };
+}
+
+type TemplateForm = {
+  label: string;
+  amount: string;
+  payment_type: PaymentType;
+};
+
+const emptyTemplateForm: TemplateForm = {
+  label: "",
+  amount: "",
+  payment_type: "monthly_fee",
+};
+
+type BulkForm = {
+  template_id: string;
+  type: PaymentType;
+  amount: string;
+  period: string;
+  payment_date: string;
+  selected: Set<string>;
+};
+
+const emptyBulkForm: BulkForm = {
+  template_id: "",
+  type: "monthly_fee",
+  amount: "",
+  period: currentMonthPeriod(),
+  payment_date: new Date().toISOString().slice(0, 10),
+  selected: new Set<string>(),
+};
+
+function PaymentsTab() {
+  const [members, setMembers] = useState<Member[]>([]);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [templates, setTemplates] = useState<PaymentTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [memberFilter, setMemberFilter] = useState<string>("");
+  const [typeFilter, setTypeFilter] = useState<"all" | PaymentType>("all");
+  const [periodFilter, setPeriodFilter] = useState<string>("");
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState<PaymentForm>(emptyPaymentForm);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<PaymentTemplate | null>(
+    null
+  );
+  const [templateForm, setTemplateForm] = useState<TemplateForm>(
+    emptyTemplateForm
+  );
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateError, setTemplateError] = useState<string | null>(null);
+
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkForm, setBulkForm] = useState<BulkForm>(emptyBulkForm);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const id = window.setTimeout(() => setToast(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [toast]);
+
+  const load = useCallback(async () => {
+    try {
+      const supabase = getBrowserClient();
+      const [mRes, pRes, tRes] = await Promise.all([
+        supabase
+          .from("members")
+          .select("*")
+          .order("last_name", { ascending: true })
+          .order("first_name", { ascending: true }),
+        supabase
+          .from("payments")
+          .select("*, members!inner(first_name,last_name)")
+          .order("payment_date", { ascending: false }),
+        supabase
+          .from("payment_templates")
+          .select("*")
+          .order("label", { ascending: true }),
+      ]);
+      if (mRes.error) throw mRes.error;
+      if (pRes.error) throw pRes.error;
+      if (tRes.error) throw tRes.error;
+      setTemplates(tRes.data ?? []);
+
+      const rows = (pRes.data ?? []).map((row) => {
+        const r = row as Payment & {
+          members?: { first_name: string; last_name: string } | null;
+        };
+        return {
+          id: r.id,
+          member_id: r.member_id,
+          amount: r.amount,
+          payment_date: r.payment_date,
+          type: r.type,
+          period: r.period,
+          created_at: r.created_at,
+          member_first_name: r.members?.first_name ?? null,
+          member_last_name: r.members?.last_name ?? null,
+        } satisfies PaymentRow;
+      });
+
+      setError(null);
+      setMembers(mRes.data ?? []);
+      setPayments(rows);
+    } catch (err) {
+      setError(errorMessage(err, "Σφάλμα φόρτωσης πληρωμών."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const filtered = useMemo(() => {
+    return payments.filter((p) => {
+      if (memberFilter && p.member_id !== memberFilter) return false;
+      if (typeFilter !== "all" && p.type !== typeFilter) return false;
+      if (periodFilter && (p.period ?? "") !== periodFilter) return false;
+      return true;
+    });
+  }, [payments, memberFilter, typeFilter, periodFilter]);
+
+  const totalAmount = useMemo(
+    () => filtered.reduce((s, p) => s + Number(p.amount ?? 0), 0),
+    [filtered]
+  );
+
+  const periodOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of payments) if (p.period) set.add(p.period);
+    return Array.from(set).sort().reverse();
+  }, [payments]);
+
+  function openCreate() {
+    setForm(emptyPaymentForm());
+    setFormError(null);
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    if (saving) return;
+    setModalOpen(false);
+    setFormError(null);
+  }
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setFormError(null);
+
+    const member_id = form.member_id;
+    const amount = Number(form.amount.replace(",", "."));
+    if (!member_id) {
+      setFormError("Επιλέξτε μέλος.");
+      return;
+    }
+    if (!Number.isFinite(amount) || amount < 0) {
+      setFormError("Το ποσό πρέπει να είναι μη αρνητικός αριθμός.");
+      return;
+    }
+    if (!form.payment_date) {
+      setFormError("Η ημερομηνία είναι υποχρεωτική.");
+      return;
+    }
+
+    const insert: PaymentInsert = {
+      member_id,
+      amount,
+      type: form.type,
+      period: form.period.trim() || null,
+      payment_date: form.payment_date,
+    };
+
+    setSaving(true);
+    try {
+      const supabase = getBrowserClient();
+      const { error: iErr } = await supabase.from("payments").insert(insert);
+      if (iErr) throw iErr;
+      setModalOpen(false);
+      await load();
+    } catch (err) {
+      setFormError(errorMessage(err, "Σφάλμα αποθήκευσης πληρωμής."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(p: PaymentRow) {
+    const ok = window.confirm(
+      "Διαγραφή πληρωμής; Η ενέργεια δεν αναιρείται."
+    );
+    if (!ok) return;
+    try {
+      const supabase = getBrowserClient();
+      const { error: dErr } = await supabase
+        .from("payments")
+        .delete()
+        .eq("id", p.id);
+      if (dErr) throw dErr;
+      await load();
+    } catch (err) {
+      setError(errorMessage(err, "Σφάλμα διαγραφής πληρωμής."));
+    }
+  }
+
+  function openCreateTemplate() {
+    setEditingTemplate(null);
+    setTemplateForm(emptyTemplateForm);
+    setTemplateError(null);
+    setTemplateModalOpen(true);
+  }
+  function openEditTemplate(t: PaymentTemplate) {
+    setEditingTemplate(t);
+    setTemplateForm({
+      label: t.label,
+      amount: String(t.amount),
+      payment_type: t.payment_type,
+    });
+    setTemplateError(null);
+    setTemplateModalOpen(true);
+  }
+  function closeTemplateModal() {
+    if (templateSaving) return;
+    setTemplateModalOpen(false);
+    setEditingTemplate(null);
+    setTemplateError(null);
+  }
+  async function handleTemplateSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setTemplateError(null);
+    const label = templateForm.label.trim();
+    const amount = Number(templateForm.amount.replace(",", "."));
+    if (!label) {
+      setTemplateError("Το όνομα προτύπου είναι υποχρεωτικό.");
+      return;
+    }
+    if (!Number.isFinite(amount) || amount < 0) {
+      setTemplateError("Το ποσό πρέπει να είναι μη αρνητικός αριθμός.");
+      return;
+    }
+    setTemplateSaving(true);
+    try {
+      const supabase = getBrowserClient();
+      if (editingTemplate) {
+        const update: PaymentTemplateUpdate = {
+          label,
+          amount,
+          payment_type: templateForm.payment_type,
+        };
+        const { error: uErr } = await supabase
+          .from("payment_templates")
+          .update(update)
+          .eq("id", editingTemplate.id);
+        if (uErr) throw uErr;
+      } else {
+        const insert: PaymentTemplateInsert = {
+          label,
+          amount,
+          payment_type: templateForm.payment_type,
+        };
+        const { error: iErr } = await supabase
+          .from("payment_templates")
+          .insert(insert);
+        if (iErr) throw iErr;
+      }
+      setTemplateModalOpen(false);
+      setEditingTemplate(null);
+      await load();
+    } catch (err) {
+      setTemplateError(errorMessage(err, "Σφάλμα αποθήκευσης προτύπου."));
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+  async function handleTemplateDelete(t: PaymentTemplate) {
+    if (!window.confirm(`Διαγραφή προτύπου «${t.label}»;`)) return;
+    try {
+      const supabase = getBrowserClient();
+      const { error: dErr } = await supabase
+        .from("payment_templates")
+        .delete()
+        .eq("id", t.id);
+      if (dErr) throw dErr;
+      await load();
+    } catch (err) {
+      setError(errorMessage(err, "Σφάλμα διαγραφής προτύπου."));
+    }
+  }
+
+  function openBulk() {
+    setBulkForm({ ...emptyBulkForm, selected: new Set<string>() });
+    setBulkError(null);
+    setBulkOpen(true);
+  }
+  function closeBulk() {
+    if (bulkSaving) return;
+    setBulkOpen(false);
+    setBulkError(null);
+  }
+  async function handleBulkSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBulkError(null);
+    const ids = Array.from(bulkForm.selected);
+    if (ids.length === 0) {
+      setBulkError("Επιλέξτε τουλάχιστον ένα μέλος.");
+      return;
+    }
+    const amount = Number(bulkForm.amount.replace(",", "."));
+    if (!Number.isFinite(amount) || amount < 0) {
+      setBulkError("Το ποσό πρέπει να είναι μη αρνητικός αριθμός.");
+      return;
+    }
+    if (!bulkForm.payment_date) {
+      setBulkError("Η ημερομηνία είναι υποχρεωτική.");
+      return;
+    }
+    setBulkSaving(true);
+    try {
+      const supabase = getBrowserClient();
+      const period = bulkForm.period.trim() || null;
+
+      // Find existing payments matching member+type+period to skip duplicates
+      let existingIds = new Set<string>();
+      if (period) {
+        const { data: existing, error: eErr } = await supabase
+          .from("payments")
+          .select("member_id")
+          .eq("type", bulkForm.type)
+          .eq("period", period)
+          .in("member_id", ids);
+        if (eErr) throw eErr;
+        existingIds = new Set((existing ?? []).map((r) => r.member_id));
+      }
+
+      const toInsert = ids.filter((id) => !existingIds.has(id));
+      const skipped = ids.length - toInsert.length;
+
+      if (toInsert.length > 0) {
+        const inserts: PaymentInsert[] = toInsert.map((member_id) => ({
+          member_id,
+          amount,
+          type: bulkForm.type,
+          period,
+          payment_date: bulkForm.payment_date,
+        }));
+        const { error: iErr } = await supabase.from("payments").insert(inserts);
+        if (iErr) throw iErr;
+      }
+
+      setBulkOpen(false);
+      setToast(
+        `Δημιουργήθηκαν ${toInsert.length} πληρωμές, παραλείφθηκαν ${skipped} (διπλότυπες).`
+      );
+      await load();
+    } catch (err) {
+      setBulkError(errorMessage(err, "Σφάλμα μαζικής χρέωσης."));
+    } finally {
+      setBulkSaving(false);
+    }
+  }
+
+  const activeMembers = useMemo(
+    () => members.filter((m) => m.status === "active"),
+    [members]
+  );
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="Μέλος">
+            <select
+              value={memberFilter}
+              onChange={(e) => setMemberFilter(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">— Όλα —</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {memberName(m)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Τύπος">
+            <select
+              value={typeFilter}
+              onChange={(e) =>
+                setTypeFilter(e.target.value as "all" | PaymentType)
+              }
+              className={inputClass}
+            >
+              <option value="all">Όλοι</option>
+              <option value="monthly_fee">{PAYMENT_TYPE_LABEL.monthly_fee}</option>
+              <option value="annual">{PAYMENT_TYPE_LABEL.annual}</option>
+            </select>
+          </Field>
+          <Field label="Περίοδος">
+            <select
+              value={periodFilter}
+              onChange={(e) => setPeriodFilter(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">— Όλες —</option>
+              {periodOptions.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={openBulk}
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium transition hover:bg-foreground/5"
+          >
+            Μαζική Χρέωση
+          </button>
+          <button
+            type="button"
+            onClick={openCreate}
+            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
+          >
+            + Νέα Πληρωμή
+          </button>
+        </div>
+      </div>
+
+      <TemplatesCard
+        templates={templates}
+        onCreate={openCreateTemplate}
+        onEdit={openEditTemplate}
+        onDelete={handleTemplateDelete}
+      />
+
+      {toast && (
+        <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300">
+          <span>{toast}</span>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className="shrink-0 rounded px-2 text-xs hover:opacity-70"
+            aria-label="Κλείσιμο"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="shrink-0 rounded px-2 text-xs hover:opacity-70"
+            aria-label="Κλείσιμο"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-xl border border-border bg-surface">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-border bg-background/50 text-xs uppercase tracking-wider text-muted">
+              <tr>
+                <th className="px-4 py-3">Ημερομηνία</th>
+                <th className="px-4 py-3">Μέλος</th>
+                <th className="px-4 py-3">Τύπος</th>
+                <th className="px-4 py-3">Περίοδος</th>
+                <th className="px-4 py-3 text-right">Ποσό</th>
+                <th className="px-4 py-3 text-right">Ενέργειες</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted">
+                    Φόρτωση…
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted">
+                    {payments.length === 0
+                      ? "Δεν υπάρχουν ακόμη πληρωμές."
+                      : "Δεν βρέθηκαν πληρωμές για τα φίλτρα."}
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((p) => {
+                  const name =
+                    p.member_last_name || p.member_first_name
+                      ? `${p.member_last_name ?? ""} ${p.member_first_name ?? ""}`.trim()
+                      : "—";
+                  return (
+                    <tr key={p.id} className="hover:bg-background/40">
+                      <td className="px-4 py-3 text-muted">
+                        {new Date(p.payment_date).toLocaleDateString("el-GR")}
+                      </td>
+                      <td className="px-4 py-3 font-medium">{name}</td>
+                      <td className="px-4 py-3 text-muted">
+                        {PAYMENT_TYPE_LABEL[p.type]}
+                      </td>
+                      <td className="px-4 py-3 text-muted">{p.period ?? "—"}</td>
+                      <td className="px-4 py-3 text-right font-medium">
+                        {eur.format(Number(p.amount))}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="inline-flex justify-end gap-2">
+                          <a
+                            href={`/finances/receipt/${p.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
+                          >
+                            Απόδειξη
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(p)}
+                            className="rounded-md border border-danger/30 px-3 py-1 text-xs text-danger transition hover:bg-danger/10"
+                          >
+                            Διαγραφή
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+            {!loading && filtered.length > 0 && (
+              <tfoot className="border-t border-border bg-background/30 text-sm font-medium">
+                <tr>
+                  <td colSpan={4} className="px-4 py-3 text-right text-muted">
+                    Σύνολο ({filtered.length} εγγραφές):
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {eur.format(totalAmount)}
+                  </td>
+                  <td />
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </div>
+
+      {modalOpen && (
+        <PaymentModal
+          members={members}
+          templates={templates}
+          form={form}
+          setForm={setForm}
+          saving={saving}
+          formError={formError}
+          onClose={closeModal}
+          onSubmit={handleSubmit}
+        />
+      )}
+
+      {templateModalOpen && (
+        <TemplateModal
+          editing={editingTemplate}
+          form={templateForm}
+          setForm={setTemplateForm}
+          saving={templateSaving}
+          formError={templateError}
+          onClose={closeTemplateModal}
+          onSubmit={handleTemplateSubmit}
+        />
+      )}
+
+      {bulkOpen && (
+        <BulkChargeModal
+          members={activeMembers}
+          templates={templates}
+          form={bulkForm}
+          setForm={setBulkForm}
+          saving={bulkSaving}
+          formError={bulkError}
+          onClose={closeBulk}
+          onSubmit={handleBulkSubmit}
+        />
+      )}
+    </div>
+  );
+}
+
+function TemplatesCard({
+  templates,
+  onCreate,
+  onEdit,
+  onDelete,
+}: {
+  templates: PaymentTemplate[];
+  onCreate: () => void;
+  onEdit: (t: PaymentTemplate) => void;
+  onDelete: (t: PaymentTemplate) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="mb-4 rounded-xl border border-border bg-surface">
+      <header className="flex flex-wrap items-center justify-between gap-2 p-4">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex flex-1 items-center gap-2 text-left"
+        >
+          <span
+            aria-hidden="true"
+            className={
+              "inline-block w-3 text-xs text-muted transition-transform " +
+              (open ? "rotate-90" : "")
+            }
+          >
+            ▶
+          </span>
+          <span>
+            <span className="text-sm font-semibold">Πρότυπα Πληρωμών</span>
+            <span className="ml-2 text-xs text-muted">
+              ({templates.length})
+            </span>
+            <span className="block text-xs text-muted">
+              Συντομεύσεις για τις πιο συχνές κατηγορίες πληρωμών.
+            </span>
+          </span>
+        </button>
+        {open && (
+          <button
+            type="button"
+            onClick={onCreate}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-foreground/5"
+          >
+            + Νέο Πρότυπο
+          </button>
+        )}
+      </header>
+
+      {open &&
+        (templates.length === 0 ? (
+          <p className="px-4 pb-4 text-xs text-muted">Δεν υπάρχουν πρότυπα.</p>
+        ) : (
+          <ul className="grid gap-2 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-3">
+          {templates.map((t) => (
+            <li
+              key={t.id}
+              className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background p-3"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{t.label}</p>
+                <p className="text-xs text-muted">
+                  {eur.format(Number(t.amount))} ·{" "}
+                  {PAYMENT_TYPE_LABEL[t.payment_type]}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-1">
+                <button
+                  type="button"
+                  onClick={() => onEdit(t)}
+                  className="rounded-md border border-border px-2 py-1 text-[11px] transition hover:bg-foreground/5"
+                >
+                  Επεξ.
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDelete(t)}
+                  className="rounded-md border border-danger/30 px-2 py-1 text-[11px] text-danger transition hover:bg-danger/10"
+                >
+                  ✕
+                </button>
+              </div>
+            </li>
+          ))}
+          </ul>
+        ))}
+    </section>
+  );
+}
+
+function TemplateModal({
+  editing,
+  form,
+  setForm,
+  saving,
+  formError,
+  onClose,
+  onSubmit,
+}: {
+  editing: PaymentTemplate | null;
+  form: TemplateForm;
+  setForm: React.Dispatch<React.SetStateAction<TemplateForm>>;
+  saving: boolean;
+  formError: string | null;
+  onClose: () => void;
+  onSubmit: (e: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="mb-4 text-lg font-semibold">
+          {editing ? "Επεξεργασία Προτύπου" : "Νέο Πρότυπο"}
+        </h2>
+
+        <form onSubmit={onSubmit} className="space-y-4">
+          <Field label="Όνομα" required>
+            <input
+              type="text"
+              required
+              value={form.label}
+              onChange={(e) =>
+                setForm((s) => ({ ...s, label: e.target.value }))
+              }
+              placeholder="π.χ. Μηνιαία Συνδρομή"
+              className={inputClass}
+            />
+          </Field>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Ποσό (€)" required>
+              <input
+                type="text"
+                inputMode="decimal"
+                required
+                value={form.amount}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, amount: e.target.value }))
+                }
+                placeholder="0.00"
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Τύπος" required>
+              <select
+                value={form.payment_type}
+                onChange={(e) =>
+                  setForm((s) => ({
+                    ...s,
+                    payment_type: e.target.value as PaymentType,
+                  }))
+                }
+                className={inputClass}
+              >
+                <option value="monthly_fee">
+                  {PAYMENT_TYPE_LABEL.monthly_fee}
+                </option>
+                <option value="annual">{PAYMENT_TYPE_LABEL.annual}</option>
+              </select>
+            </Field>
+          </div>
+
+          {formError && (
+            <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+              {formError}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background disabled:opacity-50"
+            >
+              Ακύρωση
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {saving
+                ? "Αποθήκευση…"
+                : editing
+                  ? "Αποθήκευση Αλλαγών"
+                  : "Δημιουργία"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function BulkChargeModal({
+  members,
+  templates,
+  form,
+  setForm,
+  saving,
+  formError,
+  onClose,
+  onSubmit,
+}: {
+  members: Member[];
+  templates: PaymentTemplate[];
+  form: BulkForm;
+  setForm: React.Dispatch<React.SetStateAction<BulkForm>>;
+  saving: boolean;
+  formError: string | null;
+  onClose: () => void;
+  onSubmit: (e: FormEvent<HTMLFormElement>) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return members;
+    return members.filter((m) =>
+      `${m.last_name} ${m.first_name} ${m.email ?? ""}`
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [members, search]);
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((m) => form.selected.has(m.id));
+
+  function toggle(id: string) {
+    setForm((s) => {
+      const next = new Set(s.selected);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { ...s, selected: next };
+    });
+  }
+  function toggleAllFiltered() {
+    setForm((s) => {
+      const next = new Set(s.selected);
+      if (allFilteredSelected) {
+        for (const m of filtered) next.delete(m.id);
+      } else {
+        for (const m of filtered) next.add(m.id);
+      }
+      return { ...s, selected: next };
+    });
+  }
+  function applyTemplate(id: string) {
+    setForm((s) => {
+      if (!id) return { ...s, template_id: "" };
+      const t = templates.find((x) => x.id === id);
+      if (!t) return { ...s, template_id: id };
+      return {
+        ...s,
+        template_id: id,
+        type: t.payment_type,
+        amount: String(t.amount),
+        period:
+          t.payment_type === "annual"
+            ? currentYearPeriod()
+            : currentMonthPeriod(),
+      };
+    });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl border border-border bg-surface p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="mb-1 text-lg font-semibold">Μαζική Χρέωση</h2>
+        <p className="mb-4 text-xs text-muted">
+          Δημιουργήστε ταυτόχρονα πληρωμή για πολλά μέλη.
+        </p>
+
+        <form
+          onSubmit={onSubmit}
+          className="flex min-h-0 flex-1 flex-col gap-4"
+        >
+          {templates.length > 0 && (
+            <Field label="Γρήγορη Επιλογή">
+              <select
+                value={form.template_id}
+                onChange={(e) => applyTemplate(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">— Επιλέξτε πρότυπο —</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label} — {eur.format(Number(t.amount))} (
+                    {PAYMENT_TYPE_LABEL[t.payment_type]})
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Τύπος" required>
+              <select
+                value={form.type}
+                onChange={(e) => {
+                  const next = e.target.value as PaymentType;
+                  setForm((s) => ({
+                    ...s,
+                    type: next,
+                    period:
+                      next === "annual"
+                        ? currentYearPeriod()
+                        : currentMonthPeriod(),
+                  }));
+                }}
+                className={inputClass}
+              >
+                <option value="monthly_fee">
+                  {PAYMENT_TYPE_LABEL.monthly_fee}
+                </option>
+                <option value="annual">{PAYMENT_TYPE_LABEL.annual}</option>
+              </select>
+            </Field>
+            <Field
+              label={form.type === "annual" ? "Έτος" : "Μήνας (YYYY-MM)"}
+            >
+              <input
+                type="text"
+                value={form.period}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, period: e.target.value }))
+                }
+                placeholder={form.type === "annual" ? "2026" : "2026-04"}
+                className={inputClass}
+              />
+            </Field>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Ποσό (€)" required>
+              <input
+                type="text"
+                inputMode="decimal"
+                required
+                value={form.amount}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, amount: e.target.value }))
+                }
+                placeholder="0.00"
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Ημερομηνία" required>
+              <input
+                type="date"
+                required
+                value={form.payment_date}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, payment_date: e.target.value }))
+                }
+                className={inputClass}
+              />
+            </Field>
+          </div>
+
+          <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-border">
+            <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+              <span className="text-xs font-medium">
+                Επιλεγμένα: {form.selected.size} / Σύνολο: {members.length}
+              </span>
+              <button
+                type="button"
+                onClick={toggleAllFiltered}
+                className="text-xs text-accent transition hover:underline"
+              >
+                {allFilteredSelected ? "Καθαρισμός" : "Επιλογή όλων"}
+              </button>
+            </div>
+            <div className="border-b border-border px-3 py-2">
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Αναζήτηση μέλους…"
+                className={inputClass}
+              />
+            </div>
+            <ul className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
+              {filtered.length === 0 ? (
+                <li className="px-3 py-4 text-center text-xs text-muted">
+                  {members.length === 0
+                    ? "Δεν υπάρχουν ενεργά μέλη."
+                    : "Δεν βρέθηκαν αποτελέσματα."}
+                </li>
+              ) : (
+                filtered.map((m) => {
+                  const checked = form.selected.has(m.id);
+                  return (
+                    <li key={m.id}>
+                      <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm transition hover:bg-foreground/5">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggle(m.id)}
+                          className="h-4 w-4 rounded border-border"
+                        />
+                        <span className="flex-1 truncate">
+                          {m.last_name} {m.first_name}
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+          </div>
+
+          {formError && (
+            <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+              {formError}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background disabled:opacity-50"
+            >
+              Ακύρωση
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {saving
+                ? "Αποθήκευση…"
+                : `Καταχώρηση ${form.selected.size > 0 ? `(${form.selected.size})` : ""}`}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function PaymentModal({
+  members,
+  templates,
+  form,
+  setForm,
+  saving,
+  formError,
+  onClose,
+  onSubmit,
+}: {
+  members: Member[];
+  templates: PaymentTemplate[];
+  form: PaymentForm;
+  setForm: React.Dispatch<React.SetStateAction<PaymentForm>>;
+  saving: boolean;
+  formError: string | null;
+  onClose: () => void;
+  onSubmit: (e: FormEvent<HTMLFormElement>) => void;
+}) {
+  function applyTemplate(id: string) {
+    if (!id) return;
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    setForm((s) => ({
+      ...s,
+      type: t.payment_type,
+      amount: String(t.amount),
+      period:
+        t.payment_type === "annual" ? currentYearPeriod() : currentMonthPeriod(),
+    }));
+  }
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="mb-4 text-lg font-semibold">Νέα Πληρωμή</h2>
+
+        <form onSubmit={onSubmit} className="space-y-4">
+          {templates.length > 0 && (
+            <Field label="Γρήγορη Επιλογή">
+              <select
+                defaultValue=""
+                onChange={(e) => {
+                  applyTemplate(e.target.value);
+                  e.target.value = "";
+                }}
+                className={inputClass}
+              >
+                <option value="">— Επιλέξτε πρότυπο —</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label} — {eur.format(Number(t.amount))} (
+                    {PAYMENT_TYPE_LABEL[t.payment_type]})
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+
+          <Field label="Μέλος" required>
+            <select
+              required
+              value={form.member_id}
+              onChange={(e) =>
+                setForm((s) => ({ ...s, member_id: e.target.value }))
+              }
+              className={inputClass}
+            >
+              <option value="">— Επιλέξτε —</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {memberName(m)}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Τύπος" required>
+              <select
+                value={form.type}
+                onChange={(e) => {
+                  const next = e.target.value as PaymentType;
+                  setForm((s) => ({
+                    ...s,
+                    type: next,
+                    period:
+                      next === "annual" ? currentYearPeriod() : currentMonthPeriod(),
+                  }));
+                }}
+                className={inputClass}
+              >
+                <option value="monthly_fee">
+                  {PAYMENT_TYPE_LABEL.monthly_fee}
+                </option>
+                <option value="annual">{PAYMENT_TYPE_LABEL.annual}</option>
+              </select>
+            </Field>
+            <Field
+              label={form.type === "annual" ? "Έτος" : "Μήνας (YYYY-MM)"}
+            >
+              <input
+                type="text"
+                value={form.period}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, period: e.target.value }))
+                }
+                placeholder={form.type === "annual" ? "2026" : "2026-04"}
+                className={inputClass}
+              />
+            </Field>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Ποσό (€)" required>
+              <input
+                type="text"
+                inputMode="decimal"
+                required
+                value={form.amount}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, amount: e.target.value }))
+                }
+                placeholder="0.00"
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Ημερομηνία" required>
+              <input
+                type="date"
+                required
+                value={form.payment_date}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, payment_date: e.target.value }))
+                }
+                className={inputClass}
+              />
+            </Field>
+          </div>
+
+          {formError && (
+            <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+              {formError}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background disabled:opacity-50"
+            >
+              Ακύρωση
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {saving ? "Αποθήκευση…" : "Καταχώρηση"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────
+// Tab 2 — Κρατήσεις Εκδηλώσεων (toggle is_paid)
+// ────────────────────────────────────────────────────────────
+
+function ReservationsTab() {
+  const [events, setEvents] = useState<EventRow[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [resLoading, setResLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = getBrowserClient();
+        const { data, error: qErr } = await supabase
+          .from("events")
+          .select("*")
+          .order("event_date", { ascending: false });
+        if (cancelled) return;
+        if (qErr) throw qErr;
+        const list = data ?? [];
+        setEvents(list);
+        setSelectedEventId((prev) => prev ?? list[0]?.id ?? null);
+      } catch (err) {
+        if (!cancelled)
+          setError(errorMessage(err, "Σφάλμα φόρτωσης εκδηλώσεων."));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedEventId) {
+      setReservations([]);
+      return;
+    }
+    let cancelled = false;
+    setResLoading(true);
+    (async () => {
+      try {
+        const supabase = getBrowserClient();
+        const { data, error: qErr } = await supabase
+          .from("reservations")
+          .select("*")
+          .eq("event_id", selectedEventId)
+          .order("group_name", { ascending: true });
+        if (cancelled) return;
+        if (qErr) throw qErr;
+        setReservations(data ?? []);
+      } catch (err) {
+        if (!cancelled)
+          setError(errorMessage(err, "Σφάλμα φόρτωσης κρατήσεων."));
+      } finally {
+        if (!cancelled) setResLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEventId]);
+
+  async function togglePaid(r: Reservation) {
+    const next = !r.is_paid;
+    setUpdatingId(r.id);
+    setReservations((prev) =>
+      prev.map((x) => (x.id === r.id ? { ...x, is_paid: next } : x))
+    );
+    try {
+      const supabase = getBrowserClient();
+      const { error: uErr } = await supabase
+        .from("reservations")
+        .update({ is_paid: next })
+        .eq("id", r.id);
+      if (uErr) throw uErr;
+    } catch (err) {
+      setReservations((prev) =>
+        prev.map((x) => (x.id === r.id ? { ...x, is_paid: r.is_paid } : x))
+      );
+      setError(errorMessage(err, "Σφάλμα ενημέρωσης κατάστασης."));
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  const stats = useMemo(() => {
+    const paid = reservations.filter((r) => r.is_paid).length;
+    const total = reservations.length;
+    const pax = reservations.reduce((s, r) => s + r.pax_count, 0);
+    return { paid, total, pending: total - paid, pax };
+  }, [reservations]);
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Field label="Εκδήλωση">
+          <select
+            value={selectedEventId ?? ""}
+            onChange={(e) => setSelectedEventId(e.target.value || null)}
+            disabled={loading || events.length === 0}
+            className={inputClass + " disabled:opacity-60"}
+          >
+            {events.length === 0 ? (
+              <option value="">— Καμία εκδήλωση —</option>
+            ) : (
+              events.map((ev) => (
+                <option key={ev.id} value={ev.id}>
+                  {ev.event_name} —{" "}
+                  {new Date(ev.event_date).toLocaleDateString("el-GR")}
+                </option>
+              ))
+            )}
+          </select>
+        </Field>
+      </div>
+
+      {error && (
+        <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="shrink-0 rounded px-2 text-xs hover:opacity-70"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {selectedEventId && (
+        <div className="mb-4 grid gap-3 sm:grid-cols-4">
+          <StatPill label="Παρέες" value={stats.total} />
+          <StatPill label="Άτομα" value={stats.pax} />
+          <StatPill label="Πληρωμένες" value={stats.paid} tone="success" />
+          <StatPill label="Εκκρεμείς" value={stats.pending} tone="danger" />
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-xl border border-border bg-surface">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-border bg-background/50 text-xs uppercase tracking-wider text-muted">
+              <tr>
+                <th className="px-4 py-3">Παρέα</th>
+                <th className="px-4 py-3">Άτομα</th>
+                <th className="px-4 py-3">Τραπέζι</th>
+                <th className="px-4 py-3 text-right">Πληρωμή</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {!selectedEventId ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-muted">
+                    Επιλέξτε εκδήλωση.
+                  </td>
+                </tr>
+              ) : resLoading ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-muted">
+                    Φόρτωση…
+                  </td>
+                </tr>
+              ) : reservations.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-muted">
+                    Δεν υπάρχουν κρατήσεις για αυτή την εκδήλωση.
+                  </td>
+                </tr>
+              ) : (
+                reservations.map((r) => (
+                  <tr key={r.id} className="hover:bg-background/40">
+                    <td className="px-4 py-3 font-medium">{r.group_name}</td>
+                    <td className="px-4 py-3 text-muted">{r.pax_count}</td>
+                    <td className="px-4 py-3 text-muted">
+                      {r.table_number != null ? `Νο ${r.table_number}` : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => togglePaid(r)}
+                        disabled={updatingId === r.id}
+                        className={
+                          "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition disabled:opacity-50 " +
+                          (r.is_paid
+                            ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
+                            : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400")
+                        }
+                      >
+                        <span
+                          className={
+                            "h-1.5 w-1.5 rounded-full " +
+                            (r.is_paid ? "bg-emerald-500" : "bg-amber-500")
+                          }
+                        />
+                        {r.is_paid ? "Πληρωμένη" : "Εκκρεμεί"}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatPill({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone?: "success" | "danger";
+}) {
+  const toneClass =
+    tone === "success"
+      ? "border-emerald-500/30 bg-emerald-500/5"
+      : tone === "danger"
+        ? "border-amber-500/30 bg-amber-500/5"
+        : "border-border bg-surface";
+  return (
+    <div className={"rounded-lg border p-3 " + toneClass}>
+      <p className="text-xs text-muted">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tracking-tight">
+        {value.toLocaleString("el-GR")}
+      </p>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs font-medium text-muted">
+        {label}
+        {required && <span className="text-danger"> *</span>}
+      </span>
+      {children}
+    </label>
+  );
+}
