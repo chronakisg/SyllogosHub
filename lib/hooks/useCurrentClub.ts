@@ -57,6 +57,12 @@ export function useCurrentClub(): CurrentClubState {
       const cached = cache.get(clubId);
       if (cached) {
         if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.log("[useCurrentClub] loadFor cached", {
+          clubId,
+          clubName: cached.club?.name ?? null,
+          settingsId: cached.settings?.id ?? null,
+        });
         setState({
           clubId,
           club: cached.club,
@@ -76,6 +82,14 @@ export function useCurrentClub(): CurrentClubState {
           .maybeSingle(),
       ]);
       if (cancelled) return;
+      // eslint-disable-next-line no-console
+      console.log("[useCurrentClub] loadFor result", {
+        clubId,
+        clubsError: cRes.error?.message ?? null,
+        clubsData: cRes.data,
+        settingsError: sRes.error?.message ?? null,
+        settingsData: sRes.data,
+      });
       const club = (cRes.data as Club | null) ?? null;
       const settings = (sRes.data as ClubSettings | null) ?? null;
       cache.set(clubId, { club, settings });
