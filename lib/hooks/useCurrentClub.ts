@@ -57,12 +57,6 @@ export function useCurrentClub(): CurrentClubState {
       const cached = cache.get(clubId);
       if (cached) {
         if (cancelled) return;
-        // eslint-disable-next-line no-console
-        console.log("[useCurrentClub] loadFor cached", {
-          clubId,
-          clubName: cached.club?.name ?? null,
-          settingsId: cached.settings?.id ?? null,
-        });
         setState({
           clubId,
           club: cached.club,
@@ -82,19 +76,6 @@ export function useCurrentClub(): CurrentClubState {
           .maybeSingle(),
       ]);
       if (cancelled) return;
-      // eslint-disable-next-line no-console
-      console.log(
-        "[useCurrentClub] loadFor result | clubId=",
-        clubId,
-        "| clubsError=",
-        cRes.error?.message ?? "null",
-        "| clubsData=",
-        cRes.data ? JSON.stringify(cRes.data) : "null",
-        "| settingsError=",
-        sRes.error?.message ?? "null",
-        "| settingsData=",
-        sRes.data ? JSON.stringify(sRes.data) : "null"
-      );
       const club = (cRes.data as Club | null) ?? null;
       const settings = (sRes.data as ClubSettings | null) ?? null;
       cache.set(clubId, { club, settings });
@@ -106,8 +87,6 @@ export function useCurrentClub(): CurrentClubState {
       if (cancelled) return;
       const user = userData.user;
       if (!user) {
-        // eslint-disable-next-line no-console
-        console.log("[useCurrentClub] no auth user");
         setState(SIGNED_OUT);
         return;
       }
@@ -118,30 +97,14 @@ export function useCurrentClub(): CurrentClubState {
       const impersonate = readImpersonateClubId();
 
       if (lookupEmail) {
-        const memRes = await supabase
+        const { data: m } = await supabase
           .from("members")
-          .select("id, club_id, is_system_admin, email")
+          .select("club_id, is_system_admin")
           .ilike("email", lookupEmail)
           .maybeSingle();
         if (cancelled) return;
-        // eslint-disable-next-line no-console
-        console.log(
-          "[useCurrentClub] member lookup | authEmail=",
-          lookupEmail,
-          "| error=",
-          memRes.error?.message ?? "null",
-          "| memberRow=",
-          memRes.data ? JSON.stringify(memRes.data) : "null",
-          "| impersonate=",
-          impersonate ?? "null"
-        );
-        const memberRow = memRes.data as
-          | {
-              id: string;
-              club_id: string | null;
-              is_system_admin: boolean | null;
-              email: string | null;
-            }
+        const memberRow = m as
+          | { club_id: string | null; is_system_admin: boolean | null }
           | null;
         if (memberRow?.is_system_admin && impersonate) {
           clubId = impersonate;
@@ -151,14 +114,10 @@ export function useCurrentClub(): CurrentClubState {
       }
 
       if (!clubId) {
-        // eslint-disable-next-line no-console
-        console.log("[useCurrentClub] resolved clubId=null → SIGNED_OUT");
         setState({ ...SIGNED_OUT, loading: false });
         return;
       }
 
-      // eslint-disable-next-line no-console
-      console.log("[useCurrentClub] resolved clubId", clubId);
       await loadFor(clubId);
     }
 

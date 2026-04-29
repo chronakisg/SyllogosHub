@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getBrowserClient } from "@/lib/supabase/client";
 import { useRole, type Permission, type RoleState } from "@/lib/hooks/useRole";
 import { useClubSettings } from "@/lib/hooks/useClubSettings";
@@ -45,20 +45,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const currentClub = useCurrentClub();
   const [signingOut, setSigningOut] = useState(false);
 
-  useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.log(
-      "[AppShell] useCurrentClub.loading=",
-      currentClub.loading,
-      "clubId=",
-      currentClub.clubId,
-      "clubName=",
-      currentClub.club?.name ?? null,
-      "settingsId=",
-      currentClub.settings?.id ?? null
-    );
-  }, [currentClub]);
-
   const headerTitle = currentClub.club?.name || club.club_name;
 
   if (pathname === "/login") {
@@ -90,25 +76,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen flex-col overflow-hidden lg:flex-row">
       <aside className="flex w-full shrink-0 flex-col border-b border-border bg-surface lg:h-screen lg:w-64 lg:border-b-0 lg:border-r">
-        <div className="shrink-0 p-6">
-          <Link href="/" className="flex items-center gap-2">
+        <div className="shrink-0 px-4 py-5">
+          <Link href="/" className="flex items-start gap-2">
             {club.logo_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={club.logo_url}
                 alt={headerTitle}
-                className="h-8 w-8 rounded-lg object-cover"
+                className="h-9 w-9 shrink-0 rounded-lg object-cover"
               />
             ) : (
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-sm font-semibold text-white">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--brand-primary)] text-sm font-semibold text-white">
                 {(headerTitle?.[0] ?? "Σ").toUpperCase()}
               </span>
             )}
-            <span className="flex min-w-0 flex-col">
-              <span className="truncate font-semibold tracking-tight">
+            <span className="flex min-w-0 flex-col leading-tight">
+              <span className="break-words text-sm font-semibold">
                 {headerTitle}
               </span>
-              <span className="truncate text-[10px] uppercase tracking-wider text-muted">
+              <span className="mt-0.5 text-[10px] uppercase tracking-wider text-muted">
                 SyllogosHub
               </span>
             </span>
