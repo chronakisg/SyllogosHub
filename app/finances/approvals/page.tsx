@@ -48,7 +48,7 @@ export default function ApprovalsPage() {
       const { data, error: qErr } = await supabase
         .from("payments")
         .select(
-          "*, member:members!payments_member_id_fkey(first_name,last_name)"
+          "*, member:members!member_id(first_name,last_name), approver:members!approved_by(first_name,last_name)"
         )
         .eq("club_id", clubId)
         .eq("approval_status", "pending")
@@ -57,13 +57,14 @@ export default function ApprovalsPage() {
       const pending = ((data ?? []) as unknown as Array<
         Payment & {
           member?: { first_name: string; last_name: string } | null;
+          approver?: { first_name: string; last_name: string } | null;
         }
       >).map((r) => ({
         ...r,
         member_first_name: r.member?.first_name ?? null,
         member_last_name: r.member?.last_name ?? null,
-        approver_first_name: null,
-        approver_last_name: null,
+        approver_first_name: r.approver?.first_name ?? null,
+        approver_last_name: r.approver?.last_name ?? null,
       })) as PendingRow[];
       setRows(pending);
       setError(null);

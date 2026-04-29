@@ -41,14 +41,16 @@ export default function ReceiptPage() {
         const supabase = getBrowserClient();
         const { data: row, error: qErr } = await supabase
           .from("payments")
-          .select("*, members(first_name,last_name,email,phone)")
+          .select(
+            "*, member:members!member_id(first_name,last_name,email,phone)"
+          )
           .eq("id", paymentId)
           .eq("club_id", clubId)
           .single();
         if (cancelled) return;
         if (qErr) throw qErr;
         const r = row as Payment & {
-          members?: ReceiptData["member"];
+          member?: ReceiptData["member"];
         };
         setData({
           payment: {
@@ -66,7 +68,7 @@ export default function ReceiptPage() {
             approved_at: r.approved_at,
             created_at: r.created_at,
           },
-          member: r.members ?? null,
+          member: r.member ?? null,
         });
       } catch (err) {
         if (!cancelled)

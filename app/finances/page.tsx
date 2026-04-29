@@ -328,7 +328,7 @@ function PaymentsTab() {
           .order("first_name", { ascending: true }),
         supabase
           .from("payments")
-          .select("*, members!inner(first_name,last_name)")
+          .select("*, member:members!member_id(first_name,last_name)")
           .eq("club_id", clubId)
           .order("payment_date", { ascending: false }),
         supabase
@@ -350,7 +350,7 @@ function PaymentsTab() {
 
       const rows = (pRes.data ?? []).map((row) => {
         const r = row as Payment & {
-          members?: { first_name: string; last_name: string } | null;
+          member?: { first_name: string; last_name: string } | null;
         };
         return {
           id: r.id,
@@ -366,8 +366,8 @@ function PaymentsTab() {
           approved_by: r.approved_by,
           approved_at: r.approved_at,
           created_at: r.created_at,
-          member_first_name: r.members?.first_name ?? null,
-          member_last_name: r.members?.last_name ?? null,
+          member_first_name: r.member?.first_name ?? null,
+          member_last_name: r.member?.last_name ?? null,
         } satisfies PaymentRow;
       });
 
