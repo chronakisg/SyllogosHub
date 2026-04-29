@@ -29,44 +29,22 @@ function LoginView() {
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    console.log("[login] handleSubmit fired", {
-      email: email.trim(),
-      hasPassword: password.length > 0,
-      redirect,
-    });
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
-      console.log("[login] getting browser client");
       const supabase = getBrowserClient();
-      console.log("[login] calling signInWithPassword…");
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
-      console.log("[login] signInWithPassword resolved", {
-        hasSession: !!data?.session,
-        userId: data?.user?.id ?? null,
-        signInError,
-      });
       if (signInError) throw signInError;
-      console.log("[login] verifying session via getSession()");
-      const sessionRes = await supabase.auth.getSession();
-      console.log("[login] getSession", {
-        hasSession: !!sessionRes.data.session,
-        cookieString:
-          typeof document !== "undefined" ? document.cookie : "(no document)",
-      });
-      console.log("[login] router.replace →", redirect);
+      await supabase.auth.getSession();
       router.replace(redirect);
-      console.log("[login] router.refresh()");
       router.refresh();
     } catch (err) {
-      console.error("[login] caught error", err);
       setError(errorMessage(err, "Αποτυχία σύνδεσης."));
     } finally {
-      console.log("[login] handleSubmit finally — setSubmitting(false)");
       setSubmitting(false);
     }
   }
