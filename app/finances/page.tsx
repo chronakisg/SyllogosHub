@@ -118,6 +118,22 @@ export default function FinancesPage() {
   );
 }
 
+function PaymentTypeBadge({ type }: { type: PaymentType }) {
+  const cls =
+    type === "monthly_fee"
+      ? "bg-blue-500/10 text-blue-700 dark:text-blue-300"
+      : "bg-purple-500/10 text-purple-700 dark:text-purple-300";
+  return (
+    <span
+      className={
+        "inline-block rounded-full px-2 py-0.5 text-[10px] font-medium " + cls
+      }
+    >
+      {PAYMENT_TYPE_LABEL[type]}
+    </span>
+  );
+}
+
 function TabButton({
   current,
   value,
@@ -161,6 +177,7 @@ type PaymentForm = {
   type: PaymentType;
   period: string;
   payment_date: string;
+  template_id: string;
 };
 
 function emptyPaymentForm(): PaymentForm {
@@ -170,6 +187,7 @@ function emptyPaymentForm(): PaymentForm {
     type: "monthly_fee",
     period: currentMonthPeriod(),
     payment_date: new Date().toISOString().slice(0, 10),
+    template_id: "",
   };
 }
 
@@ -866,10 +884,12 @@ function TemplatesCard({
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{t.label}</p>
-                <p className="text-xs text-muted">
-                  {eur.format(Number(t.amount))} ·{" "}
-                  {PAYMENT_TYPE_LABEL[t.payment_type]}
-                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-muted">
+                    {eur.format(Number(t.amount))}
+                  </span>
+                  <PaymentTypeBadge type={t.payment_type} />
+                </div>
               </div>
               <div className="flex shrink-0 gap-1">
                 <button
@@ -941,38 +961,53 @@ function TemplateModal({
             />
           </Field>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Ποσό (€)" required>
-              <input
-                type="text"
-                inputMode="decimal"
-                required
-                value={form.amount}
-                onChange={(e) =>
-                  setForm((s) => ({ ...s, amount: e.target.value }))
-                }
-                placeholder="0.00"
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Τύπος" required>
-              <select
-                value={form.payment_type}
-                onChange={(e) =>
-                  setForm((s) => ({
-                    ...s,
-                    payment_type: e.target.value as PaymentType,
-                  }))
-                }
-                className={inputClass}
-              >
-                <option value="monthly_fee">
-                  {PAYMENT_TYPE_LABEL.monthly_fee}
-                </option>
-                <option value="annual">{PAYMENT_TYPE_LABEL.annual}</option>
-              </select>
-            </Field>
-          </div>
+          <Field label="Ποσό (€)" required>
+            <input
+              type="text"
+              inputMode="decimal"
+              required
+              value={form.amount}
+              onChange={(e) =>
+                setForm((s) => ({ ...s, amount: e.target.value }))
+              }
+              placeholder="0.00"
+              className={inputClass}
+            />
+          </Field>
+
+          <fieldset>
+            <legend className="mb-2 block text-xs font-medium text-muted">
+              Τύπος <span className="text-danger">*</span>
+            </legend>
+            <div className="flex gap-2">
+              {(["monthly_fee", "annual"] as const).map((opt) => {
+                const active = form.payment_type === opt;
+                return (
+                  <label
+                    key={opt}
+                    className={
+                      "flex flex-1 cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition " +
+                      (active
+                        ? "border-accent bg-accent/10 text-accent"
+                        : "border-border hover:bg-foreground/5")
+                    }
+                  >
+                    <input
+                      type="radio"
+                      name="payment_type"
+                      value={opt}
+                      checked={active}
+                      onChange={() =>
+                        setForm((s) => ({ ...s, payment_type: opt }))
+                      }
+                      className="h-4 w-4"
+                    />
+                    {PAYMENT_TYPE_LABEL[opt]}
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
 
           {formError && (
             <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
@@ -1096,63 +1131,24 @@ function BulkChargeModal({
           onSubmit={onSubmit}
           className="flex min-h-0 flex-1 flex-col gap-4"
         >
-          {templates.length > 0 && (
-            <Field label="Γρήγορη Επιλογή">
-              <select
-                value={form.template_id}
-                onChange={(e) => applyTemplate(e.target.value)}
-                className={inputClass}
-              >
-                <option value="">— Επιλέξτε πρότυπο —</option>
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label} — {eur.format(Number(t.amount))} (
-                    {PAYMENT_TYPE_LABEL[t.payment_type]})
-                  </option>
-                ))}
-              </select>
-            </Field>
-          )}
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Τύπος" required>
-              <select
-                value={form.type}
-                onChange={(e) => {
-                  const next = e.target.value as PaymentType;
-                  setForm((s) => ({
-                    ...s,
-                    type: next,
-                    period:
-                      next === "annual"
-                        ? currentYearPeriod()
-                        : currentMonthPeriod(),
-                  }));
-                }}
-                className={inputClass}
-              >
-                <option value="monthly_fee">
-                  {PAYMENT_TYPE_LABEL.monthly_fee}
-                </option>
-                <option value="annual">{PAYMENT_TYPE_LABEL.annual}</option>
-              </select>
-            </Field>
-            <Field
-              label={form.type === "annual" ? "Έτος" : "Μήνας (YYYY-MM)"}
+          <Field label="Πρότυπο" required>
+            <select
+              required
+              value={form.template_id}
+              onChange={(e) => applyTemplate(e.target.value)}
+              className={inputClass}
             >
-              <input
-                type="text"
-                value={form.period}
-                onChange={(e) =>
-                  setForm((s) => ({ ...s, period: e.target.value }))
-                }
-                placeholder={form.type === "annual" ? "2026" : "2026-04"}
-                className={inputClass}
-              />
-            </Field>
-          </div>
+              <option value="">— Επιλέξτε πρότυπο —</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label} — {eur.format(Number(t.amount))} (
+                  {PAYMENT_TYPE_LABEL[t.payment_type]})
+                </option>
+              ))}
+            </select>
+          </Field>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
             <Field label="Ποσό (€)" required>
               <input
                 type="text"
@@ -1165,6 +1161,46 @@ function BulkChargeModal({
                 placeholder="0.00"
                 className={inputClass}
               />
+            </Field>
+            <div>
+              <span className="mb-1 block text-xs font-medium text-muted">
+                Τύπος
+              </span>
+              <div className="flex h-[42px] items-center">
+                <PaymentTypeBadge type={form.type} />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field
+              label={form.type === "annual" ? "Έτος" : "Μήνας"}
+              required
+            >
+              {form.type === "annual" ? (
+                <input
+                  type="number"
+                  required
+                  min={2020}
+                  max={2100}
+                  value={form.period}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, period: e.target.value }))
+                  }
+                  placeholder="2026"
+                  className={inputClass}
+                />
+              ) : (
+                <input
+                  type="month"
+                  required
+                  value={form.period}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, period: e.target.value }))
+                  }
+                  className={inputClass}
+                />
+              )}
             </Field>
             <Field label="Ημερομηνία" required>
               <input
@@ -1282,11 +1318,15 @@ function PaymentModal({
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
 }) {
   function applyTemplate(id: string) {
-    if (!id) return;
+    if (!id) {
+      setForm((s) => ({ ...s, template_id: "" }));
+      return;
+    }
     const t = templates.find((x) => x.id === id);
     if (!t) return;
     setForm((s) => ({
       ...s,
+      template_id: id,
       type: t.payment_type,
       amount: String(t.amount),
       period:
@@ -1308,16 +1348,13 @@ function PaymentModal({
 
         <form onSubmit={onSubmit} className="space-y-4">
           {templates.length > 0 && (
-            <Field label="Γρήγορη Επιλογή">
+            <Field label="Γρήγορη Επιλογή από Πρότυπο">
               <select
-                defaultValue=""
-                onChange={(e) => {
-                  applyTemplate(e.target.value);
-                  e.target.value = "";
-                }}
+                value={form.template_id}
+                onChange={(e) => applyTemplate(e.target.value)}
                 className={inputClass}
               >
-                <option value="">— Επιλέξτε πρότυπο —</option>
+                <option value="">— Χειροκίνητα —</option>
                 {templates.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.label} — {eur.format(Number(t.amount))} (

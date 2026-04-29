@@ -20,7 +20,8 @@
       "Bash(git add *)",
       "Bash(git commit *)",
       "Bash(git push *)",
-      "Bash(grep -E \"^\\\\s+[0-9]+:[0-9]+|\\\\.tsx$|\\\\.ts$|✖\")"
+      "Bash(grep -E \"^\\\\s+[0-9]+:[0-9]+|\\\\.tsx$|\\\\.ts$|✖\")",
+      "Bash(git tag *)"
     ]
   }
 }
