@@ -24,7 +24,6 @@ export type Member = {
   last_name: string;
   phone: string | null;
   email: string | null;
-  department: string | null;
   status: MemberStatus;
   is_board_member: boolean;
   board_position: string | null;
@@ -42,7 +41,6 @@ export type MemberInsert = {
   last_name: string;
   phone?: string | null;
   email?: string | null;
-  department?: string | null;
   status?: MemberStatus;
   is_board_member?: boolean;
   board_position?: string | null;
@@ -55,18 +53,44 @@ export type MemberInsert = {
 
 export type MemberUpdate = Partial<Omit<Member, "id" | "created_at">>;
 
+export type DepartmentRole = "member" | "leader" | "assistant";
+
+export type Department = {
+  id: string;
+  club_id: string | null;
+  name: string;
+  description: string | null;
+  display_order: number;
+  active: boolean;
+  created_at: string;
+};
+
+export type DepartmentInsert = {
+  id?: string;
+  club_id?: string | null;
+  name: string;
+  description?: string | null;
+  display_order?: number;
+  active?: boolean;
+  created_at?: string;
+};
+
+export type DepartmentUpdate = Partial<Omit<Department, "id" | "created_at">>;
+
 export type MemberDepartment = {
   id: string;
   club_id: string | null;
   member_id: string;
-  department: string;
+  department_id: string;
+  role: DepartmentRole;
 };
 
 export type MemberDepartmentInsert = {
   id?: string;
   club_id?: string | null;
   member_id: string;
-  department: string;
+  department_id: string;
+  role?: DepartmentRole;
 };
 
 export type MemberDepartmentUpdate = Partial<Omit<MemberDepartment, "id">>;
@@ -520,6 +544,20 @@ export type Database = {
           },
         ];
       };
+      departments: {
+        Row: Department;
+        Insert: DepartmentInsert;
+        Update: DepartmentUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "departments_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       member_departments: {
         Row: MemberDepartment;
         Insert: MemberDepartmentInsert;
@@ -530,6 +568,13 @@ export type Database = {
             columns: ["member_id"];
             isOneToOne: false;
             referencedRelation: "members";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "member_departments_department_id_fkey";
+            columns: ["department_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
             referencedColumns: ["id"];
           },
         ];
@@ -691,15 +736,17 @@ export type Database = {
   };
 };
 
-export const DEPARTMENTS = [
-  "Χορευτικό",
-  "Λύρα",
-  "Μαντολινάτα",
-  "Θέατρο",
-  "Άλλο",
-] as const;
+export const DEPARTMENT_ROLES: DepartmentRole[] = [
+  "member",
+  "leader",
+  "assistant",
+];
 
-export type Department = (typeof DEPARTMENTS)[number];
+export const DEPARTMENT_ROLE_LABELS: Record<DepartmentRole, string> = {
+  member: "Μέλος",
+  leader: "Ομαδάρχης",
+  assistant: "Βοηθός",
+};
 
 export const BOARD_POSITIONS = [
   "Πρόεδρος",

@@ -1497,6 +1497,7 @@ function EventEditor({
                 <Field label="Έναρξη Σεζόν" required>
                   <input
                     type="date"
+                    lang="el"
                     required
                     value={seasonStart}
                     onChange={(e) => setSeasonStart(e.target.value)}
@@ -1506,6 +1507,7 @@ function EventEditor({
                 <Field label="Λήξη Σεζόν" required>
                   <input
                     type="date"
+                    lang="el"
                     required
                     value={seasonEnd}
                     onChange={(e) => setSeasonEnd(e.target.value)}
@@ -1698,11 +1700,6 @@ function CoordinatorPicker({
                 <span className="font-medium">
                   {m.last_name} {m.first_name}
                 </span>
-                {m.department && (
-                  <span className="ml-2 text-xs text-muted">
-                    {m.department}
-                  </span>
-                )}
               </button>
             </li>
           ))}

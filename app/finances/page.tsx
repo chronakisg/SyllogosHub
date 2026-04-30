@@ -1406,6 +1406,7 @@ function BulkChargeModal({
             <Field label="Ημερομηνία" required>
               <input
                 type="date"
+                lang="el"
                 required
                 value={form.payment_date}
                 onChange={(e) =>
@@ -1787,6 +1788,7 @@ function PaymentModal({
             <Field label="Ημερομηνία" required>
               <input
                 type="date"
+                lang="el"
                 required
                 value={form.payment_date}
                 onChange={(e) =>

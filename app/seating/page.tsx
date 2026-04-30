@@ -1474,6 +1474,7 @@ function AddEventModal({
         <Field label="Ημερομηνία" required>
           <input
             type="date"
+            lang="el"
             required
             value={date}
             onChange={(e) => setDate(e.target.value)}
@@ -1662,11 +1663,6 @@ function GuestsPanel({
                       <span className="font-medium">
                         {m.last_name} {m.first_name}
                       </span>
-                      {m.department && (
-                        <span className="ml-2 text-xs text-muted">
-                          {m.department}
-                        </span>
-                      )}
                     </button>
                   </li>
                 ))}

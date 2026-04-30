@@ -26,6 +26,12 @@ const CARDS: Card[] = [
     description: "Λογότυπο, χρώματα και visual identity.",
   },
   {
+    href: "/settings/departments",
+    icon: "👥",
+    title: "Τμήματα",
+    description: "Χορευτικά, μουσικά, θεατρικά τμήματα του συλλόγου.",
+  },
+  {
     href: "/discounts",
     icon: "💰",
     title: "Εκπτώσεις",
@@ -66,7 +72,7 @@ export default function SettingsDashboardPage() {
         </p>
       </header>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {CARDS.map((c) => (
           <SettingCard key={c.href} card={c} />
         ))}

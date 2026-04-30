@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
@@ -9,16 +10,31 @@ import { AccessDenied } from "@/lib/auth/AccessDenied";
 import { calculateAge, generateUuid } from "@/lib/utils/discounts";
 import {
   BOARD_POSITIONS,
-  DEPARTMENTS,
+  DEPARTMENT_ROLE_LABELS,
+  type Department,
+  type DepartmentRole,
   type Member,
   type MemberInsert,
   type MemberStatus,
   type MemberUpdate,
 } from "@/lib/supabase/types";
 
-type MemberWithDepartments = Member & { departments: string[] };
+type MemberDeptAssignment = {
+  department_id: string;
+  name: string;
+  role: DepartmentRole;
+};
+
+type MemberWithDepartments = Member & {
+  departments: MemberDeptAssignment[];
+};
 
 type FamilyMode = "none" | "new" | "link";
+
+type FormDeptSelection = {
+  department_id: string;
+  role: DepartmentRole;
+};
 
 type FormState = {
   first_name: string;
@@ -29,7 +45,7 @@ type FormState = {
   is_board_member: boolean;
   board_position: string;
   is_president: boolean;
-  departments: string[];
+  departments: FormDeptSelection[];
   birth_date: string;
   family_mode: FamilyMode;
   family_id: string | null;
@@ -63,6 +79,7 @@ export default function MembersPage() {
   const role = useRole();
   const { clubId, loading: clubLoading } = useCurrentClub();
   const [members, setMembers] = useState<MemberWithDepartments[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,7 +100,7 @@ export default function MembersPage() {
     if (!clubId) return;
     try {
       const supabase = getBrowserClient();
-      const [mRes, dRes] = await Promise.all([
+      const [mRes, mdRes, depRes] = await Promise.all([
         supabase
           .from("members")
           .select("*")
@@ -94,24 +111,41 @@ export default function MembersPage() {
           .from("member_departments")
           .select("*")
           .eq("club_id", clubId),
+        supabase
+          .from("departments")
+          .select("*")
+          .eq("club_id", clubId)
+          .order("display_order", { ascending: true })
+          .order("name", { ascending: true }),
       ]);
       if (mRes.error) throw mRes.error;
-      if (dRes.error) throw dRes.error;
+      if (mdRes.error) throw mdRes.error;
+      if (depRes.error) throw depRes.error;
 
-      const byMember = new Map<string, string[]>();
-      for (const row of dRes.data ?? []) {
+      const allDepartments = (depRes.data ?? []) as Department[];
+      const deptById = new Map(allDepartments.map((d) => [d.id, d]));
+
+      const byMember = new Map<string, MemberDeptAssignment[]>();
+      for (const row of mdRes.data ?? []) {
+        const dep = deptById.get(row.department_id);
+        if (!dep) continue;
         const list = byMember.get(row.member_id) ?? [];
-        list.push(row.department);
+        list.push({
+          department_id: dep.id,
+          name: dep.name,
+          role: row.role,
+        });
         byMember.set(row.member_id, list);
       }
       const merged: MemberWithDepartments[] = (mRes.data ?? []).map((m) => ({
         ...m,
         departments: (byMember.get(m.id) ?? []).sort((a, b) =>
-          a.localeCompare(b, "el")
+          a.name.localeCompare(b.name, "el")
         ),
       }));
       setError(null);
       setMembers(merged);
+      setDepartments(allDepartments);
     } catch (err) {
       setError(errorMessage(err, "Σφάλμα φόρτωσης μελών."));
     } finally {
@@ -124,11 +158,20 @@ export default function MembersPage() {
     loadMembers();
   }, [loadMembers, clubLoading]);
 
-  const allDepartments = useMemo(() => {
-    const set = new Set<string>();
-    for (const m of members) for (const d of m.departments) set.add(d);
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "el"));
-  }, [members]);
+  const departmentOptions = useMemo(
+    () =>
+      [...departments].sort(
+        (a, b) =>
+          a.display_order - b.display_order ||
+          a.name.localeCompare(b.name, "el")
+      ),
+    [departments]
+  );
+
+  const activeDepartmentOptions = useMemo(
+    () => departmentOptions.filter((d) => d.active),
+    [departmentOptions]
+  );
 
   const familyCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -150,7 +193,10 @@ export default function MembersPage() {
         if (ageFilter === "child" && age >= 18) return false;
         if (ageFilter === "adult" && age < 18) return false;
       }
-      if (departmentFilter && !m.departments.includes(departmentFilter))
+      if (
+        departmentFilter &&
+        !m.departments.some((d) => d.department_id === departmentFilter)
+      )
         return false;
       if (q) {
         const hay = [
@@ -159,7 +205,7 @@ export default function MembersPage() {
           m.phone,
           m.email,
           m.board_position,
-          ...m.departments,
+          ...m.departments.map((d) => d.name),
         ]
           .filter(Boolean)
           .join(" ")
@@ -205,7 +251,10 @@ export default function MembersPage() {
       is_board_member: member.is_board_member,
       board_position: member.board_position ?? "",
       is_president: member.is_president,
-      departments: member.departments,
+      departments: member.departments.map((d) => ({
+        department_id: d.department_id,
+        role: d.role,
+      })),
       birth_date: member.birth_date ?? "",
       family_mode: member.family_id ? "link" : "none",
       family_id: member.family_id,
@@ -223,32 +272,51 @@ export default function MembersPage() {
     setFormError(null);
   }
 
-  async function syncDepartments(memberId: string, next: string[]) {
+  async function syncDepartments(
+    memberId: string,
+    next: FormDeptSelection[]
+  ) {
     if (!clubId) throw new Error("Δεν έχει εντοπιστεί σύλλογος.");
     const supabase = getBrowserClient();
     const { data: existing, error: exErr } = await supabase
       .from("member_departments")
-      .select("id, department")
+      .select("id, department_id, role")
       .eq("member_id", memberId)
       .eq("club_id", clubId);
     if (exErr) throw exErr;
 
-    const existingMap = new Map(
-      (existing ?? []).map((r) => [r.department, r.id])
+    const existingByDept = new Map(
+      (existing ?? []).map((r) => [
+        r.department_id,
+        { id: r.id, role: r.role as DepartmentRole },
+      ])
     );
-    const nextSet = new Set(next);
+    const nextByDept = new Map(next.map((n) => [n.department_id, n.role]));
 
     const toDelete: string[] = [];
-    for (const [dept, id] of existingMap) {
-      if (!nextSet.has(dept)) toDelete.push(id);
+    for (const [deptId, row] of existingByDept) {
+      if (!nextByDept.has(deptId)) toDelete.push(row.id);
     }
-    const toInsert = next
-      .filter((d) => !existingMap.has(d))
-      .map((department) => ({
-        club_id: clubId,
-        member_id: memberId,
-        department,
-      }));
+    const toInsert: {
+      club_id: string;
+      member_id: string;
+      department_id: string;
+      role: DepartmentRole;
+    }[] = [];
+    const toUpdate: { id: string; role: DepartmentRole }[] = [];
+    for (const [deptId, role] of nextByDept) {
+      const ex = existingByDept.get(deptId);
+      if (!ex) {
+        toInsert.push({
+          club_id: clubId,
+          member_id: memberId,
+          department_id: deptId,
+          role,
+        });
+      } else if (ex.role !== role) {
+        toUpdate.push({ id: ex.id, role });
+      }
+    }
 
     if (toDelete.length > 0) {
       const { error: dErr } = await supabase
@@ -262,6 +330,14 @@ export default function MembersPage() {
         .from("member_departments")
         .insert(toInsert);
       if (iErr) throw iErr;
+    }
+    for (const u of toUpdate) {
+      const { error: uErr } = await supabase
+        .from("member_departments")
+        .update({ role: u.role })
+        .eq("id", u.id)
+        .eq("club_id", clubId);
+      if (uErr) throw uErr;
     }
   }
 
@@ -393,7 +469,13 @@ export default function MembersPage() {
       Όνομα: m.first_name,
       Τηλέφωνο: m.phone ?? "",
       Email: m.email ?? "",
-      Τμήματα: m.departments.join(", "),
+      Τμήματα: m.departments
+        .map((d) =>
+          d.role === "member"
+            ? d.name
+            : `${d.name} (${DEPARTMENT_ROLE_LABELS[d.role]})`
+        )
+        .join(", "),
       Κατάσταση: m.status === "active" ? "Ενεργό" : "Ανενεργό",
       "Δ.Σ.": m.is_board_member ? "Ναι" : "Όχι",
       Θέση: m.board_position ?? "",
@@ -478,9 +560,9 @@ export default function MembersPage() {
             className={inputClass}
           >
             <option value="">— Όλα —</option>
-            {allDepartments.map((d) => (
-              <option key={d} value={d}>
-                {d}
+            {departmentOptions.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
               </option>
             ))}
           </select>
@@ -634,10 +716,20 @@ export default function MembersPage() {
                         <div className="flex flex-wrap gap-1">
                           {m.departments.map((d) => (
                             <span
-                              key={d}
-                              className="rounded-full bg-accent/10 px-2 py-0.5 text-[11px] text-accent"
+                              key={d.department_id}
+                              className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[11px] text-accent"
                             >
-                              {d}
+                              {d.name}
+                              {d.role === "leader" && (
+                                <span title="Ομαδάρχης" aria-label="Ομαδάρχης">
+                                  · 🏅 Ομαδάρχης
+                                </span>
+                              )}
+                              {d.role === "assistant" && (
+                                <span title="Βοηθός" aria-label="Βοηθός">
+                                  · 🤝 Βοηθός
+                                </span>
+                              )}
                             </span>
                           ))}
                         </div>
@@ -678,6 +770,7 @@ export default function MembersPage() {
           form={form}
           setForm={setForm}
           members={members}
+          departments={activeDepartmentOptions}
           saving={saving}
           formError={formError}
           onClose={closeModal}
@@ -715,6 +808,7 @@ function MemberModal({
   form,
   setForm,
   members,
+  departments,
   saving,
   formError,
   onClose,
@@ -724,17 +818,37 @@ function MemberModal({
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   members: MemberWithDepartments[];
+  departments: Department[];
   saving: boolean;
   formError: string | null;
   onClose: () => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
 }) {
-  function toggleDepartment(d: string) {
+  function toggleDepartment(deptId: string, checked: boolean) {
     setForm((s) =>
-      s.departments.includes(d)
-        ? { ...s, departments: s.departments.filter((x) => x !== d) }
-        : { ...s, departments: [...s.departments, d] }
+      checked
+        ? {
+            ...s,
+            departments: [
+              ...s.departments,
+              { department_id: deptId, role: "member" },
+            ],
+          }
+        : {
+            ...s,
+            departments: s.departments.filter(
+              (x) => x.department_id !== deptId
+            ),
+          }
     );
+  }
+  function setDeptRole(deptId: string, role: DepartmentRole) {
+    setForm((s) => ({
+      ...s,
+      departments: s.departments.map((x) =>
+        x.department_id === deptId ? { ...x, role } : x
+      ),
+    }));
   }
 
   const [familySearch, setFamilySearch] = useState("");
@@ -846,6 +960,7 @@ function MemberModal({
             <div className="flex items-center gap-2">
               <input
                 type="date"
+                lang="el"
                 value={form.birth_date}
                 onChange={(e) =>
                   setForm((s) => ({ ...s, birth_date: e.target.value }))
@@ -963,27 +1078,69 @@ function MemberModal({
           </fieldset>
 
           <Field label="Τμήματα">
-            <div className="flex flex-wrap gap-2">
-              {DEPARTMENTS.map((d) => {
-                const active = form.departments.includes(d);
-                return (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => toggleDepartment(d)}
-                    className={
-                      "rounded-full border px-3 py-1 text-xs transition " +
-                      (active
-                        ? "border-accent bg-accent/10 text-accent"
-                        : "border-border hover:bg-background")
-                    }
-                  >
-                    {active ? "✓ " : "+ "}
-                    {d}
-                  </button>
-                );
-              })}
-            </div>
+            {departments.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border bg-background/40 p-3 text-xs text-muted">
+                <p>Ο σύλλογος δεν έχει ορίσει τμήματα ακόμα.</p>
+                <Link
+                  href="/settings/departments"
+                  className="mt-1 inline-flex font-medium text-accent hover:underline"
+                >
+                  Προσθήκη Τμημάτων →
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-1.5 rounded-lg border border-border p-3">
+                {departments.map((d) => {
+                  const sel = form.departments.find(
+                    (x) => x.department_id === d.id
+                  );
+                  const checked = !!sel;
+                  return (
+                    <div
+                      key={d.id}
+                      className="flex flex-wrap items-center gap-3"
+                    >
+                      <label className="flex flex-1 items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) =>
+                            toggleDepartment(d.id, e.target.checked)
+                          }
+                          className="h-4 w-4 rounded border-border"
+                        />
+                        {d.name}
+                      </label>
+                      {checked && (
+                        <label className="flex items-center gap-2 text-xs text-muted">
+                          Ρόλος:
+                          <select
+                            value={sel.role}
+                            onChange={(e) =>
+                              setDeptRole(
+                                d.id,
+                                e.target.value as DepartmentRole
+                              )
+                            }
+                            className="rounded-md border border-border bg-background px-2 py-1 text-xs"
+                          >
+                            <option value="member">
+                              {DEPARTMENT_ROLE_LABELS.member}
+                            </option>
+                            <option value="leader">
+                              {DEPARTMENT_ROLE_LABELS.leader}
+                            </option>
+                            <option value="assistant">
+                              {DEPARTMENT_ROLE_LABELS.assistant}
+                            </option>
+                          </select>
+                        </label>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </Field>
 
           <Field label="Κατάσταση">

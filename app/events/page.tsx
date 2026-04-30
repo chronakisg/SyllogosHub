@@ -819,6 +819,7 @@ function DetailsTab({
       <Field label="Ημερομηνία" required>
         <input
           type="date"
+          lang="el"
           required
           value={form.event_date}
           onChange={(e) =>
