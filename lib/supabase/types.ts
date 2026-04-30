@@ -125,6 +125,7 @@ export type Payment = {
   approval_status: ApprovalStatus;
   approved_by: string | null;
   approved_at: string | null;
+  batch_id: string | null;
   created_at: string;
 };
 
@@ -141,6 +142,7 @@ export type PaymentInsert = {
   approval_status?: ApprovalStatus;
   approved_by?: string | null;
   approved_at?: string | null;
+  batch_id?: string | null;
   created_at?: string;
 };
 

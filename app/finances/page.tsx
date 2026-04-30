@@ -27,7 +27,7 @@ import type {
   PaymentType,
   Reservation,
 } from "@/lib/supabase/types";
-import { calculateDiscount } from "@/lib/utils/discounts";
+import { calculateDiscount, generateUuid } from "@/lib/utils/discounts";
 
 type Tab = "payments" | "reservations";
 
@@ -365,6 +365,7 @@ function PaymentsTab() {
           approval_status: r.approval_status,
           approved_by: r.approved_by,
           approved_at: r.approved_at,
+          batch_id: r.batch_id,
           created_at: r.created_at,
           member_first_name: r.member?.first_name ?? null,
           member_last_name: r.member?.last_name ?? null,
@@ -399,6 +400,15 @@ function PaymentsTab() {
     () => filtered.reduce((s, p) => s + Number(p.amount ?? 0), 0),
     [filtered]
   );
+
+  const batchCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of payments) {
+      if (!p.batch_id) continue;
+      m.set(p.batch_id, (m.get(p.batch_id) ?? 0) + 1);
+    }
+    return m;
+  }, [payments]);
 
   const periodOptions = useMemo(() => {
     const set = new Set<string>();
@@ -694,6 +704,8 @@ function PaymentsTab() {
       const inserts: PaymentInsert[] = [];
       let pendingCount = 0;
 
+      const batchByFamily = new Map<string, string>();
+
       for (const row of bulkPreview) {
         if (existingIds.has(row.member_id)) continue;
         const finalAmount = Number(row.final_amount.replace(",", "."));
@@ -705,6 +717,21 @@ function PaymentsTab() {
             ? "approved"
             : "pending";
         if (approvalStatus === "pending") pendingCount++;
+
+        const member = members.find((m) => m.id === row.member_id);
+        let batchId: string;
+        if (member?.family_id) {
+          const existing = batchByFamily.get(member.family_id);
+          if (existing) {
+            batchId = existing;
+          } else {
+            batchId = generateUuid();
+            batchByFamily.set(member.family_id, batchId);
+          }
+        } else {
+          batchId = generateUuid();
+        }
+
         inserts.push({
           club_id: clubId,
           member_id: row.member_id,
@@ -719,6 +746,7 @@ function PaymentsTab() {
           type: bulkForm.type,
           period,
           payment_date: bulkForm.payment_date,
+          batch_id: batchId,
         });
       }
 
@@ -912,14 +940,30 @@ function PaymentsTab() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="inline-flex justify-end gap-2">
-                          <a
-                            href={`/finances/receipt/${p.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
-                          >
-                            Απόδειξη
-                          </a>
+                          {(() => {
+                            const batchSize = p.batch_id
+                              ? batchCounts.get(p.batch_id) ?? 1
+                              : 1;
+                            const isFamilyBatch = batchSize > 1;
+                            return (
+                              <a
+                                href={`/finances/receipt/${p.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title={
+                                  isFamilyBatch
+                                    ? `Οικογενειακή απόδειξη (${batchSize} μέλη)`
+                                    : undefined
+                                }
+                                className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
+                              >
+                                Απόδειξη
+                                {isFamilyBatch && (
+                                  <span aria-hidden>👪</span>
+                                )}
+                              </a>
+                            );
+                          })()}
                           <button
                             type="button"
                             onClick={() => handleDelete(p)}
