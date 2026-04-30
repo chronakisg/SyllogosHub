@@ -34,6 +34,11 @@ type CacheEntry = {
 
 const cache = new Map<string, CacheEntry>();
 
+export function invalidateClubCache(clubId?: string): void {
+  if (clubId) cache.delete(clubId);
+  else cache.clear();
+}
+
 function readImpersonateClubId(): string | null {
   if (typeof window === "undefined") return null;
   try {
@@ -134,9 +139,21 @@ export function useCurrentClub(): CurrentClubState {
       void resolve();
     });
 
+    function handleRefresh() {
+      if (cancelled) return;
+      setState((prev) => ({ ...prev, loading: true }));
+      void resolve();
+    }
+    if (typeof window !== "undefined") {
+      window.addEventListener("syllogoshub:refresh-club", handleRefresh);
+    }
+
     return () => {
       cancelled = true;
       sub.subscription.unsubscribe();
+      if (typeof window !== "undefined") {
+        window.removeEventListener("syllogoshub:refresh-club", handleRefresh);
+      }
     };
   }, []);
 

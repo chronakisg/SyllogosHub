@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
+import { invalidateClubCache, useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import type { ClubSettings } from "@/lib/supabase/types";
 
 export const DEFAULT_CLUB_NAME = "SyllogosHub";
@@ -53,9 +53,8 @@ function applyCssVars(s: ClubSettings | null) {
 }
 
 export async function refreshClubSettings(): Promise<void> {
-  // No-op: useCurrentClub re-runs on auth change. For explicit refresh of
-  // settings after a /settings save, call this from the settings page.
   if (typeof window !== "undefined") {
+    invalidateClubCache();
     window.dispatchEvent(new CustomEvent("syllogoshub:refresh-club"));
   }
 }
