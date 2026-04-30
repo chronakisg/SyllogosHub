@@ -179,10 +179,7 @@ export default function BrandingPage() {
           .eq("id", settings.id);
         if (uErr) throw uErr;
       } else {
-        const insert: ClubSettingsInsert = {
-          ...payload,
-          club_name: settings.club_name,
-        };
+        const insert: ClubSettingsInsert = payload;
         const { error: iErr } = await supabase
           .from("club_settings")
           .insert(insert);

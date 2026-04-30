@@ -9,6 +9,7 @@ import {
 } from "react";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
 import {
   refreshClubSettings,
@@ -24,9 +25,9 @@ const inputClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
 
 type FormState = {
-  club_name: string;
-  founded_year: string;
-  tax_id: string;
+  name: string;
+  foundation_year: string;
+  afm: string;
   address: string;
   phone: string;
   email: string;
@@ -35,11 +36,12 @@ type FormState = {
   instagram_url: string;
 };
 
-function fromSettings(s: ClubSettings | null): FormState {
+function fromSettings(s: ClubSettings | null, name: string): FormState {
   return {
-    club_name: s?.club_name ?? "",
-    founded_year: s?.founded_year != null ? String(s.founded_year) : "",
-    tax_id: s?.tax_id ?? "",
+    name,
+    foundation_year:
+      s?.foundation_year != null ? String(s.foundation_year) : "",
+    afm: s?.afm ?? "",
     address: s?.address ?? "",
     phone: s?.phone ?? "",
     email: s?.email ?? "",
@@ -51,8 +53,9 @@ function fromSettings(s: ClubSettings | null): FormState {
 
 export default function ClubInfoPage() {
   const role = useRole();
-  const { settings, loading: clubLoading } = useClubSettings();
-  const [form, setForm] = useState<FormState>(fromSettings(null));
+  const { settings, clubName, loading: clubLoading } = useClubSettings();
+  const { clubId } = useCurrentClub();
+  const [form, setForm] = useState<FormState>(fromSettings(null, ""));
   const [hydrated, setHydrated] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,11 +64,11 @@ export default function ClubInfoPage() {
   const isPrivileged = role.isSystemAdmin || role.isPresident;
 
   useEffect(() => {
-    if (!hydrated && settings.id) {
-      setForm(fromSettings(settings));
+    if (!hydrated && !clubLoading) {
+      setForm(fromSettings(settings.id ? settings : null, clubName));
       setHydrated(true);
     }
-  }, [settings, hydrated]);
+  }, [settings, clubName, clubLoading, hydrated]);
 
   function bind<K extends keyof FormState>(key: K) {
     return (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -75,26 +78,30 @@ export default function ClubInfoPage() {
   async function handleSave() {
     setError(null);
     setInfo(null);
-    if (!form.club_name.trim()) {
+    const name = form.name.trim();
+    if (!name) {
       setError("Το όνομα συλλόγου είναι υποχρεωτικό.");
       return;
     }
-    let foundedYear: number | null = null;
-    if (form.founded_year.trim()) {
-      const y = Number(form.founded_year);
+    if (!clubId) {
+      setError("Δεν έχει εντοπιστεί σύλλογος.");
+      return;
+    }
+    let foundationYear: number | null = null;
+    if (form.foundation_year.trim()) {
+      const y = Number(form.foundation_year);
       if (!Number.isInteger(y) || y < 1800 || y > 2100) {
         setError("Το έτος ίδρυσης δεν είναι έγκυρο.");
         return;
       }
-      foundedYear = y;
+      foundationYear = y;
     }
     setSaving(true);
     try {
       const supabase = getBrowserClient();
       const payload = {
-        club_name: form.club_name.trim(),
-        founded_year: foundedYear,
-        tax_id: form.tax_id.trim() || null,
+        foundation_year: foundationYear,
+        afm: form.afm.trim() || null,
         address: form.address.trim() || null,
         phone: form.phone.trim() || null,
         email: form.email.trim() || null,
@@ -104,6 +111,12 @@ export default function ClubInfoPage() {
         updated_at: new Date().toISOString(),
       } satisfies ClubSettingsUpdate;
 
+      const { error: nameErr } = await supabase
+        .from("clubs")
+        .update({ name })
+        .eq("id", clubId);
+      if (nameErr) throw nameErr;
+
       if (settings.id) {
         const { error: uErr } = await supabase
           .from("club_settings")
@@ -111,7 +124,7 @@ export default function ClubInfoPage() {
           .eq("id", settings.id);
         if (uErr) throw uErr;
       } else {
-        const insert: ClubSettingsInsert = payload;
+        const insert: ClubSettingsInsert = { ...payload, club_id: clubId };
         const { error: iErr } = await supabase
           .from("club_settings")
           .insert(insert);
@@ -172,8 +185,8 @@ export default function ClubInfoPage() {
             <input
               type="text"
               required
-              value={form.club_name}
-              onChange={bind("club_name")}
+              value={form.name}
+              onChange={bind("name")}
               className={inputClass}
             />
           </Field>
@@ -181,8 +194,8 @@ export default function ClubInfoPage() {
             <input
               type="number"
               inputMode="numeric"
-              value={form.founded_year}
-              onChange={bind("founded_year")}
+              value={form.foundation_year}
+              onChange={bind("foundation_year")}
               placeholder="π.χ. 1985"
               className={inputClass}
             />
@@ -190,8 +203,8 @@ export default function ClubInfoPage() {
           <Field label="ΑΦΜ">
             <input
               type="text"
-              value={form.tax_id}
-              onChange={bind("tax_id")}
+              value={form.afm}
+              onChange={bind("afm")}
               className={inputClass}
             />
           </Field>

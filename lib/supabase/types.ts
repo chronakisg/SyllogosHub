@@ -579,7 +579,6 @@ export type ThemePreset = "classic" | "cretan" | "nature" | "custom";
 export type ClubSettings = {
   id: string;
   club_id: string | null;
-  club_name: string;
   logo_url: string | null;
   primary_color: string;
   secondary_color: string;
@@ -594,15 +593,14 @@ export type ClubSettings = {
   website: string | null;
   facebook_url: string | null;
   instagram_url: string | null;
-  tax_id: string | null;
-  founded_year: number | null;
+  afm: string | null;
+  foundation_year: number | null;
   updated_at: string;
 };
 
 export type ClubSettingsInsert = {
   id?: string;
   club_id?: string | null;
-  club_name?: string;
   logo_url?: string | null;
   primary_color?: string;
   secondary_color?: string;
@@ -617,8 +615,8 @@ export type ClubSettingsInsert = {
   website?: string | null;
   facebook_url?: string | null;
   instagram_url?: string | null;
-  tax_id?: string | null;
-  founded_year?: number | null;
+  afm?: string | null;
+  foundation_year?: number | null;
   updated_at?: string;
 };
 

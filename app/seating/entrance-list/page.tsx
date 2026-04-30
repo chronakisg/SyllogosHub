@@ -24,7 +24,7 @@ export default function EntranceListPage() {
 function EntranceListView() {
   const params = useSearchParams();
   const eventId = params.get("event");
-  const { settings: club } = useClubSettings();
+  const { settings: club, clubName } = useClubSettings();
   const { clubId, loading: clubLoading } = useCurrentClub();
 
   const [event, setEvent] = useState<EventRow | null>(null);
@@ -134,12 +134,12 @@ function EntranceListView() {
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={club.logo_url}
-                alt={club.club_name}
+                alt={clubName}
                 className="h-14 w-14 shrink-0 rounded-lg object-cover"
               />
             )}
             <div>
-              <p className="text-sm text-muted">{club.club_name}</p>
+              <p className="text-sm text-muted">{clubName}</p>
               <h1 className="mt-0.5 text-2xl font-semibold tracking-tight">
                 {event.event_name}
               </h1>

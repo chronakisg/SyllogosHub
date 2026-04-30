@@ -43,7 +43,7 @@ type Line = {
 export default function ReceiptPage() {
   const params = useParams<{ paymentId: string }>();
   const paymentId = params?.paymentId;
-  const { settings: club } = useClubSettings();
+  const { settings: club, clubName } = useClubSettings();
   const { clubId, loading: clubLoading } = useCurrentClub();
 
   const [primary, setPrimary] = useState<Line | null>(null);
@@ -212,12 +212,12 @@ export default function ReceiptPage() {
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={club.logo_url}
-                alt={club.club_name}
+                alt={clubName}
                 className="h-14 w-14 shrink-0 rounded-lg object-cover"
               />
             )}
             <div>
-              <h1 className="text-2xl font-semibold">{club.club_name}</h1>
+              <h1 className="text-2xl font-semibold">{clubName}</h1>
               <p className="mt-1 text-sm text-muted">
                 Απόδειξη Είσπραξης Συνδρομής
               </p>

@@ -12,7 +12,6 @@ export const DEFAULT_ACCENT = "#f59e0b";
 export const FALLBACK_SETTINGS: ClubSettings = {
   id: "",
   club_id: null,
-  club_name: DEFAULT_CLUB_NAME,
   logo_url: null,
   primary_color: DEFAULT_PRIMARY,
   secondary_color: DEFAULT_SECONDARY,
@@ -27,8 +26,8 @@ export const FALLBACK_SETTINGS: ClubSettings = {
   website: null,
   facebook_url: null,
   instagram_url: null,
-  tax_id: null,
-  founded_year: null,
+  afm: null,
+  foundation_year: null,
   updated_at: new Date(0).toISOString(),
 };
 
@@ -63,10 +62,11 @@ export async function refreshClubSettings(): Promise<void> {
 
 export function useClubSettings(): {
   settings: ClubSettings;
+  clubName: string;
   loading: boolean;
   refresh: () => Promise<void>;
 } {
-  const { settings, loading } = useCurrentClub();
+  const { club, settings, loading } = useCurrentClub();
   const [, force] = useState(0);
 
   useEffect(() => {
@@ -84,6 +84,7 @@ export function useClubSettings(): {
 
   return {
     settings: settings ?? FALLBACK_SETTINGS,
+    clubName: club?.name ?? DEFAULT_CLUB_NAME,
     loading,
     refresh: refreshClubSettings,
   };

@@ -70,7 +70,7 @@ export default function EventSummaryPage() {
   const eventId = params?.eventId;
   const role = useRole();
   const currentClub = useCurrentClub();
-  const { settings: club } = useClubSettings();
+  const { settings: club, clubName } = useClubSettings();
 
   const [data, setData] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -218,11 +218,11 @@ export default function EventSummaryPage() {
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={club.logo_url}
-              alt={club.club_name}
+              alt={clubName}
               className="h-16 w-16 rounded-lg object-cover"
             />
           )}
-          <p className="text-sm text-muted">{club.club_name}</p>
+          <p className="text-sm text-muted">{clubName}</p>
           <h1 className="text-3xl font-semibold tracking-tight">
             {event.event_name}
           </h1>

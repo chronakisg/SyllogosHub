@@ -48,11 +48,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const role = useRole();
-  const { settings: club } = useClubSettings();
+  const { settings: club, clubName } = useClubSettings();
   const currentClub = useCurrentClub();
   const [signingOut, setSigningOut] = useState(false);
 
-  const headerTitle = currentClub.club?.name || club.club_name;
+  const headerTitle = currentClub.club?.name || clubName;
 
   if (pathname === "/login") {
     return <>{children}</>;
