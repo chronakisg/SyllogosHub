@@ -1124,6 +1124,14 @@ function MemberModal({
 
   const age = calculateAge(form.birth_date || null);
 
+  type Tab = "info" | "family" | "departments" | "role";
+  const [tab, setTab] = useState<Tab>("info");
+
+  const infoMissing =
+    !form.first_name.trim() || !form.last_name.trim();
+  const familyMissing =
+    form.family_mode !== "none" && !form.family_role;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -1132,21 +1140,52 @@ function MemberModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-xl border border-border bg-surface p-6 shadow-xl"
+        className="flex max-h-[92vh] w-full max-w-lg flex-col rounded-xl border border-border bg-surface shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4">
+        <div className="border-b border-border p-6">
           <h2 className="text-lg font-semibold">
             {editing ? "Επεξεργασία Μέλους" : "Νέο Μέλος"}
           </h2>
-          <p className="text-sm text-muted">
-            Συμπληρώστε τα στοιχεία του μέλους.
-          </p>
+          <div className="mt-3 inline-flex max-w-full overflow-x-auto rounded-lg border border-border bg-background p-0.5 text-xs">
+            <MemberTabBtn
+              current={tab}
+              value="info"
+              onSelect={setTab}
+              hasError={infoMissing}
+            >
+              Στοιχεία
+            </MemberTabBtn>
+            <MemberTabBtn
+              current={tab}
+              value="family"
+              onSelect={setTab}
+              hasError={familyMissing}
+            >
+              Οικογένεια
+            </MemberTabBtn>
+            <MemberTabBtn
+              current={tab}
+              value="departments"
+              onSelect={setTab}
+            >
+              Τμήματα
+            </MemberTabBtn>
+            <MemberTabBtn current={tab} value="role" onSelect={setTab}>
+              Ρόλος
+            </MemberTabBtn>
+          </div>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Επώνυμο" required>
+        <form
+          onSubmit={onSubmit}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">
+            {tab === "info" && (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Επώνυμο" required>
               <input
                 type="text"
                 required
@@ -1193,30 +1232,32 @@ function MemberModal({
             </Field>
           </div>
 
-          <Field label="Ημερομηνία Γέννησης">
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                lang="el"
-                value={form.birth_date}
-                onChange={(e) =>
-                  setForm((s) => ({ ...s, birth_date: e.target.value }))
-                }
-                className={inputClass}
-              />
-              {age != null && (
-                <span className="shrink-0 text-xs text-muted">
-                  ({age} ετών)
-                </span>
-              )}
-            </div>
-          </Field>
+                <Field label="Ημερομηνία Γέννησης">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      lang="el"
+                      value={form.birth_date}
+                      onChange={(e) =>
+                        setForm((s) => ({
+                          ...s,
+                          birth_date: e.target.value,
+                        }))
+                      }
+                      className={inputClass}
+                    />
+                    {age != null && (
+                      <span className="shrink-0 text-xs text-muted">
+                        ({age} ετών)
+                      </span>
+                    )}
+                  </div>
+                </Field>
+              </>
+            )}
 
-          <fieldset className="rounded-lg border border-border p-3">
-            <legend className="px-2 text-xs font-semibold uppercase tracking-wider text-muted">
-              Οικογένεια
-            </legend>
-            <div className="space-y-2 text-sm">
+            {tab === "family" && (
+              <div className="space-y-2 text-sm">
               <label className="flex items-center gap-2">
                 <input
                   type="radio"
@@ -1394,10 +1435,11 @@ function MemberModal({
                   </div>
                 </div>
               )}
-            </div>
-          </fieldset>
+              </div>
+            )}
 
-          <Field label="Τμήματα">
+            {tab === "departments" && (
+              <Field label="Τμήματα">
             {departments.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border bg-background/40 p-3 text-xs text-muted">
                 <p>Ο σύλλογος δεν έχει ορίσει τμήματα ακόμα.</p>
@@ -1461,25 +1503,28 @@ function MemberModal({
                 })}
               </div>
             )}
-          </Field>
+              </Field>
+            )}
 
-          <Field label="Κατάσταση">
-            <select
-              value={form.status}
-              onChange={(e) =>
-                setForm((s) => ({
-                  ...s,
-                  status: e.target.value as MemberStatus,
-                }))
-              }
-              className={inputClass}
-            >
-              <option value="active">Ενεργό</option>
-              <option value="inactive">Ανενεργό</option>
-            </select>
-          </Field>
+            {tab === "role" && (
+              <>
+                <Field label="Κατάσταση">
+                  <select
+                    value={form.status}
+                    onChange={(e) =>
+                      setForm((s) => ({
+                        ...s,
+                        status: e.target.value as MemberStatus,
+                      }))
+                    }
+                    className={inputClass}
+                  >
+                    <option value="active">Ενεργό</option>
+                    <option value="inactive">Ανενεργό</option>
+                  </select>
+                </Field>
 
-          <div className="space-y-3 rounded-lg border border-border p-3">
+                <div className="space-y-3 rounded-lg border border-border p-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="flex items-start gap-2 text-sm">
                 <input
@@ -1553,17 +1598,20 @@ function MemberModal({
                       <option key={p} value={p} />
                     ))}
                   </datalist>
-                </Field>
-              )}
+                    </Field>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
-          {formError && (
-            <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
-              {formError}
-            </div>
-          )}
-
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="border-t border-border p-6">
+            {formError && (
+              <div className="mb-3 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+                {formError}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
@@ -1583,10 +1631,51 @@ function MemberModal({
                   ? "Αποθήκευση Αλλαγών"
                   : "Προσθήκη Μέλους"}
             </button>
+            </div>
           </div>
         </form>
       </div>
     </div>
+  );
+}
+
+function MemberTabBtn({
+  current,
+  value,
+  onSelect,
+  hasError,
+  children,
+}: {
+  current: "info" | "family" | "departments" | "role";
+  value: "info" | "family" | "departments" | "role";
+  onSelect: (v: "info" | "family" | "departments" | "role") => void;
+  hasError?: boolean;
+  children: React.ReactNode;
+}) {
+  const active = current === value;
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(value)}
+      className={
+        "inline-flex shrink-0 items-center gap-1 rounded-md px-3 py-1 transition " +
+        (active
+          ? "bg-accent text-white"
+          : "text-muted hover:text-foreground")
+      }
+    >
+      <span>{children}</span>
+      {hasError && (
+        <span
+          aria-hidden
+          className={
+            "inline-block h-1.5 w-1.5 rounded-full " +
+            (active ? "bg-white" : "bg-danger")
+          }
+          title="Λείπουν υποχρεωτικά πεδία"
+        />
+      )}
+    </button>
   );
 }
 
