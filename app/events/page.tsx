@@ -114,6 +114,22 @@ function entertainersBadge(list: EventEntertainerSummary[]): string {
   return `${list[0].name} +${list.length - 1}`;
 }
 
+function todayInAthens(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Athens",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (type: string) =>
+    parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function isPastEventDate(eventDate: string): boolean {
+  return eventDate.slice(0, 10) < todayInAthens();
+}
+
 function memberDisplayName(m: Member): string {
   return `${m.last_name} ${m.first_name}`.trim();
 }
@@ -782,22 +798,48 @@ function EventModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-border p-6">
-          <h2 className="text-lg font-semibold">
-            {editing ? "Επεξεργασία Εκδήλωσης" : "Νέα Εκδήλωση"}
-          </h2>
-          <div className="mt-3 inline-flex rounded-lg border border-border bg-background p-0.5 text-xs">
-            <TabBtn current={tab} value="details" onSelect={setTab}>
-              Λεπτομέρειες
-            </TabBtn>
-            <TabBtn current={tab} value="tickets" onSelect={setTab}>
-              Τιμές
-            </TabBtn>
-            <TabBtn current={tab} value="entertainment" onSelect={setTab}>
-              Ψυχαγωγία
-            </TabBtn>
-            <TabBtn current={tab} value="sponsors" onSelect={setTab}>
-              Χορηγοί
-            </TabBtn>
+          {editing ? (
+            (() => {
+              const past = isPastEventDate(editing.event_date);
+              const dotLabel = past
+                ? "Παρελθούσα εκδήλωση"
+                : "Ενεργή εκδήλωση";
+              return (
+                <h2 className="inline-flex items-center gap-2 text-lg font-semibold">
+                  <span
+                    title={dotLabel}
+                    aria-label={dotLabel}
+                    className={
+                      "block h-2.5 w-2.5 shrink-0 rounded-full " +
+                      (past ? "bg-rose-500" : "bg-emerald-500")
+                    }
+                  />
+                  <span>
+                    {details.event_name.trim() ||
+                      editing.event_name ||
+                      "Επεξεργασία Εκδήλωσης"}
+                  </span>
+                </h2>
+              );
+            })()
+          ) : (
+            <h2 className="text-lg font-semibold">Νέα Εκδήλωση</h2>
+          )}
+          <div className="mt-3">
+            <div className="inline-flex rounded-lg border border-border bg-background p-0.5 text-xs">
+              <TabBtn current={tab} value="details" onSelect={setTab}>
+                Λεπτομέρειες
+              </TabBtn>
+              <TabBtn current={tab} value="tickets" onSelect={setTab}>
+                Τιμές
+              </TabBtn>
+              <TabBtn current={tab} value="entertainment" onSelect={setTab}>
+                Ψυχαγωγία
+              </TabBtn>
+              <TabBtn current={tab} value="sponsors" onSelect={setTab}>
+                Χορηγοί
+              </TabBtn>
+            </div>
           </div>
         </div>
 
@@ -1031,14 +1073,23 @@ function EntertainmentTab({
         </div>
       </div>
 
-      {entertainers.length === 0 && rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted">
-          Δεν έχουν οριστεί ψυχαγωγοί. Πατήστε «Νέος ψυχαγωγός».
-        </p>
-      ) : rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted">
-          Δεν έχει οριστεί ψυχαγωγία για αυτήν την εκδήλωση.
-        </p>
+      {rows.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted">
+          <span>Δεν έχει οριστεί ψυχαγωγία.</span>
+          <button
+            type="button"
+            onClick={addEmpty}
+            disabled={entertainers.length === 0}
+            className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-foreground/5 disabled:opacity-50"
+          >
+            + Προσθήκη ψυχαγωγού
+          </button>
+          {entertainers.length === 0 && (
+            <span className="text-xs">
+              Δεν υπάρχουν ψυχαγωγοί ακόμη — ξεκινήστε με «+ Νέος ψυχαγωγός».
+            </span>
+          )}
+        </div>
       ) : (
         <ul className="space-y-2">
           {rows.map((r, i) => {
