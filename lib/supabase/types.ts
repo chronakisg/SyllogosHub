@@ -17,6 +17,8 @@ export type ClubInsert = {
 
 export type ClubUpdate = Partial<Omit<Club, "id" | "created_at">>;
 
+export type FamilyRole = "parent" | "child" | "spouse" | "other";
+
 export type Member = {
   id: string;
   club_id: string | null;
@@ -31,6 +33,7 @@ export type Member = {
   is_system_admin: boolean;
   birth_date: string | null;
   family_id: string | null;
+  family_role: FamilyRole | null;
   created_at: string;
 };
 
@@ -48,10 +51,18 @@ export type MemberInsert = {
   is_system_admin?: boolean;
   birth_date?: string | null;
   family_id?: string | null;
+  family_role?: FamilyRole | null;
   created_at?: string;
 };
 
 export type MemberUpdate = Partial<Omit<Member, "id" | "created_at">>;
+
+export const FAMILY_ROLE_LABELS: Record<FamilyRole, string> = {
+  parent: "Γονέας",
+  child: "Παιδί",
+  spouse: "Σύζυγος",
+  other: "Άλλο",
+};
 
 export type DepartmentRole = "member" | "leader" | "assistant";
 

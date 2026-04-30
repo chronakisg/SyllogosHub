@@ -11,8 +11,10 @@ import { calculateAge, generateUuid } from "@/lib/utils/discounts";
 import {
   BOARD_POSITIONS,
   DEPARTMENT_ROLE_LABELS,
+  FAMILY_ROLE_LABELS,
   type Department,
   type DepartmentRole,
+  type FamilyRole,
   type Member,
   type MemberInsert,
   type MemberStatus,
@@ -50,6 +52,7 @@ type FormState = {
   family_mode: FamilyMode;
   family_id: string | null;
   link_member_id: string;
+  family_role: FamilyRole | null;
 };
 
 const EMPTY_FORM: FormState = {
@@ -66,7 +69,14 @@ const EMPTY_FORM: FormState = {
   family_mode: "none",
   family_id: null,
   link_member_id: "",
+  family_role: null,
 };
+
+function defaultFamilyRole(birthDate: string | null): FamilyRole {
+  const age = calculateAge(birthDate);
+  if (age != null && age < 18) return "child";
+  return "parent";
+}
 
 const inputClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
@@ -114,6 +124,7 @@ export default function MembersPage() {
       ...EMPTY_FORM,
       family_mode: "link",
       link_member_id: memberId,
+      family_role: defaultFamilyRole(null),
     };
     setEditing(null);
     setForm(next);
@@ -200,13 +211,55 @@ export default function MembersPage() {
     [departmentOptions]
   );
 
-  const familyCounts = useMemo(() => {
-    const m = new Map<string, number>();
+  const familyMembersByFamily = useMemo(() => {
+    const m = new Map<string, MemberWithDepartments[]>();
     for (const x of members) {
-      if (x.family_id) m.set(x.family_id, (m.get(x.family_id) ?? 0) + 1);
+      if (!x.family_id) continue;
+      const list = m.get(x.family_id) ?? [];
+      list.push(x);
+      m.set(x.family_id, list);
     }
     return m;
   }, [members]);
+
+  function familyTooltip(member: MemberWithDepartments): string {
+    if (!member.family_id) return "";
+    const all = familyMembersByFamily.get(member.family_id) ?? [];
+    const rank = (r: FamilyRole | null): number => {
+      if (r === "parent") return 0;
+      if (r === "spouse") return 1;
+      if (r === "child") return 2;
+      return 3;
+    };
+    const sorted = [...all].sort((a, b) => {
+      const dr = rank(a.family_role) - rank(b.family_role);
+      if (dr !== 0) return dr;
+      if (a.family_role === "child" && b.family_role === "child") {
+        const aa = calculateAge(a.birth_date);
+        const bb = calculateAge(b.birth_date);
+        if (aa != null && bb != null) return aa - bb;
+      }
+      return `${a.last_name} ${a.first_name}`.localeCompare(
+        `${b.last_name} ${b.first_name}`,
+        "el"
+      );
+    });
+    const lines = [`Οικογένεια — ${all.length} μέλη`];
+    const max = 5;
+    for (const x of sorted.slice(0, max)) {
+      const role = x.family_role
+        ? FAMILY_ROLE_LABELS[x.family_role]
+        : "Μέλος";
+      const age = calculateAge(x.birth_date);
+      const name = `${x.last_name} ${x.first_name}`.trim();
+      const tail = age != null && x.family_role === "child" ? ` (${age})` : "";
+      lines.push(`• ${role}: ${name}${tail}`);
+    }
+    if (sorted.length > max) {
+      lines.push(`+${sorted.length - max} περισσότερα`);
+    }
+    return lines.join("\n");
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -286,6 +339,7 @@ export default function MembersPage() {
       family_mode: member.family_id ? "link" : "none",
       family_id: member.family_id,
       link_member_id: "",
+      family_role: member.family_role,
     };
     setEditing(member);
     setForm(next);
@@ -394,6 +448,11 @@ export default function MembersPage() {
       return;
     }
 
+    if (form.family_mode !== "none" && !form.family_role) {
+      setFormError("Επιλέξτε ρόλο στην οικογένεια.");
+      return;
+    }
+
     // Resolve family_id based on selected mode
     let resolvedFamilyId: string | null = null;
     if (form.family_mode === "new") {
@@ -437,6 +496,8 @@ export default function MembersPage() {
       is_president: form.is_president,
       birth_date: form.birth_date || null,
       family_id: resolvedFamilyId,
+      family_role:
+        resolvedFamilyId && form.family_role ? form.family_role : null,
     };
 
     const wasCreate = !editing;
@@ -758,7 +819,7 @@ export default function MembersPage() {
                         )}
                         {m.family_id && (
                           <span
-                            title={`Οικογένεια — ${familyCounts.get(m.family_id) ?? 1} μέλη`}
+                            title={familyTooltip(m)}
                             className="text-sm"
                             aria-label="Οικογένεια"
                           >
@@ -1011,6 +1072,56 @@ function MemberModal({
     onAddFamilyMember(linkContext.targetMemberId);
   }
 
+  useEffect(() => {
+    if (form.family_mode === "none") {
+      if (form.family_role !== null) {
+        setForm((s) => ({ ...s, family_role: null }));
+      }
+    } else if (!form.family_role) {
+      setForm((s) => ({
+        ...s,
+        family_role: defaultFamilyRole(form.birth_date || null),
+      }));
+    }
+  }, [form.family_mode, form.birth_date, form.family_role, setForm]);
+
+  const familyMembers = useMemo<MemberWithDepartments[]>(() => {
+    let famId: string | null = null;
+    if (editing && editing.family_id) {
+      famId = editing.family_id;
+    } else if (
+      !editing &&
+      form.family_mode === "link" &&
+      form.link_member_id
+    ) {
+      const t = members.find((m) => m.id === form.link_member_id);
+      famId = t?.family_id ?? null;
+    }
+    if (!famId) return [];
+    const list = members.filter(
+      (m) => m.family_id === famId && m.id !== editing?.id
+    );
+    const rank = (r: FamilyRole | null): number => {
+      if (r === "parent") return 0;
+      if (r === "spouse") return 1;
+      if (r === "child") return 2;
+      return 3;
+    };
+    return [...list].sort((a, b) => {
+      const dr = rank(a.family_role) - rank(b.family_role);
+      if (dr !== 0) return dr;
+      if (a.family_role === "child" && b.family_role === "child") {
+        const aa = calculateAge(a.birth_date);
+        const bb = calculateAge(b.birth_date);
+        if (aa != null && bb != null) return aa - bb;
+      }
+      return `${a.last_name} ${a.first_name}`.localeCompare(
+        `${b.last_name} ${b.first_name}`,
+        "el"
+      );
+    });
+  }, [editing, members, form.family_mode, form.link_member_id]);
+
   const age = calculateAge(form.birth_date || null);
 
   return (
@@ -1201,18 +1312,86 @@ function MemberModal({
                 </div>
               )}
 
-              {linkContext && (
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs">
-                  <span className="text-muted">
-                    👪 Μέλη οικογένειας: {linkContext.othersCount}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleAddFamilyMember}
-                    className="font-medium text-[var(--brand-primary)] hover:underline"
+              {form.family_mode !== "none" && (
+                <div className="mt-3 border-t border-border pt-3">
+                  <label className="block text-xs font-medium text-muted">
+                    Ρόλος στην οικογένεια
+                    <span className="text-danger"> *</span>
+                  </label>
+                  <select
+                    required
+                    value={form.family_role ?? ""}
+                    onChange={(e) =>
+                      setForm((s) => ({
+                        ...s,
+                        family_role: (e.target.value || null) as
+                          | FamilyRole
+                          | null,
+                      }))
+                    }
+                    className={inputClass + " mt-1"}
                   >
-                    + Προσθήκη μέλους στην οικογένεια
-                  </button>
+                    <option value="parent">
+                      {FAMILY_ROLE_LABELS.parent}
+                    </option>
+                    <option value="child">
+                      {FAMILY_ROLE_LABELS.child}
+                    </option>
+                    <option value="spouse">
+                      {FAMILY_ROLE_LABELS.spouse}
+                    </option>
+                    <option value="other">
+                      {FAMILY_ROLE_LABELS.other}
+                    </option>
+                  </select>
+                </div>
+              )}
+
+              {linkContext && (
+                <div className="mt-3 border-t border-border pt-3 text-xs">
+                  <p className="mb-1.5 text-muted">
+                    👪 Μέλη οικογένειας ({familyMembers.length}):
+                  </p>
+                  {familyMembers.length === 0 ? (
+                    <p className="text-muted">— Κανένα άλλο μέλος —</p>
+                  ) : (
+                    <ul className="space-y-0.5">
+                      {familyMembers.map((m) => {
+                        const a = calculateAge(m.birth_date);
+                        const roleLabel = m.family_role
+                          ? FAMILY_ROLE_LABELS[m.family_role]
+                          : null;
+                        return (
+                          <li key={m.id}>
+                            <span className="font-medium uppercase">
+                              {m.last_name} {m.first_name}
+                            </span>
+                            {(roleLabel || a != null) && (
+                              <span className="text-muted">
+                                {" "}
+                                —{" "}
+                                {[
+                                  roleLabel,
+                                  a != null ? `${a} ετών` : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleAddFamilyMember}
+                      className="font-medium text-[var(--brand-primary)] hover:underline"
+                    >
+                      + Προσθήκη μέλους στην οικογένεια
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
