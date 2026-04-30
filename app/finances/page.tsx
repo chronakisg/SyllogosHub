@@ -281,6 +281,7 @@ function PaymentsTab() {
   const [discountRules, setDiscountRules] = useState<DiscountRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const [memberFilter, setMemberFilter] = useState<string>("");
   const [typeFilter, setTypeFilter] = useState<"all" | PaymentType>("all");
@@ -290,6 +291,13 @@ function PaymentsTab() {
   const [form, setForm] = useState<PaymentForm>(emptyPaymentForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const [batchDelete, setBatchDelete] = useState<{
+    batchId: string;
+    rows: PaymentRow[];
+    blockedByApproval: boolean;
+  } | null>(null);
+  const [batchDeleting, setBatchDeleting] = useState(false);
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<PaymentTemplate | null>(
@@ -410,6 +418,23 @@ function PaymentsTab() {
     return m;
   }, [payments]);
 
+  const batchPositions = useMemo(() => {
+    const seen = new Map<string, number>();
+    const m = new Map<string, number>();
+    const sorted = [...payments].sort((a, b) =>
+      a.payment_date === b.payment_date
+        ? a.created_at.localeCompare(b.created_at)
+        : a.payment_date.localeCompare(b.payment_date)
+    );
+    for (const p of sorted) {
+      if (!p.batch_id) continue;
+      const pos = (seen.get(p.batch_id) ?? 0) + 1;
+      seen.set(p.batch_id, pos);
+      m.set(p.id, pos);
+    }
+    return m;
+  }, [payments]);
+
   const periodOptions = useMemo(() => {
     const set = new Set<string>();
     for (const p of payments) if (p.period) set.add(p.period);
@@ -476,10 +501,25 @@ function PaymentsTab() {
   }
 
   async function handleDelete(p: PaymentRow) {
+    if (!clubId) return;
+    if (p.batch_id) {
+      const rows = payments.filter((x) => x.batch_id === p.batch_id);
+      if (rows.length > 1) {
+        const blockedByApproval = rows.some(
+          (r) => r.approval_status === "approved"
+        );
+        setBatchDelete({
+          batchId: p.batch_id,
+          rows,
+          blockedByApproval,
+        });
+        return;
+      }
+    }
     const ok = window.confirm(
       "Διαγραφή πληρωμής; Η ενέργεια δεν αναιρείται."
     );
-    if (!ok || !clubId) return;
+    if (!ok) return;
     try {
       const supabase = getBrowserClient();
       const { error: dErr } = await supabase
@@ -491,6 +531,69 @@ function PaymentsTab() {
       await load();
     } catch (err) {
       setError(errorMessage(err, "Σφάλμα διαγραφής πληρωμής."));
+    }
+  }
+
+  async function confirmBatchDelete() {
+    if (!batchDelete || !clubId || batchDelete.blockedByApproval) return;
+    const { batchId, rows } = batchDelete;
+    setBatchDeleting(true);
+    try {
+      const supabase = getBrowserClient();
+      const totalAmount = rows.reduce(
+        (s, r) => s + Number(r.amount ?? 0),
+        0
+      );
+      const snapshot = rows.map((r) => ({
+        id: r.id,
+        member_id: r.member_id,
+        member_first_name: r.member_first_name,
+        member_last_name: r.member_last_name,
+        amount: Number(r.amount),
+        payment_date: r.payment_date,
+        type: r.type,
+        period: r.period,
+        original_amount: r.original_amount,
+        override_reason: r.override_reason,
+        approval_status: r.approval_status,
+        approved_by: r.approved_by,
+        approved_at: r.approved_at,
+        batch_id: r.batch_id,
+        created_at: r.created_at,
+      }));
+      const { error: auditErr } = await supabase
+        .from("payment_deletion_audit")
+        .insert({
+          club_id: clubId,
+          batch_id: batchId,
+          deleted_by: role.memberId ?? null,
+          override_reason: null,
+          payment_count: rows.length,
+          total_amount: totalAmount,
+          payments_snapshot: snapshot,
+          had_approved_payments: false,
+        });
+      if (auditErr) {
+        setError(
+          errorMessage(auditErr, "Σφάλμα audit log — η διαγραφή ακυρώθηκε.")
+        );
+        return;
+      }
+      const { error: dErr } = await supabase
+        .from("payments")
+        .delete()
+        .eq("batch_id", batchId)
+        .eq("club_id", clubId);
+      if (dErr) throw dErr;
+      const n = rows.length;
+      setBatchDelete(null);
+      await load();
+      setError(null);
+      setNotice(`Διαγράφηκαν ${n} πληρωμές της οικογένειας.`);
+    } catch (err) {
+      setError(errorMessage(err, "Σφάλμα διαγραφής πληρωμών οικογένειας."));
+    } finally {
+      setBatchDeleting(false);
     }
   }
 
@@ -884,6 +987,20 @@ function PaymentsTab() {
         </div>
       )}
 
+      {notice && (
+        <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300">
+          <span>{notice}</span>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            className="shrink-0 rounded px-2 text-xs hover:opacity-70"
+            aria-label="Κλείσιμο"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -919,12 +1036,33 @@ function PaymentsTab() {
                     p.member_last_name || p.member_first_name
                       ? `${p.member_last_name ?? ""} ${p.member_first_name ?? ""}`.trim()
                       : "—";
+                  const batchSize = p.batch_id
+                    ? batchCounts.get(p.batch_id) ?? 1
+                    : 1;
+                  const batchPos = p.batch_id
+                    ? batchPositions.get(p.id) ?? 1
+                    : 0;
+                  const inBatch = batchSize > 1;
                   return (
                     <tr key={p.id} className="hover:bg-background/40">
-                      <td className="px-4 py-3 text-muted">
+                      <td
+                        className={
+                          "px-4 py-3 text-muted" +
+                          (inBatch
+                            ? " border-l-[3px] border-l-[#800000]"
+                            : "")
+                        }
+                      >
                         {new Date(p.payment_date).toLocaleDateString("el-GR")}
                       </td>
-                      <td className="px-4 py-3 font-medium">{name}</td>
+                      <td className="px-4 py-3 font-medium">
+                        {name}
+                        {inBatch && (
+                          <div className="text-xs text-gray-500">
+                            Οικογένεια {batchPos}/{batchSize}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-muted">
                         {PAYMENT_TYPE_LABEL[p.type]}
                       </td>
@@ -940,30 +1078,20 @@ function PaymentsTab() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="inline-flex justify-end gap-2">
-                          {(() => {
-                            const batchSize = p.batch_id
-                              ? batchCounts.get(p.batch_id) ?? 1
-                              : 1;
-                            const isFamilyBatch = batchSize > 1;
-                            return (
-                              <a
-                                href={`/finances/receipt/${p.id}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title={
-                                  isFamilyBatch
-                                    ? `Οικογενειακή απόδειξη (${batchSize} μέλη)`
-                                    : undefined
-                                }
-                                className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
-                              >
-                                Απόδειξη
-                                {isFamilyBatch && (
-                                  <span aria-hidden>👪</span>
-                                )}
-                              </a>
-                            );
-                          })()}
+                          <a
+                            href={`/finances/receipt/${p.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={
+                              inBatch
+                                ? `Οικογενειακή απόδειξη (${batchSize} μέλη)`
+                                : undefined
+                            }
+                            className="inline-flex items-center gap-1 rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
+                          >
+                            Απόδειξη
+                            {inBatch && <span aria-hidden>👪</span>}
+                          </a>
                           <button
                             type="button"
                             onClick={() => handleDelete(p)}
@@ -1005,6 +1133,18 @@ function PaymentsTab() {
           formError={formError}
           onClose={closeModal}
           onSubmit={handleSubmit}
+        />
+      )}
+
+      {batchDelete && (
+        <BatchDeleteModal
+          rows={batchDelete.rows}
+          blockedByApproval={batchDelete.blockedByApproval}
+          deleting={batchDeleting}
+          onCancel={() => {
+            if (!batchDeleting) setBatchDelete(null);
+          }}
+          onConfirm={confirmBatchDelete}
         />
       )}
 
@@ -1690,6 +1830,125 @@ function PreviewSummary({
           έγκριση προέδρου
         </p>
       )}
+    </div>
+  );
+}
+
+function BatchDeleteModal({
+  rows,
+  blockedByApproval,
+  deleting,
+  onCancel,
+  onConfirm,
+}: {
+  rows: PaymentRow[];
+  blockedByApproval: boolean;
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const total = rows.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+
+  function renderRowList() {
+    return (
+      <ul className="mb-3 space-y-1 rounded-lg border border-border bg-background p-3 text-sm">
+        {rows.map((r) => {
+          const name =
+            r.member_last_name || r.member_first_name
+              ? `${r.member_last_name ?? ""} ${r.member_first_name ?? ""}`.trim()
+              : "—";
+          return (
+            <li
+              key={r.id}
+              className="flex items-center justify-between gap-3"
+            >
+              <span>
+                {name}
+                {r.approval_status === "approved" && (
+                  <span className="ml-2 text-xs text-emerald-700 dark:text-emerald-300">
+                    🟢 Εγκρίθηκε
+                  </span>
+                )}
+              </span>
+              <span className="font-medium">
+                {eur.format(Number(r.amount))}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="mb-3 text-lg font-semibold">
+          Διαγραφή πληρωμής οικογένειας
+        </h2>
+
+        {blockedByApproval ? (
+          <>
+            <div className="mb-4 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+              Δεν μπορείτε να διαγράψετε batch με εγκεκριμένες πληρωμές.
+              Απορρίψτε ή ανακαλέστε πρώτα την έγκριση.
+            </div>
+            {renderRowList()}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background"
+              >
+                Κλείσιμο
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="mb-3 text-sm text-muted">
+              Αυτή η πληρωμή είναι μέρος ομαδικής εγγραφής οικογένειας. Θα
+              διαγραφούν και οι {rows.length} πληρωμές:
+            </p>
+            {renderRowList()}
+            <p className="mb-4 text-sm">
+              <span className="text-muted">Σύνολο: </span>
+              <span className="font-semibold">{eur.format(total)}</span>
+            </p>
+            <p className="mb-4 text-xs text-muted">
+              Η ενέργεια δεν αναιρείται. Καταγράφεται σε audit log.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={deleting}
+                className="rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background disabled:opacity-50"
+              >
+                Ακύρωση
+              </button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                disabled={deleting}
+                className="rounded-lg bg-[#800000] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                {deleting
+                  ? "Διαγραφή…"
+                  : `Ναι, διαγραφή και των ${rows.length}`}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

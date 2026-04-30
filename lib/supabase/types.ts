@@ -160,6 +160,32 @@ export type PaymentInsert = {
 
 export type PaymentUpdate = Partial<Omit<Payment, "id" | "created_at">>;
 
+export type PaymentDeletionAudit = {
+  id: string;
+  club_id: string | null;
+  batch_id: string | null;
+  deleted_by: string | null;
+  deleted_at: string;
+  override_reason: string | null;
+  payment_count: number;
+  total_amount: number;
+  payments_snapshot: unknown;
+  had_approved_payments: boolean;
+};
+
+export type PaymentDeletionAuditInsert = {
+  id?: string;
+  club_id?: string | null;
+  batch_id?: string | null;
+  deleted_by?: string | null;
+  deleted_at?: string;
+  override_reason?: string | null;
+  payment_count: number;
+  total_amount: number;
+  payments_snapshot: unknown;
+  had_approved_payments: boolean;
+};
+
 export type DiscountContext = "subscription" | "event_ticket";
 export type DiscountRuleType = "age_based" | "sibling_order";
 
@@ -699,6 +725,27 @@ export type Database = {
           {
             foreignKeyName: "payments_member_id_fkey";
             columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      payment_deletion_audit: {
+        Row: PaymentDeletionAudit;
+        Insert: PaymentDeletionAuditInsert;
+        Update: Partial<PaymentDeletionAudit>;
+        Relationships: [
+          {
+            foreignKeyName: "payment_deletion_audit_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "payment_deletion_audit_deleted_by_fkey";
+            columns: ["deleted_by"];
             isOneToOne: false;
             referencedRelation: "members";
             referencedColumns: ["id"];
