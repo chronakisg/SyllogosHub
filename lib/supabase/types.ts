@@ -457,6 +457,34 @@ export type ReservationInsert = {
 
 export type ReservationUpdate = Partial<Omit<Reservation, "id" | "created_at">>;
 
+export type ReservationAttendee = {
+  id: string;
+  reservation_id: string;
+  club_id: string | null;
+  member_id: string | null;
+  guest_name: string | null;
+  is_lead: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ReservationAttendeeInsert = {
+  id?: string;
+  reservation_id: string;
+  club_id?: string | null;
+  member_id?: string | null;
+  guest_name?: string | null;
+  is_lead?: boolean;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type ReservationAttendeeUpdate = Partial<
+  Omit<ReservationAttendee, "id" | "created_at">
+>;
+
 export type CalendarEventCategory = "lesson" | "event" | "meeting" | "other";
 export type CalendarEventStatus = "active" | "cancelled";
 export type CalendarRecurrencePattern = "weekly";
@@ -896,6 +924,34 @@ export type Database = {
             columns: ["event_id"];
             isOneToOne: false;
             referencedRelation: "events";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      reservation_attendees: {
+        Row: ReservationAttendee;
+        Insert: ReservationAttendeeInsert;
+        Update: ReservationAttendeeUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "reservation_attendees_reservation_id_fkey";
+            columns: ["reservation_id"];
+            isOneToOne: false;
+            referencedRelation: "reservations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reservation_attendees_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reservation_attendees_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
             referencedColumns: ["id"];
           },
         ];

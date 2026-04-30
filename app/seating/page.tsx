@@ -20,6 +20,13 @@ import type {
   Member,
   Reservation,
 } from "@/lib/supabase/types";
+import {
+  RESERVATION_SELECT,
+  getAttendeeCount,
+  hasAnonymousAttendees,
+  type ReservationWithAttendees,
+} from "@/lib/utils/attendees";
+import { AttendeesEditor } from "@/components/AttendeesEditor";
 
 type TableShape = "round" | "square";
 
@@ -98,7 +105,9 @@ function SeatingView() {
   const [venueConfig, setVenueConfig] = useState<VenueMapConfig>({
     tables: [],
   });
-  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [reservations, setReservations] = useState<ReservationWithAttendees[]>(
+    []
+  );
   const [selectedReservationId, setSelectedReservationId] = useState<
     string | null
   >(null);
@@ -112,6 +121,8 @@ function SeatingView() {
   const [guestPanelReservationId, setGuestPanelReservationId] = useState<
     string | null
   >(null);
+  const [attendeesEditorReservationId, setAttendeesEditorReservationId] =
+    useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
 
   useEffect(() => {
@@ -146,7 +157,7 @@ function SeatingView() {
   }, [venueConfig]);
 
   const reservationByTableNumber = useMemo(() => {
-    const m = new Map<number, Reservation>();
+    const m = new Map<number, ReservationWithAttendees>();
     for (const r of reservations) {
       if (r.table_number != null) m.set(r.table_number, r);
     }
@@ -175,7 +186,7 @@ function SeatingView() {
             .single(),
           supabase
             .from("reservations")
-            .select("*")
+            .select(RESERVATION_SELECT)
             .eq("event_id", eventId)
             .eq("club_id", clubId),
         ]);
@@ -183,10 +194,33 @@ function SeatingView() {
         if (resRes.error) throw resRes.error;
         setError(null);
         setVenueConfig(parseVenueConfig(evRes.data.venue_map_config));
-        setReservations(resRes.data ?? []);
+        setReservations(
+          (resRes.data ?? []) as unknown as ReservationWithAttendees[]
+        );
         setLoadedEventId(eventId);
       } catch (err) {
         setError(errorMessage(err, "Σφάλμα φόρτωσης δεδομένων."));
+      }
+    },
+    [clubId]
+  );
+
+  const refetchReservations = useCallback(
+    async (eventId: string) => {
+      if (!clubId) return;
+      try {
+        const supabase = getBrowserClient();
+        const { data, error: qErr } = await supabase
+          .from("reservations")
+          .select(RESERVATION_SELECT)
+          .eq("event_id", eventId)
+          .eq("club_id", clubId);
+        if (qErr) throw qErr;
+        setReservations(
+          (data ?? []) as unknown as ReservationWithAttendees[]
+        );
+      } catch (err) {
+        setError(errorMessage(err, "Σφάλμα ανανέωσης παρευρισκόμενων."));
       }
     },
     [clubId]
@@ -239,7 +273,7 @@ function SeatingView() {
             .single(),
           supabase
             .from("reservations")
-            .select("*")
+            .select(RESERVATION_SELECT)
             .eq("event_id", eventId)
             .eq("club_id", clubId),
         ]);
@@ -248,7 +282,9 @@ function SeatingView() {
         if (resRes.error) throw resRes.error;
         setError(null);
         setVenueConfig(parseVenueConfig(evRes.data.venue_map_config));
-        setReservations(resRes.data ?? []);
+        setReservations(
+          (resRes.data ?? []) as unknown as ReservationWithAttendees[]
+        );
         setLoadedEventId(eventId);
       } catch (err) {
         if (cancelled) return;
@@ -262,27 +298,32 @@ function SeatingView() {
 
   useEffect(() => {
     if (!selectedEventId) return;
+    const eventId = selectedEventId;
     const supabase = getBrowserClient();
-    const channel = supabase
-      .channel(`reservations:event:${selectedEventId}`)
+    const reservationsChannel = supabase
+      .channel(`reservations:event:${eventId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "reservations",
-          filter: `event_id=eq.${selectedEventId}`,
+          filter: `event_id=eq.${eventId}`,
         },
         (payload) => {
           if (payload.eventType === "INSERT") {
             const row = payload.new as Reservation;
             setReservations((prev) =>
-              prev.some((r) => r.id === row.id) ? prev : [...prev, row]
+              prev.some((r) => r.id === row.id)
+                ? prev
+                : [...prev, { ...row, attendees: [] }]
             );
           } else if (payload.eventType === "UPDATE") {
             const row = payload.new as Reservation;
             setReservations((prev) =>
-              prev.map((r) => (r.id === row.id ? row : r))
+              prev.map((r) =>
+                r.id === row.id ? { ...row, attendees: r.attendees } : r
+              )
             );
           } else if (payload.eventType === "DELETE") {
             const old = payload.old as Partial<Reservation>;
@@ -297,11 +338,27 @@ function SeatingView() {
         setRealtimeReady(status === "SUBSCRIBED");
       });
 
+    const attendeesChannel = supabase
+      .channel(`attendees:event:${eventId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "reservation_attendees",
+        },
+        () => {
+          refetchReservations(eventId);
+        }
+      )
+      .subscribe();
+
     return () => {
       setRealtimeReady(false);
-      supabase.removeChannel(channel);
+      supabase.removeChannel(reservationsChannel);
+      supabase.removeChannel(attendeesChannel);
     };
-  }, [selectedEventId]);
+  }, [selectedEventId, refetchReservations]);
 
   const assignReservation = useCallback(
     async (reservationId: string, tableNumber: number | null) => {
@@ -468,15 +525,35 @@ function SeatingView() {
       if (!selectedEventId || !clubId) return;
       try {
         const supabase = getBrowserClient();
-        const { error: iErr } = await supabase.from("reservations").insert({
-          club_id: clubId,
-          event_id: selectedEventId,
-          group_name: input.group_name,
-          pax_count: input.pax_count,
-          is_paid: input.is_paid,
-          table_number: null,
-        });
+        const { data: created, error: iErr } = await supabase
+          .from("reservations")
+          .insert({
+            club_id: clubId,
+            event_id: selectedEventId,
+            group_name: input.group_name,
+            pax_count: input.pax_count,
+            is_paid: input.is_paid,
+            table_number: null,
+          })
+          .select("id")
+          .single();
         if (iErr) throw iErr;
+
+        if (created && input.pax_count > 0) {
+          const rows = Array.from({ length: input.pax_count }, () => ({
+            reservation_id: created.id,
+            club_id: clubId,
+          }));
+          const { error: aErr } = await supabase
+            .from("reservation_attendees")
+            .insert(rows);
+          if (aErr) {
+            console.error(
+              "Reservation created but seeding anonymous attendees failed",
+              aErr
+            );
+          }
+        }
       } catch (err) {
         setError(errorMessage(err, "Σφάλμα δημιουργίας παρέας."));
       }
@@ -515,7 +592,10 @@ function SeatingView() {
     events.find((e) => e.id === selectedEventId) ?? null;
 
   const revenueStats = useMemo(() => {
-    const totalPax = reservations.reduce((s, r) => s + r.pax_count, 0);
+    const totalPax = reservations.reduce(
+      (s, r) => s + getAttendeeCount(r),
+      0
+    );
     const paidGroups = reservations.filter((r) => r.is_paid).length;
     const pendingGroups = reservations.length - paidGroups;
     return { totalPax, paidGroups, pendingGroups };
@@ -708,6 +788,9 @@ function SeatingView() {
                           prev === r.id ? null : r.id
                         )
                       }
+                      onOpenAttendees={() =>
+                        setAttendeesEditorReservationId(r.id)
+                      }
                     />
                   </li>
                 ))}
@@ -843,6 +926,25 @@ function SeatingView() {
             />
           );
         })()}
+      {attendeesEditorReservationId &&
+        (() => {
+          const reservation = reservations.find(
+            (r) => r.id === attendeesEditorReservationId
+          );
+          if (!reservation) return null;
+          return (
+            <AttendeesEditor
+              reservation={reservation}
+              members={members}
+              onClose={() => setAttendeesEditorReservationId(null)}
+              onUpdate={() => {
+                if (selectedEventId) {
+                  return refetchReservations(selectedEventId);
+                }
+              }}
+            />
+          );
+        })()}
     </div>
   );
 }
@@ -877,11 +979,15 @@ function ReservationChip({
   reservation,
   selected,
   onToggleSelect,
+  onOpenAttendees,
 }: {
-  reservation: Reservation;
+  reservation: ReservationWithAttendees;
   selected: boolean;
   onToggleSelect: () => void;
+  onOpenAttendees: () => void;
 }) {
+  const count = getAttendeeCount(reservation);
+  const anonymous = hasAnonymousAttendees(reservation);
   return (
     <div
       role="button"
@@ -905,13 +1011,39 @@ function ReservationChip({
           : "border-border hover:border-accent/60")
       }
     >
-      <div className="truncate text-sm font-medium">
-        {reservation.group_name}
-      </div>
-      <div className="mt-0.5 text-xs text-muted">
-        {reservation.pax_count}{" "}
-        {reservation.pax_count === 1 ? "άτομο" : "άτομα"}
-        {reservation.is_paid ? " · Πληρωμένο" : ""}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium">
+            {reservation.group_name}
+          </div>
+          <div className="mt-0.5 text-xs text-muted">
+            {count} {count === 1 ? "άτομο" : "άτομα"}
+            {anonymous && (
+              <span
+                className="ml-1 text-amber-600 dark:text-amber-400"
+                title="Έχει ανώνυμα μέλη — προσθέστε ονόματα"
+              >
+                ⚠
+              </span>
+            )}
+            {reservation.is_paid ? " · Πληρωμένο" : ""}
+          </div>
+        </div>
+        <button
+          type="button"
+          draggable={false}
+          onDragStart={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenAttendees();
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="shrink-0 rounded-md border border-border bg-surface px-2 py-1 text-xs transition hover:bg-background"
+          title="Διαχείριση ατόμων"
+          aria-label="Διαχείριση ατόμων"
+        >
+          👤
+        </button>
       </div>
     </div>
   );
@@ -919,7 +1051,7 @@ function ReservationChip({
 
 type PaymentStatus = "none" | "paid" | "mixed";
 
-function paymentStatus(list: Reservation[]): PaymentStatus {
+function paymentStatus(list: ReservationWithAttendees[]): PaymentStatus {
   if (list.length === 0) return "none";
   const paidCount = list.filter((r) => r.is_paid).length;
   if (paidCount === 0) return "none";
@@ -940,7 +1072,7 @@ function TableCard({
   onOpenGuests,
 }: {
   table: VenueTable;
-  reservation: Reservation | null;
+  reservation: ReservationWithAttendees | null;
   pendingAssign: boolean;
   onTableClick: () => void;
   onDropReservation: (reservationId: string) => void;
@@ -951,8 +1083,12 @@ function TableCard({
   onOpenGuests: (reservationId: string) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
+  const reservationCount = reservation ? getAttendeeCount(reservation) : 0;
+  const reservationAnonymous = reservation
+    ? hasAnonymousAttendees(reservation)
+    : false;
   const overCapacity = reservation
-    ? reservation.pax_count > table.capacity
+    ? reservationCount > table.capacity
     : false;
   const shapeClasses =
     table.shape === "round" ? "rounded-full" : "rounded-xl";
@@ -1091,12 +1227,14 @@ function TableCard({
           }
           title={
             overCapacity
-              ? `Προσοχή: ${reservation.pax_count} άτομα σε τραπέζι ${table.capacity} θέσεων`
-              : "Διαχείριση καλεσμένων"
+              ? `Προσοχή: ${reservationCount} άτομα σε τραπέζι ${table.capacity} θέσεων`
+              : reservationAnonymous
+                ? "Διαχείριση καλεσμένων (έχει ανώνυμα μέλη)"
+                : "Διαχείριση καλεσμένων"
           }
         >
-          {reservation.group_name} · {reservation.pax_count}
-          {overCapacity ? " ⚠" : ""}
+          {reservation.group_name} · {reservationCount}
+          {overCapacity ? " ⚠" : reservationAnonymous ? " ⚠" : ""}
         </div>
       ) : (
         <div className="mt-2 text-[11px] text-muted">— ελεύθερο —</div>
@@ -1503,7 +1641,7 @@ function GuestsPanel({
   onClose,
   onChange,
 }: {
-  reservation: Reservation;
+  reservation: ReservationWithAttendees;
   tableCapacity: number | null;
   members: Member[];
   onClose: () => void;
