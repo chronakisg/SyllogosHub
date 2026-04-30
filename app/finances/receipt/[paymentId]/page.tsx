@@ -131,19 +131,31 @@ export default function ReceiptPage() {
 
   const payerMember = useMemo<ReceiptMember | null>(() => {
     if (!isFamilyReceipt) return primary?.member ?? null;
-    const parents = batchLines.filter(
-      (l) => l.member?.family_role === "parent"
-    );
-    if (parents.length > 0) {
-      return parents
-        .map((l) => l.member!)
-        .sort((a, b) => {
-          const aa = calculateAge(a.birth_date) ?? -1;
-          const bb = calculateAge(b.birth_date) ?? -1;
-          return bb - aa;
-        })[0];
-    }
-    return pickEldest(batchLines) ?? primary?.member ?? null;
+    const candidates = batchLines
+      .map((l) => l.member)
+      .filter((m): m is ReceiptMember => !!m);
+    if (candidates.length === 0) return null;
+
+    const roleScore = (r: FamilyRole | null | undefined): number => {
+      if (r === "parent") return 0;
+      if (r === "spouse") return 1;
+      if (r === "other") return 2;
+      if (r == null) return 3;
+      return 4; // child last
+    };
+
+    const sorted = [...candidates].sort((a, b) => {
+      const dr = roleScore(a.family_role) - roleScore(b.family_role);
+      if (dr !== 0) return dr;
+      const ageA = calculateAge(a.birth_date) ?? -1;
+      const ageB = calculateAge(b.birth_date) ?? -1;
+      const adultA = ageA >= 18 ? 1 : 0;
+      const adultB = ageB >= 18 ? 1 : 0;
+      if (adultA !== adultB) return adultB - adultA;
+      return ageB - ageA;
+    });
+
+    return sorted[0];
   }, [isFamilyReceipt, batchLines, primary]);
 
   if (loading) {
