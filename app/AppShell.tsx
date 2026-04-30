@@ -16,6 +16,7 @@ type NavItem = {
   permission: Permission | null;
   adminOnly?: boolean;
   section: NavSection;
+  activePaths?: string[];
 };
 
 const SECTION_LABELS: Record<NavSection, string> = {
@@ -34,24 +35,12 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/seating", label: "Πλάνο Τραπεζιών", permission: "seating", section: "daily" },
   { href: "/finances", label: "Οικονομικά", permission: "finances", section: "daily" },
   {
-    href: "/discounts",
-    label: "Εκπτώσεις",
-    permission: "finances",
-    section: "config",
-  },
-  {
-    href: "/permissions",
-    label: "Δικαιώματα",
-    permission: null,
-    adminOnly: true,
-    section: "config",
-  },
-  {
     href: "/settings",
     label: "Ρυθμίσεις",
     permission: null,
     adminOnly: true,
     section: "config",
+    activePaths: ["/discounts", "/permissions"],
   },
 ];
 
@@ -133,11 +122,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   </p>
                 </li>,
                 ...items.map((item) => {
+                  const matchesExtra = (item.activePaths ?? []).some(
+                    (p) => pathname === p || pathname.startsWith(p + "/")
+                  );
                   const active =
                     item.href === "/"
                       ? pathname === "/"
                       : pathname === item.href ||
-                        pathname.startsWith(item.href + "/");
+                        pathname.startsWith(item.href + "/") ||
+                        matchesExtra;
                   return (
                     <li key={item.href} className="shrink-0 lg:shrink">
                       <Link
