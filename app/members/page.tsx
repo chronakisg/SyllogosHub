@@ -107,6 +107,53 @@ export default function MembersPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const [statusModal, setStatusModal] = useState<{
+    member: MemberWithDepartments;
+    next: MemberStatus;
+    reason: string;
+    saving: boolean;
+    error: string | null;
+  } | null>(null);
+
+  const canEditMembers = role.permissions.includes("members");
+
+  function openStatusModal(member: MemberWithDepartments) {
+    if (!canEditMembers) return;
+    setStatusModal({
+      member,
+      next: member.status === "active" ? "inactive" : "active",
+      reason: "",
+      saving: false,
+      error: null,
+    });
+  }
+
+  async function saveStatusChange() {
+    if (!statusModal || !clubId) return;
+    setStatusModal({ ...statusModal, saving: true, error: null });
+    try {
+      const supabase = getBrowserClient();
+      const { error: uErr } = await supabase
+        .from("members")
+        .update({ status: statusModal.next })
+        .eq("id", statusModal.member.id)
+        .eq("club_id", clubId);
+      if (uErr) throw uErr;
+      setStatusModal(null);
+      await loadMembers();
+    } catch (err) {
+      setStatusModal((s) =>
+        s
+          ? {
+              ...s,
+              saving: false,
+              error: errorMessage(err, "Σφάλμα αλλαγής κατάστασης."),
+            }
+          : s
+      );
+    }
+  }
+
   type Toast = {
     message: string;
     action?: { label: string; run: () => void };
@@ -490,7 +537,6 @@ export default function MembersPage() {
       last_name,
       phone: form.phone.trim() || null,
       email: form.email.trim() || null,
-      status: form.status,
       is_board_member: isBoardMember,
       board_position: boardPosition,
       is_president: form.is_president,
@@ -518,7 +564,11 @@ export default function MembersPage() {
         if (upErr) throw upErr;
         memberId = editing.id;
       } else {
-        const insert: MemberInsert = { ...payload, club_id: clubId };
+        const insert: MemberInsert = {
+          ...payload,
+          club_id: clubId,
+          status: "active",
+        };
         const { data, error: insErr } = await supabase
           .from("members")
           .insert(insert)
@@ -869,7 +919,18 @@ export default function MembersPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={m.status} />
+                      {canEditMembers ? (
+                        <button
+                          type="button"
+                          onClick={() => openStatusModal(m)}
+                          className="rounded-full transition hover:opacity-80"
+                          title="Αλλαγή κατάστασης"
+                        >
+                          <StatusBadge status={m.status} />
+                        </button>
+                      ) : (
+                        <StatusBadge status={m.status} />
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex gap-2">
@@ -912,6 +973,14 @@ export default function MembersPage() {
           onAddFamilyMember={openCreateLinkedTo}
         />
       )}
+
+      {statusModal && (
+        <StatusChangeModal
+          state={statusModal}
+          setState={setStatusModal}
+          onSave={saveStatusChange}
+        />
+      )}
     </div>
   );
 }
@@ -924,17 +993,141 @@ function StatusBadge({ status }: { status: MemberStatus }) {
         "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium " +
         (isActive
           ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-          : "bg-slate-500/10 text-slate-600 dark:text-slate-400")
+          : "bg-rose-500/10 text-rose-600 dark:text-rose-400")
       }
     >
       <span
         className={
           "h-1.5 w-1.5 rounded-full " +
-          (isActive ? "bg-emerald-500" : "bg-slate-400")
+          (isActive ? "bg-emerald-500" : "bg-rose-500")
         }
       />
       {isActive ? "Ενεργό" : "Ανενεργό"}
     </span>
+  );
+}
+
+type StatusModalState = {
+  member: MemberWithDepartments;
+  next: MemberStatus;
+  reason: string;
+  saving: boolean;
+  error: string | null;
+};
+
+function StatusChangeModal({
+  state,
+  setState,
+  onSave,
+}: {
+  state: StatusModalState;
+  setState: React.Dispatch<React.SetStateAction<StatusModalState | null>>;
+  onSave: () => void;
+}) {
+  const fullName = `${state.member.last_name} ${state.member.first_name}`.trim();
+  function close() {
+    if (state.saving) return;
+    setState(null);
+  }
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={close}
+    >
+      <div
+        className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold">Αλλαγή Κατάστασης</h2>
+
+        <div className="mt-4 space-y-1 text-sm">
+          <p>
+            <span className="text-muted">Μέλος: </span>
+            <span className="font-medium uppercase">{fullName}</span>
+          </p>
+          <p className="flex items-center gap-2">
+            <span className="text-muted">Τρέχουσα:</span>
+            <StatusBadge status={state.member.status} />
+          </p>
+        </div>
+
+        <fieldset className="mt-4">
+          <legend className="mb-2 block text-xs font-medium text-muted">
+            Νέα Κατάσταση
+          </legend>
+          <div className="space-y-2 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="next_status"
+                checked={state.next === "active"}
+                onChange={() =>
+                  setState((s) => (s ? { ...s, next: "active" } : s))
+                }
+                className="h-4 w-4"
+              />
+              Ενεργό
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="next_status"
+                checked={state.next === "inactive"}
+                onChange={() =>
+                  setState((s) => (s ? { ...s, next: "inactive" } : s))
+                }
+                className="h-4 w-4"
+              />
+              Ανενεργό
+            </label>
+          </div>
+        </fieldset>
+
+        <label className="mt-4 block">
+          <span className="mb-1 block text-xs font-medium text-muted">
+            Λόγος (προαιρετικό)
+          </span>
+          <textarea
+            value={state.reason}
+            onChange={(e) =>
+              setState((s) => (s ? { ...s, reason: e.target.value } : s))
+            }
+            rows={3}
+            placeholder="π.χ. Μεταγραφή σε άλλον σύλλογο"
+            className={inputClass}
+          />
+        </label>
+
+        {state.error && (
+          <div className="mt-3 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+            {state.error}
+          </div>
+        )}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={close}
+            disabled={state.saving}
+            className="rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background disabled:opacity-50"
+          >
+            Ακύρωση
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={
+              state.saving || state.next === state.member.status
+            }
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+          >
+            {state.saving ? "Αποθήκευση…" : "Αποθήκευση"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1144,9 +1337,26 @@ function MemberModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-border p-6">
-          <h2 className="text-lg font-semibold">
-            {editing ? "Επεξεργασία Μέλους" : "Νέο Μέλος"}
-          </h2>
+          {editing ? (
+            <>
+              <h2 className="text-xl font-semibold uppercase">
+                {`${form.last_name} ${form.first_name}`.trim() ||
+                  "Επεξεργασία μέλους"}
+              </h2>
+              <p className="mt-0.5 text-sm text-muted">
+                {`${form.last_name} ${form.first_name}`.trim()
+                  ? "Επεξεργασία μέλους"
+                  : ""}
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-xl font-semibold">Νέο Μέλος</h2>
+              <p className="mt-0.5 text-sm text-muted">
+                Συμπληρώστε τα στοιχεία
+              </p>
+            </>
+          )}
           <div className="mt-3 inline-flex max-w-full overflow-x-auto rounded-lg border border-border bg-background p-0.5 text-xs">
             <MemberTabBtn
               current={tab}
@@ -1508,22 +1718,6 @@ function MemberModal({
 
             {tab === "role" && (
               <>
-                <Field label="Κατάσταση">
-                  <select
-                    value={form.status}
-                    onChange={(e) =>
-                      setForm((s) => ({
-                        ...s,
-                        status: e.target.value as MemberStatus,
-                      }))
-                    }
-                    className={inputClass}
-                  >
-                    <option value="active">Ενεργό</option>
-                    <option value="inactive">Ανενεργό</option>
-                  </select>
-                </Field>
-
                 <div className="space-y-3 rounded-lg border border-border p-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="flex items-start gap-2 text-sm">
