@@ -217,13 +217,25 @@ export function AttendeesEditor({
     });
   }
 
-  async function handleSetLead(attendeeId: string) {
+  async function handleToggleLead(
+    attendeeId: string,
+    currentlyLead: boolean
+  ) {
     await runWithBusy(async () => {
       const supabase = getBrowserClient();
+      if (currentlyLead) {
+        const { error: uErr } = await supabase
+          .from("reservation_attendees")
+          .update({ is_lead: false })
+          .eq("id", attendeeId);
+        if (uErr) throw uErr;
+        return;
+      }
       const { error: rErr } = await supabase
         .from("reservation_attendees")
         .update({ is_lead: false })
-        .eq("reservation_id", reservation.id);
+        .eq("reservation_id", reservation.id)
+        .eq("is_lead", true);
       if (rErr) throw rErr;
       const { error: uErr } = await supabase
         .from("reservation_attendees")
@@ -359,7 +371,7 @@ export function AttendeesEditor({
                 promotionMatches={
                   promotingId === a.id ? promotionFilteredMembers : []
                 }
-                onSetLead={() => handleSetLead(a.id)}
+                onToggleLead={() => handleToggleLead(a.id, a.is_lead)}
                 onRemove={() => handleRemove(a.id)}
                 onStartPromote={() => startPromotion(a.id)}
                 onCancelPromote={() => setPromotingId(null)}
@@ -555,7 +567,7 @@ function AttendeeRow({
   promotionGuestName,
   promotionSearch,
   promotionMatches,
-  onSetLead,
+  onToggleLead,
   onRemove,
   onStartPromote,
   onCancelPromote,
@@ -572,7 +584,7 @@ function AttendeeRow({
   promotionGuestName: string;
   promotionSearch: string;
   promotionMatches: Member[];
-  onSetLead: () => void;
+  onToggleLead: () => void;
   onRemove: () => void;
   onStartPromote: () => void;
   onCancelPromote: () => void;
@@ -620,20 +632,25 @@ function AttendeeRow({
         <span className="min-w-0 truncate">{label}</span>
         <div className="flex shrink-0 items-center gap-1">
           {attendee.is_lead && (
-            <span
-              className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
-              title="Αρχηγός παρέας"
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onToggleLead}
+              className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 transition hover:bg-amber-500/25 disabled:opacity-50 dark:text-amber-300"
+              title="Αφαίρεση αρχηγού"
+              aria-label="Αφαίρεση αρχηγού"
             >
               ★ Αρχηγός
-            </span>
+            </button>
           )}
           {isMember && !attendee.is_lead && (
             <button
               type="button"
               disabled={disabled}
-              onClick={onSetLead}
+              onClick={onToggleLead}
               className="rounded border border-border px-1.5 py-0.5 text-[11px] transition hover:bg-background disabled:opacity-50"
               title="Ορισμός ως αρχηγός"
+              aria-label="Ορισμός ως αρχηγός"
             >
               ★
             </button>
