@@ -422,11 +422,15 @@ function PaymentsTab() {
   const batchPositions = useMemo(() => {
     const seen = new Map<string, number>();
     const m = new Map<string, number>();
-    const sorted = [...payments].sort((a, b) =>
-      a.payment_date === b.payment_date
-        ? a.created_at.localeCompare(b.created_at)
-        : a.payment_date.localeCompare(b.payment_date)
-    );
+    const sorted = [...payments].sort((a, b) => {
+      const dateA = a.payment_date ?? "";
+      const dateB = b.payment_date ?? "";
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+
+      const createdA = a.created_at ?? "";
+      const createdB = b.created_at ?? "";
+      return createdA.localeCompare(createdB);
+    });
     for (const p of sorted) {
       if (!p.batch_id) continue;
       const pos = (seen.get(p.batch_id) ?? 0) + 1;
