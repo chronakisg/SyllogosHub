@@ -16,6 +16,7 @@ import {
   type AttendeeWithMember,
   type ReservationWithAttendees,
 } from "@/lib/utils/attendees";
+import { ConfirmDeleteReservationModal } from "@/components/ConfirmDeleteReservationModal";
 
 type AddMode = "member" | "guest" | "anonymous";
 
@@ -45,6 +46,8 @@ export function AttendeesEditor({
   );
   const [promotionGuestName, setPromotionGuestName] = useState("");
   const [promotionSearch, setPromotionSearch] = useState("");
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 250);
@@ -268,11 +271,54 @@ export function AttendeesEditor({
     setPromotionSearch("");
   }
 
+  async function handleDeleteReservation() {
+    setIsDeleting(true);
+    setError(null);
+    try {
+      const supabase = getBrowserClient();
+      const { error: dErr } = await supabase
+        .from("reservations")
+        .delete()
+        .eq("id", reservation.id);
+      if (dErr) throw dErr;
+      setIsConfirmDeleteOpen(false);
+      await onUpdate();
+      onClose();
+    } catch (err) {
+      setError(errorMessage(err, "Σφάλμα κατά τη διαγραφή."));
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   return (
     <ModalShell
       title={`Άτομα: ${reservation.group_name}`}
       onClose={onClose}
+      headerAction={
+        <button
+          type="button"
+          onClick={() => setIsConfirmDeleteOpen(true)}
+          disabled={busy || isDeleting}
+          className="rounded p-1 text-danger transition hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-50"
+          title="Διαγραφή παρέας"
+          aria-label="Διαγραφή παρέας"
+        >
+          🗑️
+        </button>
+      }
     >
+      <ConfirmDeleteReservationModal
+        isOpen={isConfirmDeleteOpen}
+        onClose={() => setIsConfirmDeleteOpen(false)}
+        onConfirm={handleDeleteReservation}
+        reservation={{
+          group_name: reservation.group_name,
+          pax_count: reservation.pax_count,
+          table_number: reservation.table_number,
+        }}
+        isDeleting={isDeleting}
+      />
       {error && (
         <div className="mb-3 flex items-start justify-between gap-2 rounded-md border border-danger/30 bg-danger/10 p-2 text-xs text-danger">
           <span>{error}</span>
@@ -718,10 +764,12 @@ function ModalShell({
   title,
   children,
   onClose,
+  headerAction,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
+  headerAction?: ReactNode;
 }) {
   return (
     <div
@@ -736,14 +784,17 @@ function ModalShell({
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           <h2 className="text-base font-semibold">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-muted transition hover:bg-background"
-            aria-label="Κλείσιμο"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-1">
+            {headerAction}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded p-1 text-muted transition hover:bg-background"
+              aria-label="Κλείσιμο"
+            >
+              ✕
+            </button>
+          </div>
         </div>
         {children}
       </div>
