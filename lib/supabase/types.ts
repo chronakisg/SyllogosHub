@@ -34,6 +34,12 @@ export type Member = {
   birth_date: string | null;
   family_id: string | null;
   family_role: FamilyRole | null;
+  phone_verified: boolean;
+  phone_verified_at: string | null;
+  phone_verified_by: string | null;
+  email_verified: boolean;
+  email_verified_at: string | null;
+  email_verified_by: string | null;
   created_at: string;
 };
 
@@ -52,6 +58,12 @@ export type MemberInsert = {
   birth_date?: string | null;
   family_id?: string | null;
   family_role?: FamilyRole | null;
+  phone_verified?: boolean;
+  phone_verified_at?: string | null;
+  phone_verified_by?: string | null;
+  email_verified?: boolean;
+  email_verified_at?: string | null;
+  email_verified_by?: string | null;
   created_at?: string;
 };
 

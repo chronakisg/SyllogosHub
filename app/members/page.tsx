@@ -53,6 +53,12 @@ type FormState = {
   family_id: string | null;
   link_member_id: string;
   family_role: FamilyRole | null;
+  phone_verified: boolean;
+  phone_verified_at: string | null;
+  phone_verified_by: string | null;
+  email_verified: boolean;
+  email_verified_at: string | null;
+  email_verified_by: string | null;
 };
 
 const EMPTY_FORM: FormState = {
@@ -70,6 +76,12 @@ const EMPTY_FORM: FormState = {
   family_id: null,
   link_member_id: "",
   family_role: null,
+  phone_verified: false,
+  phone_verified_at: null,
+  phone_verified_by: null,
+  email_verified: false,
+  email_verified_at: null,
+  email_verified_by: null,
 };
 
 function defaultFamilyRole(birthDate: string | null): FamilyRole {
@@ -99,6 +111,7 @@ export default function MembersPage() {
   const [boardOnly, setBoardOnly] = useState(false);
   const [ageFilter, setAgeFilter] = useState<"all" | "child" | "adult">("all");
   const [familyOnly, setFamilyOnly] = useState(false);
+  const [unverifiedOnly, setUnverifiedOnly] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MemberWithDepartments | null>(null);
@@ -126,6 +139,41 @@ export default function MembersPage() {
       saving: false,
       error: null,
     });
+  }
+
+  async function handleToggleVerification(
+    field: "phone" | "email",
+    currentlyVerified: boolean
+  ) {
+    if (!editing || !clubId || !canEditMembers) return;
+    const next = !currentlyVerified;
+    const ts = next ? new Date().toISOString() : null;
+    const verifier = next ? role.memberId : null;
+    const update =
+      field === "phone"
+        ? {
+            phone_verified: next,
+            phone_verified_at: ts,
+            phone_verified_by: verifier,
+          }
+        : {
+            email_verified: next,
+            email_verified_at: ts,
+            email_verified_by: verifier,
+          };
+    try {
+      const supabase = getBrowserClient();
+      const { error: uErr } = await supabase
+        .from("members")
+        .update(update)
+        .eq("id", editing.id)
+        .eq("club_id", clubId);
+      if (uErr) throw uErr;
+      setForm((s) => ({ ...s, ...update }));
+      await loadMembers();
+    } catch (err) {
+      setError(errorMessage(err, "Σφάλμα ενημέρωσης επιβεβαίωσης."));
+    }
   }
 
   async function saveStatusChange() {
@@ -314,6 +362,11 @@ export default function MembersPage() {
       if (statusFilter !== "all" && m.status !== statusFilter) return false;
       if (boardOnly && !m.is_board_member) return false;
       if (familyOnly && !m.family_id) return false;
+      if (unverifiedOnly) {
+        const phoneIssue = !!m.phone && !m.phone_verified;
+        const emailIssue = !!m.email && !m.email_verified;
+        if (!phoneIssue && !emailIssue) return false;
+      }
       if (ageFilter !== "all") {
         const age = calculateAge(m.birth_date);
         if (age == null) return false;
@@ -347,6 +400,7 @@ export default function MembersPage() {
     statusFilter,
     boardOnly,
     familyOnly,
+    unverifiedOnly,
     ageFilter,
     departmentFilter,
   ]);
@@ -357,6 +411,7 @@ export default function MembersPage() {
     setStatusFilter("all");
     setBoardOnly(false);
     setAgeFilter("all");
+    setUnverifiedOnly(false);
     setFamilyOnly(false);
   }
 
@@ -387,6 +442,12 @@ export default function MembersPage() {
       family_id: member.family_id,
       link_member_id: "",
       family_role: member.family_role,
+      phone_verified: member.phone_verified,
+      phone_verified_at: member.phone_verified_at,
+      phone_verified_by: member.phone_verified_by,
+      email_verified: member.email_verified,
+      email_verified_at: member.email_verified_at,
+      email_verified_by: member.email_verified_by,
     };
     setEditing(member);
     setForm(next);
@@ -651,7 +712,8 @@ export default function MembersPage() {
     statusFilter !== "all" ||
     boardOnly ||
     ageFilter !== "all" ||
-    familyOnly;
+    familyOnly ||
+    unverifiedOnly;
 
   if (role.loading) {
     return (
@@ -774,6 +836,15 @@ export default function MembersPage() {
             className="h-4 w-4 rounded border-border"
           />
           Μόνο οικογένειες
+        </label>
+        <label className="flex items-center gap-2 self-end pb-2 text-sm">
+          <input
+            type="checkbox"
+            checked={unverifiedOnly}
+            onChange={(e) => setUnverifiedOnly(e.target.checked)}
+            className="h-4 w-4 rounded border-border"
+          />
+          Μόνο μη-επιβεβαιωμένα
         </label>
         <button
           type="button"
@@ -906,8 +977,46 @@ export default function MembersPage() {
                         return age < 18 ? `${age} (Παιδί)` : String(age);
                       })()}
                     </td>
-                    <td className="px-4 py-3 text-muted">{m.phone ?? "—"}</td>
-                    <td className="px-4 py-3 text-muted">{m.email ?? "—"}</td>
+                    <td className="px-4 py-3 text-muted">
+                      {m.phone ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span>{m.phone}</span>
+                          <VerifyBadge
+                            type="phone"
+                            verified={m.phone_verified}
+                            verifiedAt={m.phone_verified_at}
+                            verifiedByName={lookupVerifierName(
+                              members,
+                              m.phone_verified_by
+                            )}
+                            canEdit={false}
+                            size="sm"
+                          />
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-muted">
+                      {m.email ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span>{m.email}</span>
+                          <VerifyBadge
+                            type="email"
+                            verified={m.email_verified}
+                            verifiedAt={m.email_verified_at}
+                            verifiedByName={lookupVerifierName(
+                              members,
+                              m.email_verified_by
+                            )}
+                            canEdit={false}
+                            size="sm"
+                          />
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       {m.departments.length === 0 ? (
                         <span className="text-muted">—</span>
@@ -984,9 +1093,11 @@ export default function MembersPage() {
           departments={activeDepartmentOptions}
           saving={saving}
           formError={formError}
+          canEditMembers={canEditMembers}
           onClose={closeModal}
           onSubmit={handleSubmit}
           onAddFamilyMember={openCreateLinkedTo}
+          onToggleVerification={handleToggleVerification}
         />
       )}
 
@@ -1156,9 +1267,11 @@ function MemberModal({
   departments,
   saving,
   formError,
+  canEditMembers,
   onClose,
   onSubmit,
   onAddFamilyMember,
+  onToggleVerification,
 }: {
   editing: Member | null;
   form: FormState;
@@ -1168,9 +1281,14 @@ function MemberModal({
   departments: Department[];
   saving: boolean;
   formError: string | null;
+  canEditMembers: boolean;
   onClose: () => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   onAddFamilyMember: (memberId: string) => void;
+  onToggleVerification: (
+    field: "phone" | "email",
+    currentlyVerified: boolean
+  ) => void | Promise<void>;
 }) {
   function toggleDepartment(deptId: string, checked: boolean) {
     setForm((s) =>
@@ -1450,7 +1568,25 @@ function MemberModal({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Τηλέφωνο">
+            <label className="block">
+              <span className="mb-1 flex items-center justify-between text-xs font-medium text-muted">
+                <span>Τηλέφωνο</span>
+                {editing && (
+                  <VerifyBadge
+                    type="phone"
+                    verified={form.phone_verified}
+                    verifiedAt={form.phone_verified_at}
+                    verifiedByName={lookupVerifierName(
+                      members,
+                      form.phone_verified_by
+                    )}
+                    canEdit={canEditMembers && !!form.phone.trim()}
+                    onToggle={() =>
+                      onToggleVerification("phone", form.phone_verified)
+                    }
+                  />
+                )}
+              </span>
               <input
                 type="tel"
                 value={form.phone}
@@ -1459,8 +1595,26 @@ function MemberModal({
                 }
                 className={inputClass}
               />
-            </Field>
-            <Field label="Email">
+            </label>
+            <label className="block">
+              <span className="mb-1 flex items-center justify-between text-xs font-medium text-muted">
+                <span>Email</span>
+                {editing && (
+                  <VerifyBadge
+                    type="email"
+                    verified={form.email_verified}
+                    verifiedAt={form.email_verified_at}
+                    verifiedByName={lookupVerifierName(
+                      members,
+                      form.email_verified_by
+                    )}
+                    canEdit={canEditMembers && !!form.email.trim()}
+                    onToggle={() =>
+                      onToggleVerification("email", form.email_verified)
+                    }
+                  />
+                )}
+              </span>
               <input
                 type="email"
                 value={form.email}
@@ -1469,7 +1623,7 @@ function MemberModal({
                 }
                 className={inputClass}
               />
-            </Field>
+            </label>
           </div>
 
                 <Field label="Ημερομηνία Γέννησης">
@@ -1920,5 +2074,99 @@ function Field({
       </span>
       {children}
     </label>
+  );
+}
+
+function lookupVerifierName(
+  members: { id: string; first_name: string; last_name: string }[],
+  verifierId: string | null
+): string | null {
+  if (!verifierId) return null;
+  const v = members.find((m) => m.id === verifierId);
+  if (!v) return null;
+  return `${v.last_name} ${v.first_name}`.trim();
+}
+
+function VerifyBadge({
+  type,
+  verified,
+  verifiedAt,
+  verifiedByName,
+  canEdit,
+  onToggle,
+  size = "md",
+}: {
+  type: "phone" | "email";
+  verified: boolean;
+  verifiedAt: string | null;
+  verifiedByName: string | null;
+  canEdit: boolean;
+  onToggle?: () => void | Promise<void>;
+  size?: "sm" | "md";
+}) {
+  const label = type === "phone" ? "τηλεφώνου" : "email";
+  let title: string;
+  if (verified) {
+    const date = verifiedAt
+      ? new Date(verifiedAt).toLocaleDateString("el-GR")
+      : null;
+    const parts = [
+      "Επιβεβαιωμένο",
+      verifiedByName ? `από ${verifiedByName}` : null,
+      date ? `στις ${date}` : null,
+    ].filter(Boolean);
+    title = parts.join(" ");
+  } else {
+    title = "Δεν έχει επιβεβαιωθεί";
+  }
+  const iconClass = size === "sm" ? "text-xs" : "text-sm";
+  const icon = verified ? (
+    <span
+      className={
+        "inline-flex items-center text-emerald-600 dark:text-emerald-400 " +
+        iconClass
+      }
+      aria-hidden
+    >
+      ✓
+    </span>
+  ) : (
+    <span
+      className={
+        "inline-flex items-center text-amber-600 dark:text-amber-400 " +
+        iconClass
+      }
+      aria-hidden
+    >
+      ⚠
+    </span>
+  );
+
+  if (!canEdit || !onToggle) {
+    return (
+      <span title={title} aria-label={title} className="inline-flex">
+        {icon}
+      </span>
+    );
+  }
+
+  function handleClick() {
+    const verb = verified
+      ? `Αναίρεση επιβεβαίωσης ${label};`
+      : `Επιβεβαίωση ${label};`;
+    if (!window.confirm(verb)) return;
+    void onToggle?.();
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      title={title}
+      aria-label={title}
+      className="inline-flex items-center transition hover:scale-110"
+    >
+      {icon}
+    </button>
   );
 }
