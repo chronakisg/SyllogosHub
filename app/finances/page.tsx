@@ -295,9 +295,10 @@ function PaymentsTab() {
   const [batchDelete, setBatchDelete] = useState<{
     batchId: string;
     rows: PaymentRow[];
-    blockedByApproval: boolean;
+    hadApproved: boolean;
   } | null>(null);
   const [batchDeleting, setBatchDeleting] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<PaymentTemplate | null>(
@@ -505,13 +506,14 @@ function PaymentsTab() {
     if (p.batch_id) {
       const rows = payments.filter((x) => x.batch_id === p.batch_id);
       if (rows.length > 1) {
-        const blockedByApproval = rows.some(
+        const hadApproved = rows.some(
           (r) => r.approval_status === "approved"
         );
+        setOverrideReason("");
         setBatchDelete({
           batchId: p.batch_id,
           rows,
-          blockedByApproval,
+          hadApproved,
         });
         return;
       }
@@ -535,8 +537,20 @@ function PaymentsTab() {
   }
 
   async function confirmBatchDelete() {
-    if (!batchDelete || !clubId || batchDelete.blockedByApproval) return;
-    const { batchId, rows } = batchDelete;
+    if (!batchDelete || !clubId) return;
+    const { batchId, rows, hadApproved } = batchDelete;
+    if (hadApproved && !role.isSystemAdmin) return;
+    if (!role.memberId) {
+      setError(
+        "Δεν είναι δυνατή η διαγραφή — απαιτείται ταυτοποίηση χρήστη. Παρακαλώ ξανασυνδεθείτε."
+      );
+      return;
+    }
+    let reason: string | null = null;
+    if (hadApproved) {
+      reason = overrideReason.trim();
+      if (reason.length < 10) return;
+    }
     setBatchDeleting(true);
     try {
       const supabase = getBrowserClient();
@@ -566,12 +580,12 @@ function PaymentsTab() {
         .insert({
           club_id: clubId,
           batch_id: batchId,
-          deleted_by: role.memberId ?? null,
-          override_reason: null,
+          deleted_by: role.memberId,
+          override_reason: reason,
           payment_count: rows.length,
           total_amount: totalAmount,
           payments_snapshot: snapshot,
-          had_approved_payments: false,
+          had_approved_payments: hadApproved,
         });
       if (auditErr) {
         setError(
@@ -587,9 +601,14 @@ function PaymentsTab() {
       if (dErr) throw dErr;
       const n = rows.length;
       setBatchDelete(null);
+      setOverrideReason("");
       await load();
       setError(null);
-      setNotice(`Διαγράφηκαν ${n} πληρωμές της οικογένειας.`);
+      setNotice(
+        hadApproved
+          ? `Διαγράφηκαν ${n} πληρωμές της οικογένειας με override.`
+          : `Διαγράφηκαν ${n} πληρωμές της οικογένειας.`
+      );
     } catch (err) {
       setError(errorMessage(err, "Σφάλμα διαγραφής πληρωμών οικογένειας."));
     } finally {
@@ -1139,10 +1158,16 @@ function PaymentsTab() {
       {batchDelete && (
         <BatchDeleteModal
           rows={batchDelete.rows}
-          blockedByApproval={batchDelete.blockedByApproval}
+          hadApproved={batchDelete.hadApproved}
+          isSystemAdmin={role.isSystemAdmin}
           deleting={batchDeleting}
+          overrideReason={overrideReason}
+          setOverrideReason={setOverrideReason}
           onCancel={() => {
-            if (!batchDeleting) setBatchDelete(null);
+            if (!batchDeleting) {
+              setBatchDelete(null);
+              setOverrideReason("");
+            }
           }}
           onConfirm={confirmBatchDelete}
         />
@@ -1836,18 +1861,28 @@ function PreviewSummary({
 
 function BatchDeleteModal({
   rows,
-  blockedByApproval,
+  hadApproved,
+  isSystemAdmin,
   deleting,
+  overrideReason,
+  setOverrideReason,
   onCancel,
   onConfirm,
 }: {
   rows: PaymentRow[];
-  blockedByApproval: boolean;
+  hadApproved: boolean;
+  isSystemAdmin: boolean;
   deleting: boolean;
+  overrideReason: string;
+  setOverrideReason: (v: string) => void;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   const total = rows.reduce((s, r) => s + Number(r.amount ?? 0), 0);
+  const blocked = hadApproved && !isSystemAdmin;
+  const overrideMode = hadApproved && isSystemAdmin;
+  const reasonLength = overrideReason.trim().length;
+  const overrideReady = !overrideMode || reasonLength >= 10;
 
   function renderRowList() {
     return (
@@ -1895,11 +1930,11 @@ function BatchDeleteModal({
           Διαγραφή πληρωμής οικογένειας
         </h2>
 
-        {blockedByApproval ? (
+        {blocked ? (
           <>
             <div className="mb-4 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
-              Δεν μπορείτε να διαγράψετε batch με εγκεκριμένες πληρωμές.
-              Απορρίψτε ή ανακαλέστε πρώτα την έγκριση.
+              Αυτή η εγγραφή περιέχει εγκεκριμένες πληρωμές. Επικοινωνήστε με
+              τον διαχειριστή του συστήματος για διαγραφή.
             </div>
             {renderRowList()}
             <div className="flex justify-end">
@@ -1914,6 +1949,12 @@ function BatchDeleteModal({
           </>
         ) : (
           <>
+            {overrideMode && (
+              <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-300">
+                ⚠️ Προσοχή: Διαγραφή εγκεκριμένων πληρωμών. Απαιτείται
+                αιτιολογία.
+              </div>
+            )}
             <p className="mb-3 text-sm text-muted">
               Αυτή η πληρωμή είναι μέρος ομαδικής εγγραφής οικογένειας. Θα
               διαγραφούν και οι {rows.length} πληρωμές:
@@ -1923,6 +1964,28 @@ function BatchDeleteModal({
               <span className="text-muted">Σύνολο: </span>
               <span className="font-semibold">{eur.format(total)}</span>
             </p>
+
+            {overrideMode && (
+              <label className="mb-3 block">
+                <span className="mb-1 block text-xs font-medium text-muted">
+                  Αιτιολογία διαγραφής{" "}
+                  <span className="text-danger">*</span>
+                </span>
+                <textarea
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  rows={3}
+                  required
+                  minLength={10}
+                  placeholder="Τουλάχιστον 10 χαρακτήρες…"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                />
+                <span className="mt-1 block text-[11px] text-muted">
+                  {reasonLength}/10 χαρακτήρες
+                </span>
+              </label>
+            )}
+
             <p className="mb-4 text-xs text-muted">
               Η ενέργεια δεν αναιρείται. Καταγράφεται σε audit log.
             </p>
@@ -1938,12 +2001,17 @@ function BatchDeleteModal({
               <button
                 type="button"
                 onClick={onConfirm}
-                disabled={deleting}
-                className="rounded-lg bg-[#800000] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                disabled={deleting || !overrideReady}
+                className={
+                  "rounded-lg px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50 " +
+                  (overrideMode ? "bg-red-700" : "bg-[#800000]")
+                }
               >
                 {deleting
                   ? "Διαγραφή…"
-                  : `Ναι, διαγραφή και των ${rows.length}`}
+                  : overrideMode
+                    ? "Διαγραφή με override"
+                    : `Ναι, διαγραφή και των ${rows.length}`}
               </button>
             </div>
           </>
