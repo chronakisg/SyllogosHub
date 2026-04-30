@@ -7,9 +7,11 @@ import { useRole } from "@/lib/hooks/useRole";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
 import { useClubSettings } from "@/lib/hooks/useClubSettings";
+import { getEventEntertainers } from "@/lib/entertainers";
 import type {
   ContributionType,
   Event as EventRow,
+  EventEntertainerWithDetails,
   EventTicketPrice,
   Reservation,
 } from "@/lib/supabase/types";
@@ -39,15 +41,12 @@ type SponsorSummary = {
   contribution_description: string | null;
 };
 
-type EventWithEntertainment = EventRow & {
-  entertainment_types?: { name: string } | null;
-};
-
 type SummaryData = {
-  event: EventWithEntertainment;
+  event: EventRow;
   reservations: Reservation[];
   ticketPrices: EventTicketPrice[];
   sponsors: SponsorSummary[];
+  entertainers: EventEntertainerWithDetails[];
 };
 
 type VenueTable = { id: string; capacity?: number };
@@ -90,12 +89,12 @@ export default function EventSummaryPage() {
         const supabase = getBrowserClient();
         let eventQuery = supabase
           .from("events")
-          .select("*, entertainment_types(name)")
+          .select("*")
           .eq("id", eventId);
         if (currentClub.clubId)
           eventQuery = eventQuery.eq("club_id", currentClub.clubId);
 
-        const [eRes, rRes, tRes, spRes] = await Promise.all([
+        const [eRes, rRes, tRes, spRes, entList] = await Promise.all([
           eventQuery.single(),
           supabase
             .from("reservations")
@@ -113,6 +112,7 @@ export default function EventSummaryPage() {
               "contribution_type, contribution_value, contribution_description, sponsors(id, member_id, external_name, members(first_name, last_name))"
             )
             .eq("event_id", eventId),
+          getEventEntertainers(eventId),
         ]);
         if (cancelled) return;
         if (eRes.error) throw eRes.error;
@@ -140,10 +140,11 @@ export default function EventSummaryPage() {
           .filter((x): x is SponsorSummary => !!x);
 
         setData({
-          event: eRes.data as unknown as EventWithEntertainment,
+          event: eRes.data as EventRow,
           reservations: (rRes.data ?? []) as Reservation[],
           ticketPrices: (tRes.data ?? []) as EventTicketPrice[],
           sponsors: sponsorRows,
+          entertainers: entList,
         });
       } catch (err) {
         if (!cancelled)
@@ -175,7 +176,11 @@ export default function EventSummaryPage() {
     );
   }
 
-  const { event, reservations, ticketPrices, sponsors } = data;
+  const { event, reservations, ticketPrices, sponsors, entertainers } = data;
+  const entertainersTotal = entertainers.reduce(
+    (sum, e) => sum + (e.fee ?? 0),
+    0
+  );
   const sortedReservations = [...reservations].sort((a, b) =>
     a.group_name.localeCompare(b.group_name, "el")
   );
@@ -232,17 +237,49 @@ export default function EventSummaryPage() {
         </header>
 
         <SummaryCard title="Στοιχεία">
-          {event.location && (
+          {event.location ? (
             <SummaryRow label="📍 Τοποθεσία">{event.location}</SummaryRow>
-          )}
-          {event.entertainment_types?.name && (
-            <SummaryRow label="🎵 Ψυχαγωγία">
-              {event.entertainment_types.name}
-              {event.entertainment_name ? `: ${event.entertainment_name}` : ""}
-            </SummaryRow>
-          )}
-          {!event.location && !event.entertainment_types?.name && (
+          ) : (
             <p className="text-sm text-muted">—</p>
+          )}
+        </SummaryCard>
+
+        <SummaryCard title="Ψυχαγωγία">
+          {entertainers.length === 0 ? (
+            <p className="text-sm text-muted">Δεν έχει οριστεί ψυχαγωγία.</p>
+          ) : (
+            <>
+              <table className="w-full text-sm">
+                <thead className="border-b border-border text-xs uppercase tracking-wider text-muted">
+                  <tr>
+                    <th className="py-2 text-left">Όνομα</th>
+                    <th className="py-2 text-left">Τύπος</th>
+                    <th className="py-2 text-right">Αμοιβή</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {entertainers.map((e) => (
+                    <tr key={e.id}>
+                      <td className="py-2 font-medium">
+                        {e.entertainer.name}
+                      </td>
+                      <td className="py-2 text-muted">
+                        {e.entertainer.entertainment_type?.name ?? "—"}
+                      </td>
+                      <td className="py-2 text-right">
+                        {e.fee != null ? eur.format(e.fee) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="mt-3 text-sm">
+                <span className="text-muted">Σύνολο αμοιβών: </span>
+                <span className="font-semibold">
+                  {eur.format(entertainersTotal)}
+                </span>
+              </p>
+            </>
           )}
         </SummaryCard>
 

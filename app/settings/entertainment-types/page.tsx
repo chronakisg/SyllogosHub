@@ -42,7 +42,9 @@ export default function EntertainmentTypesPage() {
   const role = useRole();
   const { clubId, loading: clubLoading } = useCurrentClub();
   const [types, setTypes] = useState<EntertainmentType[]>([]);
-  const [counts, setCounts] = useState<Map<string, number>>(new Map());
+  const [counts, setCounts] = useState<
+    Map<string, { entertainers: number; events: number }>
+  >(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,7 +58,7 @@ export default function EntertainmentTypesPage() {
     if (!clubId) return;
     try {
       const supabase = getBrowserClient();
-      const [tRes, eRes] = await Promise.all([
+      const [tRes, entRes, evtRes] = await Promise.all([
         supabase
           .from("entertainment_types")
           .select("*")
@@ -64,22 +66,62 @@ export default function EntertainmentTypesPage() {
           .order("display_order", { ascending: true })
           .order("name", { ascending: true }),
         supabase
-          .from("events")
+          .from("entertainers")
           .select("entertainment_type_id")
           .eq("club_id", clubId)
           .not("entertainment_type_id", "is", null),
+        supabase
+          .from("event_entertainers")
+          .select("event_id, entertainers!inner(entertainment_type_id)")
+          .eq("club_id", clubId),
       ]);
       if (tRes.error) throw tRes.error;
-      if (eRes.error) throw eRes.error;
+      if (entRes.error) throw entRes.error;
+      if (evtRes.error) throw evtRes.error;
       setTypes((tRes.data ?? []) as EntertainmentType[]);
-      const byType = new Map<string, number>();
-      for (const r of eRes.data ?? []) {
+      const counter = new Map<
+        string,
+        { entertainers: number; events: Set<string> }
+      >();
+      for (const r of entRes.data ?? []) {
         const id = (r as { entertainment_type_id: string | null })
           .entertainment_type_id;
         if (!id) continue;
-        byType.set(id, (byType.get(id) ?? 0) + 1);
+        const cur = counter.get(id) ?? {
+          entertainers: 0,
+          events: new Set<string>(),
+        };
+        cur.entertainers += 1;
+        counter.set(id, cur);
       }
-      setCounts(byType);
+      type EvtJoinRow = {
+        event_id: string;
+        entertainers:
+          | { entertainment_type_id: string | null }
+          | { entertainment_type_id: string | null }[]
+          | null;
+      };
+      for (const r of (evtRes.data ?? []) as unknown as EvtJoinRow[]) {
+        const ent = Array.isArray(r.entertainers)
+          ? r.entertainers[0]
+          : r.entertainers;
+        const typeId = ent?.entertainment_type_id ?? null;
+        if (!typeId) continue;
+        const cur = counter.get(typeId) ?? {
+          entertainers: 0,
+          events: new Set<string>(),
+        };
+        cur.events.add(r.event_id);
+        counter.set(typeId, cur);
+      }
+      const merged = new Map<
+        string,
+        { entertainers: number; events: number }
+      >();
+      for (const [k, v] of counter) {
+        merged.set(k, { entertainers: v.entertainers, events: v.events.size });
+      }
+      setCounts(merged);
       setError(null);
     } catch (err) {
       setError(errorMessage(err, "Σφάλμα φόρτωσης ειδών ψυχαγωγίας."));
@@ -223,13 +265,20 @@ export default function EntertainmentTypesPage() {
   }
 
   async function handleDelete(t: EntertainmentType) {
-    const eventCount = counts.get(t.id) ?? 0;
-    const msg =
-      eventCount > 0
-        ? `Διαγραφή «${t.name}»; Θα αποσυνδεθεί από ${eventCount} ${
-            eventCount === 1 ? "εκδήλωση" : "εκδηλώσεις"
-          }.`
-        : `Διαγραφή «${t.name}»;`;
+    const c = counts.get(t.id);
+    const entCount = c?.entertainers ?? 0;
+    const evtCount = c?.events ?? 0;
+    let msg: string;
+    if (entCount === 0 && evtCount === 0) {
+      msg = `Διαγραφή «${t.name}»;`;
+    } else {
+      msg =
+        `Ο τύπος «${t.name}» χρησιμοποιείται από ${entCount} ${
+          entCount === 1 ? "ψυχαγωγό" : "ψυχαγωγούς"
+        } σε ${evtCount} ${
+          evtCount === 1 ? "εκδήλωση" : "εκδηλώσεις"
+        }. Είστε σίγουροι;`;
+    }
     if (!window.confirm(msg)) return;
     if (!clubId) return;
     try {
@@ -305,7 +354,7 @@ export default function EntertainmentTypesPage() {
                 <th className="px-3 py-2 w-12">#</th>
                 <th className="px-3 py-2">Όνομα</th>
                 <th className="px-3 py-2">Περιγραφή</th>
-                <th className="px-3 py-2 text-right">Εκδηλώσεις</th>
+                <th className="px-3 py-2 text-right">Χρήση</th>
                 <th className="px-3 py-2 text-center">Active</th>
                 <th className="px-3 py-2 text-right">Ενέργειες</th>
               </tr>
@@ -318,8 +367,20 @@ export default function EntertainmentTypesPage() {
                   <td className="px-3 py-2 max-w-md truncate text-xs text-muted">
                     {t.description ?? "—"}
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    {counts.get(t.id) ?? 0}
+                  <td className="px-3 py-2 text-right text-xs">
+                    {(() => {
+                      const c = counts.get(t.id);
+                      const ent = c?.entertainers ?? 0;
+                      const evt = c?.events ?? 0;
+                      if (ent === 0 && evt === 0) {
+                        return (
+                          <span className="italic text-muted">
+                            Δεν χρησιμοποιείται
+                          </span>
+                        );
+                      }
+                      return `${ent} ψυχαγωγοί · ${evt} εκδηλώσεις`;
+                    })()}
                   </td>
                   <td className="px-3 py-2 text-center">
                     <button

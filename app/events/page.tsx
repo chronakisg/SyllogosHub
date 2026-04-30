@@ -13,6 +13,13 @@ import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
+import {
+  createEntertainer,
+  getEntertainers,
+  getEventEntertainers,
+  setEventEntertainers as saveEventEntertainers,
+  type EntertainerWithType,
+} from "@/lib/entertainers";
 import type {
   ContributionType,
   EntertainmentType,
@@ -29,21 +36,33 @@ import type {
 } from "@/lib/supabase/types";
 
 type EventListItem = EventRow & {
-  entertainment_types?: { name: string } | null;
+  event_entertainers?: Array<{
+    entertainers: { id: string; name: string } | null;
+  }> | null;
+};
+
+type EventEntertainerSummary = {
+  id: string;
+  name: string;
 };
 
 type EventWithStats = EventListItem & {
   reservation_count: number;
   table_count: number;
-  entertainment_type_name: string | null;
+  entertainers_summary: EventEntertainerSummary[];
 };
 
 type DetailsForm = {
   event_name: string;
   event_date: string;
   location: string;
-  entertainment_type_id: string;
-  entertainment_name: string;
+};
+
+type EntertainerRow = {
+  id?: string;
+  entertainer_id: string;
+  fee: string;
+  notes: string;
 };
 
 type TicketRow = {
@@ -89,6 +108,12 @@ function countTables(raw: unknown): number {
   return Array.isArray(list) ? list.length : 0;
 }
 
+function entertainersBadge(list: EventEntertainerSummary[]): string {
+  if (list.length === 0) return "";
+  if (list.length === 1) return list[0].name;
+  return `${list[0].name} +${list.length - 1}`;
+}
+
 function memberDisplayName(m: Member): string {
   return `${m.last_name} ${m.first_name}`.trim();
 }
@@ -121,7 +146,7 @@ export default function EventsPage() {
       const supabase = getBrowserClient();
       const { data, error: qErr } = await supabase
         .from("events")
-        .select("*, entertainment_types(name)")
+        .select("*, event_entertainers(entertainers(id, name))")
         .eq("club_id", clubId)
         .order("event_date", { ascending: false });
       if (qErr) throw qErr;
@@ -140,12 +165,20 @@ export default function EventsPage() {
       }
       setError(null);
       setEvents(
-        rows.map((e) => ({
-          ...e,
-          reservation_count: counts.get(e.id) ?? 0,
-          table_count: countTables(e.venue_map_config),
-          entertainment_type_name: e.entertainment_types?.name ?? null,
-        }))
+        rows.map((e) => {
+          const summary: EventEntertainerSummary[] = (
+            e.event_entertainers ?? []
+          )
+            .map((ee) => ee.entertainers)
+            .filter((x): x is { id: string; name: string } => !!x)
+            .map((x) => ({ id: x.id, name: x.name }));
+          return {
+            ...e,
+            reservation_count: counts.get(e.id) ?? 0,
+            table_count: countTables(e.venue_map_config),
+            entertainers_summary: summary,
+          };
+        })
       );
     } catch (err) {
       setError(errorMessage(err, "Σφάλμα φόρτωσης εκδηλώσεων."));
@@ -292,16 +325,13 @@ export default function EventsPage() {
                   <tr key={ev.id} className="hover:bg-background/40">
                     <td className="px-4 py-3">
                       <div className="font-medium">{ev.event_name}</div>
-                      {(ev.location || ev.entertainment_type_name) && (
+                      {(ev.location ||
+                        ev.entertainers_summary.length > 0) && (
                         <div className="mt-0.5 text-xs text-muted">
                           {[
                             ev.location ? `📍 ${ev.location}` : null,
-                            ev.entertainment_type_name
-                              ? `🎵 ${ev.entertainment_type_name}${
-                                  ev.entertainment_name
-                                    ? `: ${ev.entertainment_name}`
-                                    : ""
-                                }`
+                            ev.entertainers_summary.length > 0
+                              ? `🎵 ${entertainersBadge(ev.entertainers_summary)}`
                               : null,
                           ]
                             .filter(Boolean)
@@ -369,7 +399,7 @@ export default function EventsPage() {
   );
 }
 
-type Tab = "details" | "tickets" | "sponsors";
+type Tab = "details" | "tickets" | "entertainment" | "sponsors";
 
 function EventModal({
   editing,
@@ -389,15 +419,11 @@ function EventModal({
           event_name: editing.event_name,
           event_date: editing.event_date.slice(0, 10),
           location: editing.location ?? "",
-          entertainment_type_id: editing.entertainment_type_id ?? "",
-          entertainment_name: editing.entertainment_name ?? "",
         }
       : {
           event_name: "",
           event_date: new Date().toISOString().slice(0, 10),
           location: "",
-          entertainment_type_id: "",
-          entertainment_name: "",
         }
   );
   const [tickets, setTickets] = useState<TicketRow[]>([]);
@@ -406,6 +432,11 @@ function EventModal({
   const [entertainmentTypes, setEntertainmentTypes] = useState<
     EntertainmentType[]
   >([]);
+  const [entertainers, setEntertainers] = useState<EntertainerWithType[]>([]);
+  const [eventEntertainers, setEventEntertainers] = useState<
+    EntertainerRow[]
+  >([]);
+  const [creatingEntertainer, setCreatingEntertainer] = useState(false);
   const memberLookup = useMemo(() => {
     const m = new Map<string, Member>();
     for (const x of members) m.set(x.id, x);
@@ -431,27 +462,36 @@ function EventModal({
               .eq("active", true)
               .order("display_order", { ascending: true })
           : Promise.resolve({ data: [], error: null } as const);
-        const [mRes, tRes, spRes, etRes] = await Promise.all([
-          supabase
-            .from("members")
-            .select("*")
-            .eq("status", "active")
-            .order("last_name", { ascending: true }),
-          editing
-            ? supabase
-                .from("event_ticket_prices")
-                .select("*")
-                .eq("event_id", editing.id)
-                .order("display_order", { ascending: true })
-            : Promise.resolve({ data: [], error: null } as const),
-          editing
-            ? supabase
-                .from("event_sponsors")
-                .select("*, sponsors(id, member_id, external_name)")
-                .eq("event_id", editing.id)
-            : Promise.resolve({ data: [], error: null } as const),
-          etQuery,
-        ]);
+        const entListPromise = clubId
+          ? getEntertainers(clubId)
+          : Promise.resolve([] as EntertainerWithType[]);
+        const eventEntPromise = editing
+          ? getEventEntertainers(editing.id)
+          : Promise.resolve([]);
+        const [mRes, tRes, spRes, etRes, entList, eventEntList] =
+          await Promise.all([
+            supabase
+              .from("members")
+              .select("*")
+              .eq("status", "active")
+              .order("last_name", { ascending: true }),
+            editing
+              ? supabase
+                  .from("event_ticket_prices")
+                  .select("*")
+                  .eq("event_id", editing.id)
+                  .order("display_order", { ascending: true })
+              : Promise.resolve({ data: [], error: null } as const),
+            editing
+              ? supabase
+                  .from("event_sponsors")
+                  .select("*, sponsors(id, member_id, external_name)")
+                  .eq("event_id", editing.id)
+              : Promise.resolve({ data: [], error: null } as const),
+            etQuery,
+            entListPromise,
+            eventEntPromise,
+          ]);
         if (cancelled) return;
         if (mRes.error) throw mRes.error;
         if (tRes.error) throw tRes.error;
@@ -462,6 +502,15 @@ function EventModal({
         setMembers(memberRows);
         setEntertainmentTypes(
           (etRes.data ?? []) as EntertainmentType[]
+        );
+        setEntertainers(entList);
+        setEventEntertainers(
+          eventEntList.map((row) => ({
+            id: row.id,
+            entertainer_id: row.entertainer_id,
+            fee: row.fee != null ? String(row.fee) : "",
+            notes: row.notes ?? "",
+          }))
         );
 
         const ticketRows = (tRes.data ?? []) as EventTicketPrice[];
@@ -595,6 +644,46 @@ function EventModal({
       return;
     }
 
+    const cleanEntertainers: Array<{
+      entertainer_id: string;
+      fee: number | null;
+      notes: string | null;
+    }> = [];
+    const seenEntertainers = new Set<string>();
+    for (let i = 0; i < eventEntertainers.length; i++) {
+      const row = eventEntertainers[i];
+      if (!row.entertainer_id) {
+        setTab("entertainment");
+        setFormError(`Επιλέξτε ψυχαγωγό στη γραμμή ${i + 1}.`);
+        return;
+      }
+      if (seenEntertainers.has(row.entertainer_id)) {
+        setTab("entertainment");
+        setFormError(
+          `Ο ψυχαγωγός στη γραμμή ${i + 1} έχει ήδη προστεθεί.`
+        );
+        return;
+      }
+      seenEntertainers.add(row.entertainer_id);
+      let feeNum: number | null = null;
+      const trimmed = row.fee.trim();
+      if (trimmed) {
+        feeNum = Number(trimmed.replace(",", "."));
+        if (!Number.isFinite(feeNum) || feeNum < 0) {
+          setTab("entertainment");
+          setFormError(
+            `Η αμοιβή στη γραμμή ${i + 1} δεν είναι έγκυρη.`
+          );
+          return;
+        }
+      }
+      cleanEntertainers.push({
+        entertainer_id: row.entertainer_id,
+        fee: feeNum,
+        notes: row.notes.trim() || null,
+      });
+    }
+
     setSaving(true);
     try {
       const supabase = getBrowserClient();
@@ -602,10 +691,6 @@ function EventModal({
         event_name,
         event_date,
         location: details.location.trim() || null,
-        entertainment_type_id: details.entertainment_type_id || null,
-        entertainment_name: details.entertainment_type_id
-          ? details.entertainment_name.trim() || null
-          : null,
       };
 
       let eventId: string;
@@ -674,6 +759,9 @@ function EventModal({
         if (isErr) throw isErr;
       }
 
+      // Sync event_entertainers: replace-all
+      await saveEventEntertainers(eventId, clubId, cleanEntertainers);
+
       await onSaved();
     } catch (err) {
       setFormError(errorMessage(err, "Σφάλμα αποθήκευσης."));
@@ -704,6 +792,9 @@ function EventModal({
             <TabBtn current={tab} value="tickets" onSelect={setTab}>
               Τιμές
             </TabBtn>
+            <TabBtn current={tab} value="entertainment" onSelect={setTab}>
+              Ψυχαγωγία
+            </TabBtn>
             <TabBtn current={tab} value="sponsors" onSelect={setTab}>
               Χορηγοί
             </TabBtn>
@@ -715,11 +806,7 @@ function EventModal({
             {loading ? (
               <p className="py-10 text-center text-sm text-muted">Φόρτωση…</p>
             ) : tab === "details" ? (
-              <DetailsTab
-                form={details}
-                setForm={setDetails}
-                entertainmentTypes={entertainmentTypes}
-              />
+              <DetailsTab form={details} setForm={setDetails} />
             ) : tab === "tickets" ? (
               <TicketsTab
                 tickets={tickets}
@@ -727,6 +814,27 @@ function EventModal({
                 onRemove={removeTicket}
                 onMove={moveTicket}
                 onUpdate={updateTicket}
+              />
+            ) : tab === "entertainment" ? (
+              <EntertainmentTab
+                rows={eventEntertainers}
+                setRows={setEventEntertainers}
+                entertainers={entertainers}
+                entertainmentTypes={entertainmentTypes}
+                clubId={clubId}
+                onCreated={(ent) => {
+                  setEntertainers((s) => {
+                    const next = [...s, ent];
+                    next.sort((a, b) => a.name.localeCompare(b.name, "el"));
+                    return next;
+                  });
+                  setEventEntertainers((s) => [
+                    ...s,
+                    { entertainer_id: ent.id, fee: "", notes: "" },
+                  ]);
+                }}
+                creating={creatingEntertainer}
+                setCreating={setCreatingEntertainer}
               />
             ) : (
               <SponsorsTab
@@ -817,14 +925,10 @@ function TabBtn({
 function DetailsTab({
   form,
   setForm,
-  entertainmentTypes,
 }: {
   form: DetailsForm;
   setForm: React.Dispatch<React.SetStateAction<DetailsForm>>;
-  entertainmentTypes: EntertainmentType[];
 }) {
-  const showName = form.entertainment_type_id !== "";
-  const noTypes = entertainmentTypes.length === 0;
   return (
     <div className="space-y-4">
       <Field label="Όνομα εκδήλωσης" required>
@@ -862,65 +966,320 @@ function DetailsTab({
           className={inputClass}
         />
       </Field>
+    </div>
+  );
+}
 
-      <fieldset className="space-y-3 rounded-lg border border-border p-3">
-        <legend className="px-2 text-xs font-semibold uppercase tracking-wider text-muted">
-          Ψυχαγωγία
-        </legend>
-        {noTypes ? (
-          <p className="text-xs text-muted">
-            Δεν έχουν οριστεί είδη ψυχαγωγίας.{" "}
-            <Link
-              href="/settings/entertainment-types"
-              className="font-medium text-accent hover:underline"
-            >
-              Προσθήκη Ειδών →
-            </Link>
-          </p>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Είδος">
-              <select
-                value={form.entertainment_type_id}
-                onChange={(e) =>
-                  setForm((s) => ({
-                    ...s,
-                    entertainment_type_id: e.target.value,
-                    entertainment_name: e.target.value
-                      ? s.entertainment_name
-                      : "",
-                  }))
-                }
-                className={inputClass}
+function EntertainmentTab({
+  rows,
+  setRows,
+  entertainers,
+  entertainmentTypes,
+  clubId,
+  onCreated,
+  creating,
+  setCreating,
+}: {
+  rows: EntertainerRow[];
+  setRows: React.Dispatch<React.SetStateAction<EntertainerRow[]>>;
+  entertainers: EntertainerWithType[];
+  entertainmentTypes: EntertainmentType[];
+  clubId: string | null;
+  onCreated: (ent: EntertainerWithType) => void;
+  creating: boolean;
+  setCreating: (v: boolean) => void;
+}) {
+  const lookup = useMemo(() => {
+    const m = new Map<string, EntertainerWithType>();
+    for (const e of entertainers) m.set(e.id, e);
+    return m;
+  }, [entertainers]);
+
+  const usedIds = new Set(rows.map((r) => r.entertainer_id).filter(Boolean));
+  const available = entertainers.filter((e) => !usedIds.has(e.id));
+
+  function addEmpty() {
+    setRows((s) => [...s, { entertainer_id: "", fee: "", notes: "" }]);
+  }
+  function update(i: number, patch: Partial<EntertainerRow>) {
+    setRows((s) => s.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  }
+  function remove(i: number) {
+    setRows((s) => s.filter((_, idx) => idx !== i));
+  }
+
+  const total = rows.reduce((sum, r) => {
+    const n = Number(r.fee.replace(",", "."));
+    return Number.isFinite(n) ? sum + n : sum;
+  }, 0);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted">
+          Επιλέξτε υπάρχοντες ψυχαγωγούς ή προσθέστε νέους με αμοιβή ανά
+          εκδήλωση.
+        </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-foreground/5"
+          >
+            + Νέος ψυχαγωγός
+          </button>
+        </div>
+      </div>
+
+      {entertainers.length === 0 && rows.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted">
+          Δεν έχουν οριστεί ψυχαγωγοί. Πατήστε «Νέος ψυχαγωγός».
+        </p>
+      ) : rows.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted">
+          Δεν έχει οριστεί ψυχαγωγία για αυτήν την εκδήλωση.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {rows.map((r, i) => {
+            const ent = r.entertainer_id ? lookup.get(r.entertainer_id) : null;
+            const typeName = ent?.entertainment_type?.name ?? null;
+            return (
+              <li
+                key={i}
+                className="rounded-lg border border-border bg-background p-3"
               >
-                <option value="">— Χωρίς ψυχαγωγία —</option>
-                {entertainmentTypes.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Όνομα">
+                <div className="grid gap-2 sm:grid-cols-[1.5fr_120px_1fr_auto]">
+                  <Field label="Ψυχαγωγός">
+                    <select
+                      value={r.entertainer_id}
+                      onChange={(e) =>
+                        update(i, { entertainer_id: e.target.value })
+                      }
+                      className={inputClass}
+                    >
+                      <option value="">— Επιλέξτε —</option>
+                      {ent && (
+                        <option key={ent.id} value={ent.id}>
+                          {ent.name}
+                          {typeName ? ` (${typeName})` : ""}
+                        </option>
+                      )}
+                      {available.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                          {a.entertainment_type
+                            ? ` (${a.entertainment_type.name})`
+                            : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Αμοιβή (€)">
+                    <input
+                      type="number"
+                      step="0.01"
+                      inputMode="decimal"
+                      value={r.fee}
+                      onChange={(e) => update(i, { fee: e.target.value })}
+                      placeholder="—"
+                      className={inputClass + " text-right"}
+                    />
+                  </Field>
+                  <Field label="Σημειώσεις">
+                    <input
+                      type="text"
+                      value={r.notes}
+                      onChange={(e) => update(i, { notes: e.target.value })}
+                      placeholder="προαιρετικό"
+                      className={inputClass}
+                    />
+                  </Field>
+                  <div className="flex items-end pb-1">
+                    <button
+                      type="button"
+                      onClick={() => remove(i)}
+                      aria-label="Αφαίρεση"
+                      className="rounded-md border border-danger/30 px-2 py-1 text-[12px] text-danger transition hover:bg-danger/10"
+                    >
+                      ❌
+                    </button>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={addEmpty}
+          disabled={available.length === 0 && entertainers.length > 0}
+          className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-foreground/5 disabled:opacity-50"
+        >
+          + Προσθήκη ψυχαγωγού
+        </button>
+        {rows.length > 0 && (
+          <div className="text-sm">
+            <span className="text-muted">Σύνολο αμοιβών: </span>
+            <span className="font-semibold">{eur.format(total)}</span>
+          </div>
+        )}
+      </div>
+
+      {creating && (
+        <NewEntertainerDialog
+          clubId={clubId}
+          entertainmentTypes={entertainmentTypes}
+          onClose={() => setCreating(false)}
+          onCreated={(ent) => {
+            setCreating(false);
+            onCreated(ent);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function NewEntertainerDialog({
+  clubId,
+  entertainmentTypes,
+  onClose,
+  onCreated,
+}: {
+  clubId: string | null;
+  entertainmentTypes: EntertainmentType[];
+  onClose: () => void;
+  onCreated: (ent: EntertainerWithType) => void;
+}) {
+  const [name, setName] = useState("");
+  const [typeId, setTypeId] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    setErr(null);
+    if (!clubId) {
+      setErr("Δεν έχει εντοπιστεί σύλλογος.");
+      return;
+    }
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setErr("Το όνομα είναι υποχρεωτικό.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const created = await createEntertainer(clubId, {
+        name: trimmed,
+        entertainment_type_id: typeId || null,
+        phone: phone.trim() || null,
+        email: email.trim() || null,
+        notes: notes.trim() || null,
+      });
+      const type =
+        entertainmentTypes.find((t) => t.id === typeId) ?? null;
+      onCreated({ ...created, entertainment_type: type });
+    } catch (e) {
+      setErr(errorMessage(e, "Σφάλμα δημιουργίας ψυχαγωγού."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="mb-4 text-base font-semibold">Νέος ψυχαγωγός</h3>
+        <div className="space-y-3">
+          <Field label="Όνομα" required>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="π.χ. Νίκος Παπαγρηγορίου"
+              className={inputClass}
+            />
+          </Field>
+          <Field label="Τύπος ψυχαγωγίας">
+            <select
+              value={typeId}
+              onChange={(e) => setTypeId(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">— Χωρίς τύπο —</option>
+              {entertainmentTypes.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Τηλέφωνο">
               <input
-                type="text"
-                value={form.entertainment_name}
-                onChange={(e) =>
-                  setForm((s) => ({
-                    ...s,
-                    entertainment_name: e.target.value,
-                  }))
-                }
-                disabled={!showName}
-                placeholder="π.χ. DJ Νίκος, Ορχήστρα Σταυριανός"
-                className={
-                  inputClass + (!showName ? " opacity-50" : "")
-                }
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Email">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className={inputClass}
               />
             </Field>
           </div>
-        )}
-      </fieldset>
+          <Field label="Σημειώσεις">
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              className={inputClass}
+            />
+          </Field>
+          {err && (
+            <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+              {err}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background disabled:opacity-50"
+            >
+              Ακύρωση
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={saving}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {saving ? "Δημιουργία…" : "Δημιουργία"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

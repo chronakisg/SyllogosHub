@@ -233,8 +233,6 @@ export type Event = {
   event_date: string;
   venue_map_config: Record<string, unknown>;
   location: string | null;
-  entertainment_type_id: string | null;
-  entertainment_name: string | null;
   created_at: string;
 };
 
@@ -245,12 +243,70 @@ export type EventInsert = {
   event_date: string;
   venue_map_config?: Record<string, unknown>;
   location?: string | null;
-  entertainment_type_id?: string | null;
-  entertainment_name?: string | null;
   created_at?: string;
 };
 
 export type EventUpdate = Partial<Omit<Event, "id" | "created_at">>;
+
+export type Entertainer = {
+  id: string;
+  club_id: string | null;
+  name: string;
+  entertainment_type_id: string | null;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EntertainerInsert = {
+  id?: string;
+  club_id?: string | null;
+  name: string;
+  entertainment_type_id?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type EntertainerUpdate = Partial<
+  Omit<Entertainer, "id" | "created_at">
+>;
+
+export type EventEntertainer = {
+  id: string;
+  event_id: string;
+  entertainer_id: string;
+  club_id: string | null;
+  fee: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EventEntertainerInsert = {
+  id?: string;
+  event_id: string;
+  entertainer_id: string;
+  club_id?: string | null;
+  fee?: number | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type EventEntertainerUpdate = Partial<
+  Omit<EventEntertainer, "id" | "created_at">
+>;
+
+export type EventEntertainerWithDetails = EventEntertainer & {
+  entertainer: Entertainer & {
+    entertainment_type?: EntertainmentType | null;
+  };
+};
 
 export type EventTicketPrice = {
   id: string;
@@ -653,15 +709,7 @@ export type Database = {
         Row: Event;
         Insert: EventInsert;
         Update: EventUpdate;
-        Relationships: [
-          {
-            foreignKeyName: "events_entertainment_type_id_fkey";
-            columns: ["entertainment_type_id"];
-            isOneToOne: false;
-            referencedRelation: "entertainment_types";
-            referencedColumns: ["id"];
-          },
-        ];
+        Relationships: [];
       };
       entertainment_types: {
         Row: EntertainmentType;
@@ -670,6 +718,55 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "entertainment_types_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      entertainers: {
+        Row: Entertainer;
+        Insert: EntertainerInsert;
+        Update: EntertainerUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "entertainers_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "entertainers_entertainment_type_id_fkey";
+            columns: ["entertainment_type_id"];
+            isOneToOne: false;
+            referencedRelation: "entertainment_types";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      event_entertainers: {
+        Row: EventEntertainer;
+        Insert: EventEntertainerInsert;
+        Update: EventEntertainerUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "event_entertainers_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "events";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "event_entertainers_entertainer_id_fkey";
+            columns: ["entertainer_id"];
+            isOneToOne: false;
+            referencedRelation: "entertainers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "event_entertainers_club_id_fkey";
             columns: ["club_id"];
             isOneToOne: false;
             referencedRelation: "clubs";
