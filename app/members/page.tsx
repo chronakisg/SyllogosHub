@@ -850,20 +850,22 @@ export default function MembersPage() {
                   <tr key={m.id} className="hover:bg-background/40">
                     <td className="px-4 py-3 font-medium">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center">
+                        <span className="inline-flex items-center gap-2">
                           <span
-                            title={m.status === "active" ? "Ενεργό" : "Ανενεργό"}
+                            title={
+                              m.status === "active" ? "Ενεργό" : "Ανενεργό"
+                            }
                             aria-label={
                               m.status === "active" ? "Ενεργό" : "Ανενεργό"
                             }
                             className={
-                              "mr-2 inline-block h-2 w-2 rounded-full " +
+                              "block h-2.5 w-2.5 shrink-0 rounded-full " +
                               (m.status === "active"
                                 ? "bg-emerald-500"
                                 : "bg-rose-500")
                             }
                           />
-                          {displayName(m)}
+                          <span>{displayName(m)}</span>
                         </span>
                         {m.is_board_member && (
                           <span
@@ -1353,9 +1355,23 @@ function MemberModal({
         <div className="border-b border-border p-6">
           {editing ? (
             <>
-              <h2 className="text-xl font-semibold uppercase">
-                {`${form.last_name} ${form.first_name}`.trim() ||
-                  "Επεξεργασία μέλους"}
+              <h2 className="inline-flex items-center gap-2 text-xl font-semibold uppercase">
+                <span
+                  title={editing.status === "active" ? "Ενεργό" : "Ανενεργό"}
+                  aria-label={
+                    editing.status === "active" ? "Ενεργό" : "Ανενεργό"
+                  }
+                  className={
+                    "block h-2.5 w-2.5 shrink-0 rounded-full " +
+                    (editing.status === "active"
+                      ? "bg-emerald-500"
+                      : "bg-rose-500")
+                  }
+                />
+                <span>
+                  {`${form.last_name} ${form.first_name}`.trim() ||
+                    "Επεξεργασία μέλους"}
+                </span>
               </h2>
               <p className="mt-0.5 text-sm text-muted">
                 {`${form.last_name} ${form.first_name}`.trim()
