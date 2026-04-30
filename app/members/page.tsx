@@ -850,7 +850,21 @@ export default function MembersPage() {
                   <tr key={m.id} className="hover:bg-background/40">
                     <td className="px-4 py-3 font-medium">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span>{displayName(m)}</span>
+                        <span className="inline-flex items-center">
+                          <span
+                            title={m.status === "active" ? "Ενεργό" : "Ανενεργό"}
+                            aria-label={
+                              m.status === "active" ? "Ενεργό" : "Ανενεργό"
+                            }
+                            className={
+                              "mr-2 inline-block h-2 w-2 rounded-full " +
+                              (m.status === "active"
+                                ? "bg-emerald-500"
+                                : "bg-rose-500")
+                            }
+                          />
+                          {displayName(m)}
+                        </span>
                         {m.is_board_member && (
                           <span
                             title={m.board_position ?? "Μέλος Δ.Σ."}
@@ -1822,7 +1836,7 @@ function MemberModal({
               {saving
                 ? "Αποθήκευση…"
                 : editing
-                  ? "Αποθήκευση Αλλαγών"
+                  ? "Αποθήκευση"
                   : "Προσθήκη Μέλους"}
             </button>
             </div>
