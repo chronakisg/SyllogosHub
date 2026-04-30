@@ -50,6 +50,33 @@ export function hasAnonymousAttendees(r: ReservationWithAttendees): boolean {
   return r.attendees.some((a) => !a.member_id && !a.guest_name);
 }
 
+export function sortAttendees(
+  attendees: AttendeeWithMember[]
+): AttendeeWithMember[] {
+  return [...attendees].sort((a, b) => {
+    if (a.is_lead && !b.is_lead) return -1;
+    if (!a.is_lead && b.is_lead) return 1;
+
+    const bucketA = a.member_id ? 0 : a.guest_name ? 1 : 2;
+    const bucketB = b.member_id ? 0 : b.guest_name ? 1 : 2;
+    if (bucketA !== bucketB) return bucketA - bucketB;
+
+    if (bucketA === 0) {
+      const lastA = a.member?.last_name ?? "";
+      const lastB = b.member?.last_name ?? "";
+      const lastCmp = lastA.localeCompare(lastB, "el");
+      if (lastCmp !== 0) return lastCmp;
+      const firstA = a.member?.first_name ?? "";
+      const firstB = b.member?.first_name ?? "";
+      return firstA.localeCompare(firstB, "el");
+    } else if (bucketA === 1) {
+      return (a.guest_name ?? "").localeCompare(b.guest_name ?? "", "el");
+    } else {
+      return (a.created_at ?? "").localeCompare(b.created_at ?? "");
+    }
+  });
+}
+
 export function getAge(birthDate: string | null): number | null {
   if (!birthDate) return null;
   const d = new Date(birthDate);

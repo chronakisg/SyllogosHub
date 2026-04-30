@@ -13,6 +13,7 @@ import {
 } from "@/lib/supabase/types";
 import {
   getAge,
+  sortAttendees,
   type AttendeeWithMember,
   type ReservationWithAttendees,
 } from "@/lib/utils/attendees";
@@ -54,7 +55,10 @@ export function AttendeesEditor({
     return () => clearTimeout(t);
   }, [searchQuery]);
 
-  const attendees = reservation.attendees ?? [];
+  const attendees = useMemo(
+    () => sortAttendees(reservation.attendees ?? []),
+    [reservation.attendees]
+  );
   const totalCount = attendees.length;
 
   const existingMemberIds = useMemo(
