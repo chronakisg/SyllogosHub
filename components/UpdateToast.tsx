@@ -1,8 +1,14 @@
 "use client";
 
-import { useServiceWorkerUpdate } from "@/hooks/useServiceWorkerUpdate";
+import { useEffect } from "react";
+import { useServiceWorkerUpdate } from "@/lib/hooks/useServiceWorkerUpdate";
+import { unregisterStaleSWInDev } from "@/lib/dev/unregisterStaleSW";
 
 export function UpdateToast() {
+  useEffect(() => {
+    unregisterStaleSWInDev();
+  }, []);
+
   const { updateAvailable, applyUpdate } = useServiceWorkerUpdate();
 
   if (!updateAvailable) return null;

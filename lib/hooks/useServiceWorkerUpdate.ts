@@ -12,19 +12,6 @@ export function useServiceWorkerUpdate() {
       return;
     }
 
-    // In dev, the SW build is disabled but a SW from a prior production
-    // run may still be registered for this origin and intercept requests.
-    // Unregister it + clear caches so localhost behaves like a normal site.
-    if (process.env.NODE_ENV !== "production") {
-      navigator.serviceWorker.getRegistrations().then((regs) => {
-        regs.forEach((r) => r.unregister());
-      });
-      if (typeof caches !== "undefined") {
-        caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
-      }
-      return;
-    }
-
     navigator.serviceWorker.ready.then((reg) => {
       if (reg.waiting) {
         setWaitingWorker(reg.waiting);
