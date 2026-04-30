@@ -8,37 +8,50 @@ import { useRole, type Permission, type RoleState } from "@/lib/hooks/useRole";
 import { useClubSettings } from "@/lib/hooks/useClubSettings";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 
+type NavSection = "daily" | "config";
+
 type NavItem = {
   href: string;
   label: string;
   permission: Permission | null;
   adminOnly?: boolean;
+  section: NavSection;
 };
 
+const SECTION_LABELS: Record<NavSection, string> = {
+  daily: "Καθημερινή χρήση",
+  config: "Διαμόρφωση",
+};
+
+const SECTION_ORDER: NavSection[] = ["daily", "config"];
+
 const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Αρχική", permission: null },
-  { href: "/calendar", label: "Ημερολόγιο", permission: null },
-  { href: "/members", label: "Διαχείριση Μελών", permission: "members" },
-  { href: "/events", label: "Εκδηλώσεις", permission: "events" },
-  { href: "/sponsors", label: "Χορηγοί", permission: "events" },
-  { href: "/seating", label: "Πλάνο Τραπεζιών", permission: "seating" },
-  { href: "/finances", label: "Οικονομικά", permission: "finances" },
+  { href: "/", label: "Αρχική", permission: null, section: "daily" },
+  { href: "/calendar", label: "Ημερολόγιο", permission: null, section: "daily" },
+  { href: "/members", label: "Διαχείριση Μελών", permission: "members", section: "daily" },
+  { href: "/events", label: "Εκδηλώσεις", permission: "events", section: "daily" },
+  { href: "/sponsors", label: "Χορηγοί", permission: "events", section: "daily" },
+  { href: "/seating", label: "Πλάνο Τραπεζιών", permission: "seating", section: "daily" },
+  { href: "/finances", label: "Οικονομικά", permission: "finances", section: "daily" },
   {
-    href: "/finances/discounts",
+    href: "/discounts",
     label: "Εκπτώσεις",
     permission: "finances",
+    section: "config",
   },
   {
     href: "/permissions",
     label: "Δικαιώματα",
     permission: null,
     adminOnly: true,
+    section: "config",
   },
   {
     href: "/settings",
     label: "Ρυθμίσεις",
     permission: null,
     adminOnly: true,
+    section: "config",
   },
 ];
 
@@ -107,28 +120,42 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <nav className="min-h-0 flex-1 overflow-hidden px-3 pb-3 lg:overflow-y-auto">
           <ul className="flex gap-1 overflow-x-auto lg:flex-col lg:gap-0.5 lg:overflow-x-visible">
-            {navItems.map((item) => {
-              const active =
-                item.href === "/"
-                  ? pathname === "/"
-                  : pathname === item.href ||
-                    pathname.startsWith(item.href + "/");
-              return (
-                <li key={item.href} className="shrink-0 lg:shrink">
-                  <Link
-                    href={item.href}
-                    aria-current={active ? "page" : undefined}
-                    className={
-                      "block w-full whitespace-nowrap rounded-md px-3 py-2 text-sm transition-colors " +
-                      (active
-                        ? "bg-[var(--brand-primary)] text-white"
-                        : "text-foreground/80 hover:bg-foreground/5 hover:text-foreground")
-                    }
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              );
+            {SECTION_ORDER.flatMap((section) => {
+              const items = navItems.filter((it) => it.section === section);
+              if (items.length === 0) return [];
+              return [
+                <li
+                  key={`section-${section}`}
+                  className="hidden shrink-0 lg:block lg:shrink"
+                >
+                  <p className="mt-4 mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                    {SECTION_LABELS[section]}
+                  </p>
+                </li>,
+                ...items.map((item) => {
+                  const active =
+                    item.href === "/"
+                      ? pathname === "/"
+                      : pathname === item.href ||
+                        pathname.startsWith(item.href + "/");
+                  return (
+                    <li key={item.href} className="shrink-0 lg:shrink">
+                      <Link
+                        href={item.href}
+                        aria-current={active ? "page" : undefined}
+                        className={
+                          "block w-full whitespace-nowrap rounded-md px-3 py-2 text-sm transition-colors " +
+                          (active
+                            ? "bg-[var(--brand-primary)] text-white"
+                            : "text-foreground/80 hover:bg-foreground/5 hover:text-foreground")
+                        }
+                      >
+                        {item.label}
+                      </Link>
+                    </li>
+                  );
+                }),
+              ];
             })}
           </ul>
         </nav>
