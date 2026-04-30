@@ -16,14 +16,8 @@ const CARDS: Card[] = [
   {
     href: "/settings/club",
     icon: "🏛️",
-    title: "Στοιχεία Συλλόγου",
-    description: "Όνομα, ΑΦΜ, διεύθυνση, τηλέφωνα και επικοινωνία.",
-  },
-  {
-    href: "/settings/branding",
-    icon: "🎨",
-    title: "Branding",
-    description: "Λογότυπο, χρώματα και visual identity.",
+    title: "Ταυτότητα Συλλόγου",
+    description: "Στοιχεία επικοινωνίας, λογότυπο, χρώματα και θέματα.",
   },
   {
     href: "/settings/departments",
