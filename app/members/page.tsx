@@ -96,6 +96,30 @@ export default function MembersPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  type Toast = {
+    message: string;
+    action?: { label: string; run: () => void };
+  };
+  const [toast, setToast] = useState<Toast | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const ms = toast.action ? 8000 : 5000;
+    const id = window.setTimeout(() => setToast(null), ms);
+    return () => window.clearTimeout(id);
+  }, [toast]);
+
+  function openCreateLinkedTo(memberId: string) {
+    setEditing(null);
+    setForm({
+      ...EMPTY_FORM,
+      family_mode: "link",
+      link_member_id: memberId,
+    });
+    setFormError(null);
+    setModalOpen(true);
+    setToast(null);
+  }
+
   const loadMembers = useCallback(async () => {
     if (!clubId) return;
     try {
@@ -409,6 +433,10 @@ export default function MembersPage() {
       family_id: resolvedFamilyId,
     };
 
+    const wasCreate = !editing;
+    const wasNewFamily = form.family_mode === "new";
+    const displayedName = `${last_name} ${first_name}`.trim();
+
     setSaving(true);
     try {
       const supabase = getBrowserClient();
@@ -437,6 +465,19 @@ export default function MembersPage() {
       setEditing(null);
       setForm(EMPTY_FORM);
       await loadMembers();
+      if (wasCreate) {
+        if (wasNewFamily) {
+          setToast({
+            message: `✓ Ο/Η ${displayedName} προστέθηκε. Δημιουργήθηκε νέα οικογένεια.`,
+            action: {
+              label: "+ Προσθήκη μέλους στην οικογένεια",
+              run: () => openCreateLinkedTo(memberId),
+            },
+          });
+        } else {
+          setToast({ message: "✓ Το μέλος προστέθηκε" });
+        }
+      }
     } catch (err) {
       setFormError(errorMessage(err, "Σφάλμα αποθήκευσης."));
     } finally {
@@ -626,6 +667,31 @@ export default function MembersPage() {
           Καθαρισμός φίλτρων
         </button>
       </div>
+
+      {toast && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-300">
+          <span>{toast.message}</span>
+          <div className="flex items-center gap-2">
+            {toast.action && (
+              <button
+                type="button"
+                onClick={toast.action.run}
+                className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-medium transition hover:bg-emerald-500/20"
+              >
+                {toast.action.label}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="shrink-0 rounded px-2 text-xs hover:opacity-70"
+              aria-label="Κλείσιμο"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
