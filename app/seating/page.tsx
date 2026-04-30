@@ -525,15 +525,35 @@ function SeatingView() {
       if (!selectedEventId || !clubId) return;
       try {
         const supabase = getBrowserClient();
-        const { error: iErr } = await supabase.from("reservations").insert({
-          club_id: clubId,
-          event_id: selectedEventId,
-          group_name: input.group_name,
-          pax_count: input.pax_count,
-          is_paid: input.is_paid,
-          table_number: null,
-        });
+        const { data: created, error: iErr } = await supabase
+          .from("reservations")
+          .insert({
+            club_id: clubId,
+            event_id: selectedEventId,
+            group_name: input.group_name,
+            pax_count: input.pax_count,
+            is_paid: input.is_paid,
+            table_number: null,
+          })
+          .select("id")
+          .single();
         if (iErr) throw iErr;
+
+        if (created && input.pax_count > 0) {
+          const rows = Array.from({ length: input.pax_count }, () => ({
+            reservation_id: created.id,
+            club_id: clubId,
+          }));
+          const { error: aErr } = await supabase
+            .from("reservation_attendees")
+            .insert(rows);
+          if (aErr) {
+            console.error(
+              "Reservation created but seeding anonymous attendees failed",
+              aErr
+            );
+          }
+        }
       } catch (err) {
         setError(errorMessage(err, "Σφάλμα δημιουργίας παρέας."));
       }
