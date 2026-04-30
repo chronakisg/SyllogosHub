@@ -195,12 +195,29 @@ export type DiscountRuleUpdate = Partial<
   Omit<DiscountRule, "id" | "created_at">
 >;
 
-export type EntertainmentType =
-  | "dj"
-  | "band"
-  | "orchestra"
-  | "live"
-  | "other";
+export type EntertainmentType = {
+  id: string;
+  club_id: string | null;
+  name: string;
+  description: string | null;
+  display_order: number;
+  active: boolean;
+  created_at: string;
+};
+
+export type EntertainmentTypeInsert = {
+  id?: string;
+  club_id?: string | null;
+  name: string;
+  description?: string | null;
+  display_order?: number;
+  active?: boolean;
+  created_at?: string;
+};
+
+export type EntertainmentTypeUpdate = Partial<
+  Omit<EntertainmentType, "id" | "created_at">
+>;
 
 export type ContributionType =
   | "money"
@@ -216,7 +233,7 @@ export type Event = {
   event_date: string;
   venue_map_config: Record<string, unknown>;
   location: string | null;
-  entertainment_type: EntertainmentType | null;
+  entertainment_type_id: string | null;
   entertainment_name: string | null;
   created_at: string;
 };
@@ -228,7 +245,7 @@ export type EventInsert = {
   event_date: string;
   venue_map_config?: Record<string, unknown>;
   location?: string | null;
-  entertainment_type?: EntertainmentType | null;
+  entertainment_type_id?: string | null;
   entertainment_name?: string | null;
   created_at?: string;
 };
@@ -636,7 +653,29 @@ export type Database = {
         Row: Event;
         Insert: EventInsert;
         Update: EventUpdate;
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "events_entertainment_type_id_fkey";
+            columns: ["entertainment_type_id"];
+            isOneToOne: false;
+            referencedRelation: "entertainment_types";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      entertainment_types: {
+        Row: EntertainmentType;
+        Insert: EntertainmentTypeInsert;
+        Update: EntertainmentTypeUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "entertainment_types_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       event_ticket_prices: {
         Row: EventTicketPrice;

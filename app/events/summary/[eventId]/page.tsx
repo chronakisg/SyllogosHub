@@ -39,8 +39,12 @@ type SponsorSummary = {
   contribution_description: string | null;
 };
 
+type EventWithEntertainment = EventRow & {
+  entertainment_types?: { name: string } | null;
+};
+
 type SummaryData = {
-  event: EventRow;
+  event: EventWithEntertainment;
   reservations: Reservation[];
   ticketPrices: EventTicketPrice[];
   sponsors: SponsorSummary[];
@@ -53,14 +57,6 @@ const CONTRIBUTION_LABEL: Record<ContributionType, string> = {
   product: "Προϊόν",
   service: "Υπηρεσία",
   venue: "Χώρος",
-  other: "Άλλο",
-};
-
-const ENTERTAINMENT_LABEL: Record<string, string> = {
-  dj: "DJ",
-  band: "Μπάντα",
-  orchestra: "Ορχήστρα",
-  live: "Live",
   other: "Άλλο",
 };
 
@@ -94,7 +90,7 @@ export default function EventSummaryPage() {
         const supabase = getBrowserClient();
         let eventQuery = supabase
           .from("events")
-          .select("*")
+          .select("*, entertainment_types(name)")
           .eq("id", eventId);
         if (currentClub.clubId)
           eventQuery = eventQuery.eq("club_id", currentClub.clubId);
@@ -144,7 +140,7 @@ export default function EventSummaryPage() {
           .filter((x): x is SponsorSummary => !!x);
 
         setData({
-          event: eRes.data as EventRow,
+          event: eRes.data as unknown as EventWithEntertainment,
           reservations: (rRes.data ?? []) as Reservation[],
           ticketPrices: (tRes.data ?? []) as EventTicketPrice[],
           sponsors: sponsorRows,
@@ -239,14 +235,13 @@ export default function EventSummaryPage() {
           {event.location && (
             <SummaryRow label="📍 Τοποθεσία">{event.location}</SummaryRow>
           )}
-          {event.entertainment_type && (
+          {event.entertainment_types?.name && (
             <SummaryRow label="🎵 Ψυχαγωγία">
-              {ENTERTAINMENT_LABEL[event.entertainment_type] ??
-                event.entertainment_type}
+              {event.entertainment_types.name}
               {event.entertainment_name ? `: ${event.entertainment_name}` : ""}
             </SummaryRow>
           )}
-          {!event.location && !event.entertainment_type && (
+          {!event.location && !event.entertainment_types?.name && (
             <p className="text-sm text-muted">—</p>
           )}
         </SummaryCard>

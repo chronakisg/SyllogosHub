@@ -32,6 +32,12 @@ const CARDS: Card[] = [
     description: "Χορευτικά, μουσικά, θεατρικά τμήματα του συλλόγου.",
   },
   {
+    href: "/settings/entertainment-types",
+    icon: "🎵",
+    title: "Είδη Ψυχαγωγίας",
+    description: "DJ, Μπάντα, Ορχήστρα και άλλοι τύποι διασκεδαστών.",
+  },
+  {
     href: "/discounts",
     icon: "💰",
     title: "Εκπτώσεις",

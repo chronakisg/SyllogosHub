@@ -28,16 +28,21 @@ import type {
   SponsorInsert,
 } from "@/lib/supabase/types";
 
-type EventWithStats = EventRow & {
+type EventListItem = EventRow & {
+  entertainment_types?: { name: string } | null;
+};
+
+type EventWithStats = EventListItem & {
   reservation_count: number;
   table_count: number;
+  entertainment_type_name: string | null;
 };
 
 type DetailsForm = {
   event_name: string;
   event_date: string;
   location: string;
-  entertainment_type: "" | EntertainmentType;
+  entertainment_type_id: string;
   entertainment_name: string;
 };
 
@@ -56,18 +61,6 @@ type SponsorshipRow = {
   contribution_value: string;
   contribution_description: string;
 };
-
-const ENTERTAINMENT_OPTIONS: Array<{
-  value: "" | EntertainmentType;
-  label: string;
-}> = [
-  { value: "", label: "Καμία" },
-  { value: "dj", label: "DJ" },
-  { value: "band", label: "Μπάντα" },
-  { value: "orchestra", label: "Ορχήστρα" },
-  { value: "live", label: "Live" },
-  { value: "other", label: "Άλλο" },
-];
 
 const CONTRIBUTION_OPTIONS: Array<{ value: ContributionType; label: string }> = [
   { value: "money", label: "Χρήματα" },
@@ -128,11 +121,11 @@ export default function EventsPage() {
       const supabase = getBrowserClient();
       const { data, error: qErr } = await supabase
         .from("events")
-        .select("*")
+        .select("*, entertainment_types(name)")
         .eq("club_id", clubId)
         .order("event_date", { ascending: false });
       if (qErr) throw qErr;
-      const rows = (data ?? []) as EventRow[];
+      const rows = (data ?? []) as unknown as EventListItem[];
       const ids = rows.map((e) => e.id);
       const counts = new Map<string, number>();
       if (ids.length > 0) {
@@ -151,6 +144,7 @@ export default function EventsPage() {
           ...e,
           reservation_count: counts.get(e.id) ?? 0,
           table_count: countTables(e.venue_map_config),
+          entertainment_type_name: e.entertainment_types?.name ?? null,
         }))
       );
     } catch (err) {
@@ -298,11 +292,17 @@ export default function EventsPage() {
                   <tr key={ev.id} className="hover:bg-background/40">
                     <td className="px-4 py-3">
                       <div className="font-medium">{ev.event_name}</div>
-                      {(ev.location || ev.entertainment_name) && (
+                      {(ev.location || ev.entertainment_type_name) && (
                         <div className="mt-0.5 text-xs text-muted">
                           {[
                             ev.location ? `📍 ${ev.location}` : null,
-                            ev.entertainment_name,
+                            ev.entertainment_type_name
+                              ? `🎵 ${ev.entertainment_type_name}${
+                                  ev.entertainment_name
+                                    ? `: ${ev.entertainment_name}`
+                                    : ""
+                                }`
+                              : null,
                           ]
                             .filter(Boolean)
                             .join(" · ")}
@@ -389,20 +389,23 @@ function EventModal({
           event_name: editing.event_name,
           event_date: editing.event_date.slice(0, 10),
           location: editing.location ?? "",
-          entertainment_type: editing.entertainment_type ?? "",
+          entertainment_type_id: editing.entertainment_type_id ?? "",
           entertainment_name: editing.entertainment_name ?? "",
         }
       : {
           event_name: "",
           event_date: new Date().toISOString().slice(0, 10),
           location: "",
-          entertainment_type: "",
+          entertainment_type_id: "",
           entertainment_name: "",
         }
   );
   const [tickets, setTickets] = useState<TicketRow[]>([]);
   const [sponsorships, setSponsorships] = useState<SponsorshipRow[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [entertainmentTypes, setEntertainmentTypes] = useState<
+    EntertainmentType[]
+  >([]);
   const memberLookup = useMemo(() => {
     const m = new Map<string, Member>();
     for (const x of members) m.set(x.id, x);
@@ -420,7 +423,15 @@ function EventModal({
     (async () => {
       try {
         const supabase = getBrowserClient();
-        const [mRes, tRes, spRes] = await Promise.all([
+        const etQuery = clubId
+          ? supabase
+              .from("entertainment_types")
+              .select("*")
+              .eq("club_id", clubId)
+              .eq("active", true)
+              .order("display_order", { ascending: true })
+          : Promise.resolve({ data: [], error: null } as const);
+        const [mRes, tRes, spRes, etRes] = await Promise.all([
           supabase
             .from("members")
             .select("*")
@@ -439,14 +450,19 @@ function EventModal({
                 .select("*, sponsors(id, member_id, external_name)")
                 .eq("event_id", editing.id)
             : Promise.resolve({ data: [], error: null } as const),
+          etQuery,
         ]);
         if (cancelled) return;
         if (mRes.error) throw mRes.error;
         if (tRes.error) throw tRes.error;
         if (spRes.error) throw spRes.error;
+        if (etRes.error) throw etRes.error;
 
         const memberRows = (mRes.data ?? []) as Member[];
         setMembers(memberRows);
+        setEntertainmentTypes(
+          (etRes.data ?? []) as EntertainmentType[]
+        );
 
         const ticketRows = (tRes.data ?? []) as EventTicketPrice[];
         setTickets(
@@ -501,7 +517,7 @@ function EventModal({
     return () => {
       cancelled = true;
     };
-  }, [editing]);
+  }, [editing, clubId]);
 
   function addTicket() {
     setTickets((s) => [...s, { label: "", price: "" }]);
@@ -586,8 +602,8 @@ function EventModal({
         event_name,
         event_date,
         location: details.location.trim() || null,
-        entertainment_type: details.entertainment_type || null,
-        entertainment_name: details.entertainment_type
+        entertainment_type_id: details.entertainment_type_id || null,
+        entertainment_name: details.entertainment_type_id
           ? details.entertainment_name.trim() || null
           : null,
       };
@@ -699,7 +715,11 @@ function EventModal({
             {loading ? (
               <p className="py-10 text-center text-sm text-muted">Φόρτωση…</p>
             ) : tab === "details" ? (
-              <DetailsTab form={details} setForm={setDetails} />
+              <DetailsTab
+                form={details}
+                setForm={setDetails}
+                entertainmentTypes={entertainmentTypes}
+              />
             ) : tab === "tickets" ? (
               <TicketsTab
                 tickets={tickets}
@@ -797,11 +817,14 @@ function TabBtn({
 function DetailsTab({
   form,
   setForm,
+  entertainmentTypes,
 }: {
   form: DetailsForm;
   setForm: React.Dispatch<React.SetStateAction<DetailsForm>>;
+  entertainmentTypes: EntertainmentType[];
 }) {
-  const showName = form.entertainment_type !== "";
+  const showName = form.entertainment_type_id !== "";
+  const noTypes = entertainmentTypes.length === 0;
   return (
     <div className="space-y-4">
       <Field label="Όνομα εκδήλωσης" required>
@@ -844,41 +867,58 @@ function DetailsTab({
         <legend className="px-2 text-xs font-semibold uppercase tracking-wider text-muted">
           Ψυχαγωγία
         </legend>
-        <Field label="Τύπος">
-          <select
-            value={form.entertainment_type}
-            onChange={(e) =>
-              setForm((s) => ({
-                ...s,
-                entertainment_type: e.target.value as
-                  | ""
-                  | EntertainmentType,
-              }))
-            }
-            className={inputClass}
-          >
-            {ENTERTAINMENT_OPTIONS.map((o) => (
-              <option key={o.value || "none"} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        {showName && (
-          <Field label="Όνομα">
-            <input
-              type="text"
-              value={form.entertainment_name}
-              onChange={(e) =>
-                setForm((s) => ({
-                  ...s,
-                  entertainment_name: e.target.value,
-                }))
-              }
-              placeholder="π.χ. DJ Νίκος, Ορχήστρα Σταυριανός"
-              className={inputClass}
-            />
-          </Field>
+        {noTypes ? (
+          <p className="text-xs text-muted">
+            Δεν έχουν οριστεί είδη ψυχαγωγίας.{" "}
+            <Link
+              href="/settings/entertainment-types"
+              className="font-medium text-accent hover:underline"
+            >
+              Προσθήκη Ειδών →
+            </Link>
+          </p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Είδος">
+              <select
+                value={form.entertainment_type_id}
+                onChange={(e) =>
+                  setForm((s) => ({
+                    ...s,
+                    entertainment_type_id: e.target.value,
+                    entertainment_name: e.target.value
+                      ? s.entertainment_name
+                      : "",
+                  }))
+                }
+                className={inputClass}
+              >
+                <option value="">— Χωρίς ψυχαγωγία —</option>
+                {entertainmentTypes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Όνομα">
+              <input
+                type="text"
+                value={form.entertainment_name}
+                onChange={(e) =>
+                  setForm((s) => ({
+                    ...s,
+                    entertainment_name: e.target.value,
+                  }))
+                }
+                disabled={!showName}
+                placeholder="π.χ. DJ Νίκος, Ορχήστρα Σταυριανός"
+                className={
+                  inputClass + (!showName ? " opacity-50" : "")
+                }
+              />
+            </Field>
+          </div>
         )}
       </fieldset>
     </div>
