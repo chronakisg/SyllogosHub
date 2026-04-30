@@ -93,6 +93,7 @@ export default function MembersPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MemberWithDepartments | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [originalForm, setOriginalForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -109,12 +110,14 @@ export default function MembersPage() {
   }, [toast]);
 
   function openCreateLinkedTo(memberId: string) {
-    setEditing(null);
-    setForm({
+    const next: FormState = {
       ...EMPTY_FORM,
       family_mode: "link",
       link_member_id: memberId,
-    });
+    };
+    setEditing(null);
+    setForm(next);
+    setOriginalForm(next);
     setFormError(null);
     setModalOpen(true);
     setToast(null);
@@ -260,13 +263,13 @@ export default function MembersPage() {
   function openCreate() {
     setEditing(null);
     setForm(EMPTY_FORM);
+    setOriginalForm(EMPTY_FORM);
     setFormError(null);
     setModalOpen(true);
   }
 
   function openEdit(member: MemberWithDepartments) {
-    setEditing(member);
-    setForm({
+    const next: FormState = {
       first_name: member.first_name,
       last_name: member.last_name,
       phone: member.phone ?? "",
@@ -283,7 +286,10 @@ export default function MembersPage() {
       family_mode: member.family_id ? "link" : "none",
       family_id: member.family_id,
       link_member_id: "",
-    });
+    };
+    setEditing(member);
+    setForm(next);
+    setOriginalForm(next);
     setFormError(null);
     setModalOpen(true);
   }
@@ -835,12 +841,14 @@ export default function MembersPage() {
           editing={editing}
           form={form}
           setForm={setForm}
+          originalForm={originalForm}
           members={members}
           departments={activeDepartmentOptions}
           saving={saving}
           formError={formError}
           onClose={closeModal}
           onSubmit={handleSubmit}
+          onAddFamilyMember={openCreateLinkedTo}
         />
       )}
     </div>
@@ -873,22 +881,26 @@ function MemberModal({
   editing,
   form,
   setForm,
+  originalForm,
   members,
   departments,
   saving,
   formError,
   onClose,
   onSubmit,
+  onAddFamilyMember,
 }: {
   editing: Member | null;
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  originalForm: FormState;
   members: MemberWithDepartments[];
   departments: Department[];
   saving: boolean;
   formError: string | null;
   onClose: () => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+  onAddFamilyMember: (memberId: string) => void;
 }) {
   function toggleDepartment(deptId: string, checked: boolean) {
     setForm((s) =>
@@ -950,6 +962,54 @@ function MemberModal({
     if (!linkedTarget?.family_id) return 0;
     return members.filter((m) => m.family_id === linkedTarget.family_id).length;
   }, [members, linkedTarget]);
+
+  const dirty = useMemo(
+    () => JSON.stringify(form) !== JSON.stringify(originalForm),
+    [form, originalForm]
+  );
+
+  const linkContext = useMemo<{
+    targetMemberId: string;
+    familyId: string | null;
+    othersCount: number;
+  } | null>(() => {
+    if (editing && editing.family_id) {
+      const others = members.filter(
+        (m) => m.family_id === editing.family_id && m.id !== editing.id
+      ).length;
+      return {
+        targetMemberId: editing.id,
+        familyId: editing.family_id,
+        othersCount: others,
+      };
+    }
+    if (!editing && form.family_mode === "link" && form.link_member_id) {
+      const t = members.find((m) => m.id === form.link_member_id);
+      if (!t) return null;
+      const others = t.family_id
+        ? members.filter(
+            (m) => m.family_id === t.family_id && m.id !== t.id
+          ).length + 1
+        : 1;
+      return {
+        targetMemberId: t.id,
+        familyId: t.family_id,
+        othersCount: others,
+      };
+    }
+    return null;
+  }, [editing, members, form.family_mode, form.link_member_id]);
+
+  function handleAddFamilyMember() {
+    if (!linkContext) return;
+    if (dirty) {
+      const ok = window.confirm(
+        "Θα χαθούν οι τρέχουσες αλλαγές. Συνέχεια;"
+      );
+      if (!ok) return;
+    }
+    onAddFamilyMember(linkContext.targetMemberId);
+  }
 
   const age = calculateAge(form.birth_date || null);
 
@@ -1138,6 +1198,21 @@ function MemberModal({
                         : ""}
                     </p>
                   )}
+                </div>
+              )}
+
+              {linkContext && (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs">
+                  <span className="text-muted">
+                    👪 Μέλη οικογένειας: {linkContext.othersCount}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleAddFamilyMember}
+                    className="font-medium text-[var(--brand-primary)] hover:underline"
+                  >
+                    + Προσθήκη μέλους στην οικογένεια
+                  </button>
                 </div>
               )}
             </div>
