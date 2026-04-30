@@ -19,54 +19,14 @@ import type {
   Guest,
   Member,
   Reservation,
-  ReservationAttendee,
 } from "@/lib/supabase/types";
-
-type AttendeeMemberSummary = Pick<
-  Member,
-  "id" | "first_name" | "last_name" | "birth_date" | "family_id" | "family_role"
->;
-
-type AttendeeWithMember = ReservationAttendee & {
-  member: AttendeeMemberSummary | null;
-};
-
-type ReservationWithAttendees = Reservation & {
-  attendees: AttendeeWithMember[];
-};
-
-const RESERVATION_SELECT = `
-  *,
-  attendees:reservation_attendees(
-    id,
-    reservation_id,
-    club_id,
-    member_id,
-    guest_name,
-    is_lead,
-    notes,
-    created_at,
-    updated_at,
-    member:member_id (
-      id,
-      first_name,
-      last_name,
-      birth_date,
-      family_id,
-      family_role
-    )
-  )
-`;
-
-function getAttendeeCount(r: ReservationWithAttendees): number {
-  if (r.attendees && r.attendees.length > 0) return r.attendees.length;
-  return r.pax_count;
-}
-
-function hasAnonymousAttendees(r: ReservationWithAttendees): boolean {
-  if (!r.attendees) return false;
-  return r.attendees.some((a) => !a.member_id && !a.guest_name);
-}
+import {
+  RESERVATION_SELECT,
+  getAttendeeCount,
+  hasAnonymousAttendees,
+  type ReservationWithAttendees,
+} from "@/lib/utils/attendees";
+import { AttendeesEditor } from "@/components/AttendeesEditor";
 
 type TableShape = "round" | "square";
 
@@ -161,6 +121,8 @@ function SeatingView() {
   const [guestPanelReservationId, setGuestPanelReservationId] = useState<
     string | null
   >(null);
+  const [attendeesEditorReservationId, setAttendeesEditorReservationId] =
+    useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
 
   useEffect(() => {
@@ -806,6 +768,9 @@ function SeatingView() {
                           prev === r.id ? null : r.id
                         )
                       }
+                      onOpenAttendees={() =>
+                        setAttendeesEditorReservationId(r.id)
+                      }
                     />
                   </li>
                 ))}
@@ -941,6 +906,25 @@ function SeatingView() {
             />
           );
         })()}
+      {attendeesEditorReservationId &&
+        (() => {
+          const reservation = reservations.find(
+            (r) => r.id === attendeesEditorReservationId
+          );
+          if (!reservation) return null;
+          return (
+            <AttendeesEditor
+              reservation={reservation}
+              members={members}
+              onClose={() => setAttendeesEditorReservationId(null)}
+              onUpdate={() => {
+                if (selectedEventId) {
+                  return refetchReservations(selectedEventId);
+                }
+              }}
+            />
+          );
+        })()}
     </div>
   );
 }
@@ -975,10 +959,12 @@ function ReservationChip({
   reservation,
   selected,
   onToggleSelect,
+  onOpenAttendees,
 }: {
   reservation: ReservationWithAttendees;
   selected: boolean;
   onToggleSelect: () => void;
+  onOpenAttendees: () => void;
 }) {
   const count = getAttendeeCount(reservation);
   const anonymous = hasAnonymousAttendees(reservation);
@@ -1005,20 +991,39 @@ function ReservationChip({
           : "border-border hover:border-accent/60")
       }
     >
-      <div className="truncate text-sm font-medium">
-        {reservation.group_name}
-      </div>
-      <div className="mt-0.5 text-xs text-muted">
-        {count} {count === 1 ? "άτομο" : "άτομα"}
-        {anonymous && (
-          <span
-            className="ml-1 text-amber-600 dark:text-amber-400"
-            title="Έχει ανώνυμα μέλη — προσθέστε ονόματα"
-          >
-            ⚠
-          </span>
-        )}
-        {reservation.is_paid ? " · Πληρωμένο" : ""}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium">
+            {reservation.group_name}
+          </div>
+          <div className="mt-0.5 text-xs text-muted">
+            {count} {count === 1 ? "άτομο" : "άτομα"}
+            {anonymous && (
+              <span
+                className="ml-1 text-amber-600 dark:text-amber-400"
+                title="Έχει ανώνυμα μέλη — προσθέστε ονόματα"
+              >
+                ⚠
+              </span>
+            )}
+            {reservation.is_paid ? " · Πληρωμένο" : ""}
+          </div>
+        </div>
+        <button
+          type="button"
+          draggable={false}
+          onDragStart={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenAttendees();
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="shrink-0 rounded-md border border-border bg-surface px-2 py-1 text-xs transition hover:bg-background"
+          title="Διαχείριση ατόμων"
+          aria-label="Διαχείριση ατόμων"
+        >
+          👤
+        </button>
       </div>
     </div>
   );
