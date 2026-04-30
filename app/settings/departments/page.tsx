@@ -322,6 +322,7 @@ export default function DepartmentsPage() {
                       onClick={() => toggleActive(d)}
                       className="rounded-md border border-border px-2 py-0.5 text-xs transition hover:bg-foreground/5"
                       title={d.active ? "Απενεργοποίηση" : "Ενεργοποίηση"}
+                      aria-label={d.active ? "Απενεργοποίηση" : "Ενεργοποίηση"}
                     >
                       {d.active ? "✓" : "—"}
                     </button>
@@ -333,7 +334,8 @@ export default function DepartmentsPage() {
                         onClick={() => move(d, -1)}
                         disabled={idx === 0}
                         className="rounded-md border border-border px-2 py-1 text-[11px] transition hover:bg-foreground/5 disabled:opacity-40"
-                        title="Πάνω"
+                        title="Μετακίνηση πάνω"
+                        aria-label="Μετακίνηση πάνω"
                       >
                         ↑
                       </button>
@@ -342,7 +344,8 @@ export default function DepartmentsPage() {
                         onClick={() => move(d, 1)}
                         disabled={idx === departments.length - 1}
                         className="rounded-md border border-border px-2 py-1 text-[11px] transition hover:bg-foreground/5 disabled:opacity-40"
-                        title="Κάτω"
+                        title="Μετακίνηση κάτω"
+                        aria-label="Μετακίνηση κάτω"
                       >
                         ↓
                       </button>
@@ -350,6 +353,8 @@ export default function DepartmentsPage() {
                         type="button"
                         onClick={() => openEdit(d)}
                         className="rounded-md border border-border px-2 py-1 text-[11px] transition hover:bg-foreground/5"
+                        title="Επεξεργασία"
+                        aria-label="Επεξεργασία"
                       >
                         ✏
                       </button>
@@ -357,6 +362,8 @@ export default function DepartmentsPage() {
                         type="button"
                         onClick={() => handleDelete(d)}
                         className="rounded-md border border-danger/30 px-2 py-1 text-[11px] text-danger transition hover:bg-danger/10"
+                        title="Διαγραφή"
+                        aria-label="Διαγραφή"
                       >
                         🗑
                       </button>

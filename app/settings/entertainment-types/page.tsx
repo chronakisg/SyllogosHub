@@ -388,6 +388,7 @@ export default function EntertainmentTypesPage() {
                       onClick={() => toggleActive(t)}
                       className="rounded-md border border-border px-2 py-0.5 text-xs transition hover:bg-foreground/5"
                       title={t.active ? "Απενεργοποίηση" : "Ενεργοποίηση"}
+                      aria-label={t.active ? "Απενεργοποίηση" : "Ενεργοποίηση"}
                     >
                       {t.active ? "✓" : "—"}
                     </button>
@@ -399,7 +400,8 @@ export default function EntertainmentTypesPage() {
                         onClick={() => move(t, -1)}
                         disabled={idx === 0}
                         className="rounded-md border border-border px-2 py-1 text-[11px] transition hover:bg-foreground/5 disabled:opacity-40"
-                        title="Πάνω"
+                        title="Μετακίνηση πάνω"
+                        aria-label="Μετακίνηση πάνω"
                       >
                         ↑
                       </button>
@@ -408,7 +410,8 @@ export default function EntertainmentTypesPage() {
                         onClick={() => move(t, 1)}
                         disabled={idx === types.length - 1}
                         className="rounded-md border border-border px-2 py-1 text-[11px] transition hover:bg-foreground/5 disabled:opacity-40"
-                        title="Κάτω"
+                        title="Μετακίνηση κάτω"
+                        aria-label="Μετακίνηση κάτω"
                       >
                         ↓
                       </button>
@@ -416,6 +419,8 @@ export default function EntertainmentTypesPage() {
                         type="button"
                         onClick={() => openEdit(t)}
                         className="rounded-md border border-border px-2 py-1 text-[11px] transition hover:bg-foreground/5"
+                        title="Επεξεργασία"
+                        aria-label="Επεξεργασία"
                       >
                         ✏
                       </button>
@@ -423,6 +428,8 @@ export default function EntertainmentTypesPage() {
                         type="button"
                         onClick={() => handleDelete(t)}
                         className="rounded-md border border-danger/30 px-2 py-1 text-[11px] text-danger transition hover:bg-danger/10"
+                        title="Διαγραφή"
+                        aria-label="Διαγραφή"
                       >
                         🗑
                       </button>
