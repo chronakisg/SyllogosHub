@@ -49,16 +49,22 @@ export function AttendeesEditor({
   const [promotionSearch, setPromotionSearch] = useState("");
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [optimisticPresence, setOptimisticPresence] = useState<
+    Record<string, { is_present: boolean; checked_in_at: string | null }>
+  >({});
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 250);
     return () => clearTimeout(t);
   }, [searchQuery]);
 
-  const attendees = useMemo(
-    () => sortAttendees(reservation.attendees ?? []),
-    [reservation.attendees]
-  );
+  const attendees = useMemo(() => {
+    const merged = (reservation.attendees ?? []).map((a) => {
+      const o = optimisticPresence[a.id];
+      return o ? { ...a, ...o } : a;
+    });
+    return sortAttendees(merged);
+  }, [reservation.attendees, optimisticPresence]);
   const totalCount = attendees.length;
   const presentCount = useMemo(
     () => attendees.filter((a) => a.is_present).length,
@@ -209,6 +215,36 @@ export function AttendeesEditor({
       if (iErr) throw iErr;
       setAnonymousCountInput("1");
     });
+  }
+
+  async function handleTogglePresence(
+    attendeeId: string,
+    currentlyPresent: boolean
+  ) {
+    const newPresent = !currentlyPresent;
+    const newCheckedInAt = newPresent ? new Date().toISOString() : null;
+    setOptimisticPresence((prev) => ({
+      ...prev,
+      [attendeeId]: { is_present: newPresent, checked_in_at: newCheckedInAt },
+    }));
+    setError(null);
+    try {
+      const supabase = getBrowserClient();
+      const { error: uErr } = await supabase
+        .from("reservation_attendees")
+        .update({ is_present: newPresent, checked_in_at: newCheckedInAt })
+        .eq("id", attendeeId);
+      if (uErr) throw uErr;
+      await onUpdate();
+    } catch (err) {
+      setError(errorMessage(err, "Σφάλμα ενημέρωσης παρουσίας."));
+    } finally {
+      setOptimisticPresence((prev) => {
+        const next = { ...prev };
+        delete next[attendeeId];
+        return next;
+      });
+    }
   }
 
   async function handleRemove(attendeeId: string) {
@@ -376,6 +412,9 @@ export function AttendeesEditor({
                 promotionSearch={promotionSearch}
                 promotionMatches={
                   promotingId === a.id ? promotionFilteredMembers : []
+                }
+                onTogglePresence={() =>
+                  handleTogglePresence(a.id, a.is_present)
                 }
                 onToggleLead={() => handleToggleLead(a.id, a.is_lead)}
                 onRemove={() => handleRemove(a.id)}
@@ -573,6 +612,7 @@ function AttendeeRow({
   promotionGuestName,
   promotionSearch,
   promotionMatches,
+  onTogglePresence,
   onToggleLead,
   onRemove,
   onStartPromote,
@@ -590,6 +630,7 @@ function AttendeeRow({
   promotionGuestName: string;
   promotionSearch: string;
   promotionMatches: Member[];
+  onTogglePresence: () => void;
   onToggleLead: () => void;
   onRemove: () => void;
   onStartPromote: () => void;
@@ -605,8 +646,12 @@ function AttendeeRow({
   const isAnonymous = !attendee.member_id && !attendee.guest_name;
   const isAbsent = !attendee.is_present;
 
-  const nameClass = isAbsent ? "font-medium line-through" : "font-medium";
-  const anonClass = isAbsent ? "text-muted line-through" : "text-muted";
+  const nameClass = `font-medium transition-all duration-150 ${
+    isAbsent ? "line-through" : ""
+  }`;
+  const anonClass = `text-muted transition-all duration-150 ${
+    isAbsent ? "line-through" : ""
+  }`;
 
   let label: ReactNode;
   if (isMember && attendee.member) {
@@ -636,10 +681,28 @@ function AttendeeRow({
     );
   }
 
+  function handleRowClick() {
+    if (disabled || isPromoting) return;
+    onTogglePresence();
+  }
+
   return (
     <li
-      className={`flex flex-col gap-1 rounded-md border border-border bg-surface px-2 py-1.5 text-xs ${
-        isAbsent ? "opacity-60" : ""
+      role="button"
+      tabIndex={0}
+      onClick={handleRowClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleRowClick();
+        }
+      }}
+      aria-pressed={attendee.is_present}
+      aria-label={`${
+        attendee.is_present ? "Παρών" : "Απών"
+      } — πάτησε για αλλαγή`}
+      className={`flex cursor-pointer flex-col gap-1 rounded-md border border-border bg-surface px-2 py-1.5 text-xs transition-all duration-150 hover:bg-background ${
+        isAbsent ? "opacity-60" : "opacity-100"
       }`}
     >
       <div className="flex items-center justify-between gap-2">
@@ -651,7 +714,11 @@ function AttendeeRow({
             </span>
           )}
         </span>
-        <div className="flex shrink-0 items-center gap-1">
+        <div
+          className="flex shrink-0 items-center gap-1"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
           {attendee.is_lead && (
             <button
               type="button"
@@ -701,7 +768,11 @@ function AttendeeRow({
       </div>
 
       {isPromoting && (
-        <div className="mt-1 flex flex-col gap-1.5 rounded-md border border-accent/30 bg-accent/5 p-2">
+        <div
+          className="mt-1 flex flex-col gap-1.5 rounded-md border border-accent/30 bg-accent/5 p-2"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
           <div className="flex items-center gap-3 text-[11px]">
             <ModeRadio
               checked={promotionMode === "member"}

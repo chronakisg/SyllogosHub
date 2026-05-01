@@ -633,7 +633,7 @@ function SeatingView() {
               rel="noopener noreferrer"
               className="rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-background"
             >
-              🖨 Εκτύπωση Λίστας Εισόδου
+              📋 Λίστα Εισόδου & Check-in
             </a>
           )}
           <RealtimeIndicator ready={realtimeReady} />
