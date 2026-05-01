@@ -7,6 +7,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -1141,12 +1142,12 @@ function TableCard({
   const isOccupied = !!reservation;
   const lockDisabled = isOccupied;
   const isRound = table.shape === "round";
-  const cornerLockClass = isRound
-    ? "top-[15%] left-[15%]"
-    : "top-1.5 left-1.5";
-  const cornerShapeClass = isRound
-    ? "bottom-[15%] left-[15%]"
-    : "bottom-1.5 left-1.5";
+  const lockButtonStyle: CSSProperties = isRound
+    ? { top: "15%", left: "15%" }
+    : { top: "8px", left: "8px" };
+  const shapeButtonStyle: CSSProperties = isRound
+    ? { bottom: "15%", left: "15%" }
+    : { bottom: "8px", left: "8px" };
 
   const status = paymentStatus(reservation ? [reservation] : []);
   const paidBorderClass =
@@ -1209,10 +1210,9 @@ function TableCard({
               ? "Αφαίρεση κράτησης"
               : "Κράτηση τραπεζιού"
         }
+        style={lockButtonStyle}
         className={
           "absolute inline-flex h-8 w-8 items-center justify-center rounded-full border bg-surface text-base leading-none transition disabled:cursor-not-allowed disabled:opacity-40 " +
-          cornerLockClass +
-          " " +
           (isReserved
             ? "border-yellow-400 text-yellow-700 hover:bg-yellow-100 dark:text-yellow-200 dark:hover:bg-yellow-500/20"
             : "border-border text-muted hover:border-yellow-400 hover:text-yellow-700 dark:hover:text-yellow-200")
@@ -1285,10 +1285,8 @@ function TableCard({
             ? "Αλλαγή σε τετράγωνο"
             : "Αλλαγή σε στρογγυλό"
         }
-        className={
-          "absolute inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-base leading-none text-muted transition hover:border-accent/60 hover:text-foreground " +
-          cornerShapeClass
-        }
+        style={shapeButtonStyle}
+        className="absolute inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-base leading-none text-muted transition hover:border-accent/60 hover:text-foreground"
       >
         {table.shape === "round" ? "▢" : "◯"}
       </button>
