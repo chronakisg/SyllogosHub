@@ -1184,15 +1184,33 @@ function TableCard({
         cardSurfaceClass
       }
     >
-      {isReserved && (
-        <div
-          className="absolute left-1.5 top-1.5 text-base leading-none"
-          aria-label="Κρατημένο τραπέζι"
-          title="Κρατημένο τραπέζι"
-        >
-          🔒
-        </div>
-      )}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (lockDisabled) return;
+          onToggleReserved();
+        }}
+        disabled={lockDisabled}
+        aria-label={
+          isReserved ? "Αφαίρεση κράτησης τραπεζιού" : "Κράτηση τραπεζιού"
+        }
+        title={
+          lockDisabled
+            ? "Αφαίρεσε πρώτα την παρέα"
+            : isReserved
+              ? "Αφαίρεση κράτησης"
+              : "Κράτηση τραπεζιού"
+        }
+        className={
+          "absolute left-1.5 top-1.5 inline-flex h-8 w-8 items-center justify-center rounded-full border bg-surface text-base leading-none transition disabled:cursor-not-allowed disabled:opacity-40 " +
+          (isReserved
+            ? "border-yellow-400 text-yellow-700 hover:bg-yellow-100 dark:text-yellow-200 dark:hover:bg-yellow-500/20"
+            : "border-border text-muted hover:border-yellow-400 hover:text-yellow-700 dark:hover:text-yellow-200")
+        }
+      >
+        {isReserved ? "🔒" : "🔓"}
+      </button>
       <button
         type="button"
         title={reservation ? "Αποαντιστοίχιση παρέας" : "Διαγραφή τραπεζιού"}
@@ -1206,10 +1224,7 @@ function TableCard({
         {reservation ? "Αφαίρεση" : "✕"}
       </button>
 
-      <div className="text-[10px] uppercase tracking-wide text-muted">
-        {table.shape === "round" ? "Στρογγυλό" : "Τετράγωνο"}
-      </div>
-      <div className="mt-0.5 text-2xl font-semibold leading-none">
+      <div className="text-2xl font-semibold leading-none">
         Νο {table.number}
       </div>
       <div
@@ -1262,28 +1277,6 @@ function TableCard({
           className="ml-1 flex h-5 w-5 items-center justify-center rounded border border-border bg-surface text-xs leading-none transition hover:bg-background"
         >
           {table.shape === "round" ? "◯" : "▢"}
-        </button>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (lockDisabled) return;
-            onToggleReserved();
-          }}
-          disabled={lockDisabled}
-          aria-label={
-            isReserved ? "Αφαίρεση κράτησης τραπεζιού" : "Κράτηση τραπεζιού"
-          }
-          title={
-            lockDisabled
-              ? "Αφαίρεσε πρώτα την παρέα"
-              : isReserved
-                ? "Αφαίρεση κράτησης"
-                : "Κράτηση τραπεζιού"
-          }
-          className="flex h-5 w-5 items-center justify-center rounded border border-border bg-surface text-xs leading-none transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {isReserved ? "🔒" : "🔓"}
         </button>
       </div>
 
