@@ -344,14 +344,10 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl">
-      <header className="mb-8">
-        <p className="text-sm text-muted">Πίνακας Ελέγχου</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+      <header className="mb-3">
+        <h1 className="text-xl font-semibold tracking-tight">
           Καλώς ήρθατε στο SyllogosHub
         </h1>
-        <p className="mt-2 text-sm text-muted">
-          Σύντομη εικόνα της τρέχουσας κατάστασης του συλλόγου.
-        </p>
       </header>
 
       {error && (

@@ -569,16 +569,10 @@ export default function CalendarPage() {
 
   return (
     <div className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm text-muted">Ημερολόγιο</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-            Κεντρικό Ημερολόγιο
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            Μαθήματα σεζόν, εκδηλώσεις και συνεδριάσεις του συλλόγου.
-          </p>
-        </div>
+      <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-semibold tracking-tight">
+          Κεντρικό Ημερολόγιο
+        </h1>
         <div className="flex flex-wrap items-center gap-2">
           <ViewTabs value={view} onChange={setView} />
           <button

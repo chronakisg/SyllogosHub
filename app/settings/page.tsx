@@ -62,14 +62,8 @@ export default function SettingsDashboardPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl">
-      <header className="mb-6">
-        <p className="text-sm text-muted">Διαχείριση</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-          Ρυθμίσεις
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          Διαμόρφωση συλλόγου, branding και κανόνες πρόσβασης.
-        </p>
+      <header className="mb-3">
+        <h1 className="text-xl font-semibold tracking-tight">Ρυθμίσεις</h1>
       </header>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

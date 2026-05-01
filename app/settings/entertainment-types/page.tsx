@@ -314,16 +314,12 @@ export default function EntertainmentTypesPage() {
       >
         ← Ρυθμίσεις
       </Link>
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm text-muted">Ρυθμίσεις › Είδη Ψυχαγωγίας</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+          <h1 className="mt-0.5 text-xl font-semibold tracking-tight">
             Είδη Ψυχαγωγίας
           </h1>
-          <p className="mt-1 text-sm text-muted">
-            Διαχειριστείτε τους διαθέσιμους τύπους ψυχαγωγίας για τις
-            εκδηλώσεις του συλλόγου σας.
-          </p>
         </div>
         <button
           type="button"

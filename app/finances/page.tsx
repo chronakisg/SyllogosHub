@@ -97,15 +97,10 @@ export default function FinancesPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl">
-      <header className="mb-6">
-        <p className="text-sm text-muted">Οικονομικά</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+      <header className="mb-3">
+        <h1 className="text-xl font-semibold tracking-tight">
           Οικονομική Διαχείριση
         </h1>
-        <p className="mt-1 text-sm text-muted">
-          Καταχωρήστε πληρωμές μελών και διαχειριστείτε την κατάσταση
-          πληρωμής των κρατήσεων.
-        </p>
       </header>
 
       <div className="mb-6 inline-flex rounded-lg border border-border bg-surface p-1 text-sm">

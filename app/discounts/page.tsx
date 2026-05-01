@@ -238,15 +238,10 @@ export default function DiscountsPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl">
-      <header className="mb-6">
-        <p className="text-sm text-muted">Διαμόρφωση</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+      <header className="mb-3">
+        <h1 className="text-xl font-semibold tracking-tight">
           Κανόνες Εκπτώσεων
         </h1>
-        <p className="mt-1 text-sm text-muted">
-          Ορίστε αυτόματες εκπτώσεις βάσει ηλικίας ή σειράς αδελφών για
-          συνδρομές και εκδηλώσεις.
-        </p>
       </header>
 
       {error && (

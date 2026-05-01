@@ -244,15 +244,10 @@ export default function PermissionsPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl">
-      <header className="mb-6">
-        <p className="text-sm text-muted">Διαχείριση</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+      <header className="mb-3">
+        <h1 className="text-xl font-semibold tracking-tight">
           Δικαιώματα Μελών
         </h1>
-        <p className="mt-1 text-sm text-muted">
-          Καθορίστε τι μπορεί να κάνει κάθε μέλος ανά ενότητα. Ο Πρόεδρος και ο
-          τεχνικός διαχειριστής έχουν αυτόματα πλήρη πρόσβαση.
-        </p>
       </header>
 
       {error && (
