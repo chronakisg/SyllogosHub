@@ -7,7 +7,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -1141,13 +1140,6 @@ function TableCard({
   const isReserved = !!table.is_reserved;
   const isOccupied = !!reservation;
   const lockDisabled = isOccupied;
-  const isRound = table.shape === "round";
-  const lockButtonStyle: CSSProperties = isRound
-    ? { top: "15%", left: "15%" }
-    : { top: "8px", left: "8px" };
-  const shapeButtonStyle: CSSProperties = isRound
-    ? { bottom: "15%", left: "15%" }
-    : { bottom: "8px", left: "8px" };
 
   const status = paymentStatus(reservation ? [reservation] : []);
   const paidBorderClass =
@@ -1210,9 +1202,8 @@ function TableCard({
               ? "Αφαίρεση κράτησης"
               : "Κράτηση τραπεζιού"
         }
-        style={lockButtonStyle}
         className={
-          "absolute inline-flex h-8 w-8 items-center justify-center rounded-full border bg-surface text-base leading-none transition disabled:cursor-not-allowed disabled:opacity-40 " +
+          "absolute left-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border bg-surface text-base leading-none transition disabled:cursor-not-allowed disabled:opacity-40 " +
           (isReserved
             ? "border-yellow-400 text-yellow-700 hover:bg-yellow-100 dark:text-yellow-200 dark:hover:bg-yellow-500/20"
             : "border-border text-muted hover:border-yellow-400 hover:text-yellow-700 dark:hover:text-yellow-200")
@@ -1228,7 +1219,7 @@ function TableCard({
           if (reservation) onUnassign();
           else onRemoveTable();
         }}
-        className="absolute right-1.5 top-1.5 rounded-full border border-border bg-surface px-1.5 py-0.5 text-[10px] text-muted transition hover:border-danger/50 hover:text-danger"
+        className="absolute right-2 top-2 rounded-full border border-border bg-surface px-1.5 py-0.5 text-[10px] text-muted transition hover:border-danger/50 hover:text-danger"
       >
         {reservation ? "Αφαίρεση" : "✕"}
       </button>
@@ -1285,8 +1276,7 @@ function TableCard({
             ? "Αλλαγή σε τετράγωνο"
             : "Αλλαγή σε στρογγυλό"
         }
-        style={shapeButtonStyle}
-        className="absolute inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-base leading-none text-muted transition hover:border-accent/60 hover:text-foreground"
+        className="absolute bottom-2 left-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-base leading-none text-muted transition hover:border-accent/60 hover:text-foreground"
       >
         {table.shape === "round" ? "▢" : "◯"}
       </button>
