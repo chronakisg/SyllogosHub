@@ -35,6 +35,8 @@ type VenueTable = {
   number: number;
   shape: TableShape;
   capacity: number;
+  is_reserved?: boolean;
+  reserved_label?: string;
 };
 
 type VenueMapConfig = {
@@ -55,12 +57,16 @@ function parseVenueConfig(raw: unknown): VenueMapConfig {
       (v.shape === "round" || v.shape === "square") &&
       typeof v.capacity === "number"
     ) {
-      tables.push({
+      const t: VenueTable = {
         id: v.id,
         number: v.number,
         shape: v.shape,
         capacity: v.capacity,
-      });
+      };
+      if (typeof v.is_reserved === "boolean") t.is_reserved = v.is_reserved;
+      if (typeof v.reserved_label === "string" && v.reserved_label.length > 0)
+        t.reserved_label = v.reserved_label;
+      tables.push(t);
     }
   }
   tables.sort((a, b) => a.number - b.number);
@@ -469,6 +475,36 @@ function SeatingView() {
     [venueConfig.tables, saveVenueConfig]
   );
 
+  const handleToggleReserved = useCallback(
+    async (tableId: string) => {
+      await saveVenueConfig({
+        tables: venueConfig.tables.map((t) => {
+          if (t.id !== tableId) return t;
+          const next: VenueTable = { ...t, is_reserved: !t.is_reserved };
+          if (!next.is_reserved) delete next.reserved_label;
+          return next;
+        }),
+      });
+    },
+    [venueConfig.tables, saveVenueConfig]
+  );
+
+  const handleUpdateReservedLabel = useCallback(
+    async (tableId: string, label: string) => {
+      const trimmed = label.trim();
+      await saveVenueConfig({
+        tables: venueConfig.tables.map((t) => {
+          if (t.id !== tableId) return t;
+          const next: VenueTable = { ...t };
+          if (trimmed.length > 0) next.reserved_label = trimmed;
+          else delete next.reserved_label;
+          return next;
+        }),
+      });
+    },
+    [venueConfig.tables, saveVenueConfig]
+  );
+
   const handleUpdateGuests = useCallback(
     async (reservationId: string, guests: Guest[]) => {
       if (!clubId) return;
@@ -855,6 +891,10 @@ function SeatingView() {
                     onRemoveTable={() => handleRemoveTable(t.id)}
                     onUpdateCapacity={(c) => handleUpdateCapacity(t.id, c)}
                     onToggleShape={() => handleToggleShape(t.id)}
+                    onToggleReserved={() => handleToggleReserved(t.id)}
+                    onUpdateReservedLabel={(l) =>
+                      handleUpdateReservedLabel(t.id, l)
+                    }
                     onOpenGuests={(reservationId) =>
                       setGuestPanelReservationId(reservationId)
                     }
@@ -1069,6 +1109,8 @@ function TableCard({
   onRemoveTable,
   onUpdateCapacity,
   onToggleShape,
+  onToggleReserved,
+  onUpdateReservedLabel,
   onOpenGuests,
 }: {
   table: VenueTable;
@@ -1080,6 +1122,8 @@ function TableCard({
   onRemoveTable: () => void;
   onUpdateCapacity: (capacity: number) => void;
   onToggleShape: () => void;
+  onToggleReserved: () => void;
+  onUpdateReservedLabel: (label: string) => void;
   onOpenGuests: (reservationId: string) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
@@ -1093,6 +1137,10 @@ function TableCard({
   const shapeClasses =
     table.shape === "round" ? "rounded-full" : "rounded-xl";
 
+  const isReserved = !!table.is_reserved;
+  const isOccupied = !!reservation;
+  const lockDisabled = isOccupied;
+
   const status = paymentStatus(reservation ? [reservation] : []);
   const paidBorderClass =
     status === "paid"
@@ -1100,6 +1148,19 @@ function TableCard({
       : status === "mixed"
         ? "border-yellow-400"
         : "";
+
+  let cardSurfaceClass: string;
+  if (dragOver || pendingAssign) {
+    cardSurfaceClass = "border-accent bg-accent/10";
+  } else if (isReserved) {
+    cardSurfaceClass =
+      "border-yellow-400 bg-yellow-50 dark:bg-yellow-500/10";
+  } else if (reservation) {
+    cardSurfaceClass = (paidBorderClass || "border-border") + " bg-background";
+  } else {
+    cardSurfaceClass =
+      "border-dashed border-border bg-surface hover:border-accent/60";
+  }
 
   return (
     <div
@@ -1120,13 +1181,18 @@ function TableCard({
         "relative flex aspect-square cursor-pointer flex-col items-center justify-center border-2 p-3 text-center transition " +
         shapeClasses +
         " " +
-        (dragOver || pendingAssign
-          ? "border-accent bg-accent/10"
-          : reservation
-            ? (paidBorderClass || "border-border") + " bg-background"
-            : "border-dashed border-border bg-surface hover:border-accent/60")
+        cardSurfaceClass
       }
     >
+      {isReserved && (
+        <div
+          className="absolute left-1.5 top-1.5 text-base leading-none"
+          aria-label="Κρατημένο τραπέζι"
+          title="Κρατημένο τραπέζι"
+        >
+          🔒
+        </div>
+      )}
       <button
         type="button"
         title={reservation ? "Αποαντιστοίχιση παρέας" : "Διαγραφή τραπεζιού"}
@@ -1197,7 +1263,36 @@ function TableCard({
         >
           {table.shape === "round" ? "◯" : "▢"}
         </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (lockDisabled) return;
+            onToggleReserved();
+          }}
+          disabled={lockDisabled}
+          aria-label={
+            isReserved ? "Αφαίρεση κράτησης τραπεζιού" : "Κράτηση τραπεζιού"
+          }
+          title={
+            lockDisabled
+              ? "Αφαίρεσε πρώτα την παρέα"
+              : isReserved
+                ? "Αφαίρεση κράτησης"
+                : "Κράτηση τραπεζιού"
+          }
+          className="flex h-5 w-5 items-center justify-center rounded border border-border bg-surface text-xs leading-none transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {isReserved ? "🔒" : "🔓"}
+        </button>
       </div>
+
+      {isReserved && (
+        <ReservedLabelEdit
+          label={table.reserved_label}
+          onSave={onUpdateReservedLabel}
+        />
+      )}
 
       {reservation ? (
         <div
@@ -1237,9 +1332,86 @@ function TableCard({
           {overCapacity ? " ⚠" : reservationAnonymous ? " ⚠" : ""}
         </div>
       ) : (
-        <div className="mt-2 text-[11px] text-muted">— ελεύθερο —</div>
+        <div className="mt-2 text-[11px] text-muted">
+          {isReserved ? "— Κρατημένο —" : "— ελεύθερο —"}
+        </div>
       )}
     </div>
+  );
+}
+
+function ReservedLabelEdit({
+  label,
+  onSave,
+}: {
+  label: string | undefined;
+  onSave: (label: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(label ?? "");
+
+  useEffect(() => {
+    if (!editing) setDraft(label ?? "");
+  }, [label, editing]);
+
+  function commit() {
+    setEditing(false);
+    if ((draft.trim() || "") !== (label ?? "")) {
+      onSave(draft);
+    }
+  }
+
+  function cancel() {
+    setEditing(false);
+    setDraft(label ?? "");
+  }
+
+  if (editing) {
+    return (
+      <div
+        className="mt-1 flex w-full justify-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <input
+          autoFocus
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              cancel();
+            }
+          }}
+          maxLength={40}
+          placeholder="Λόγος κράτησης"
+          className="w-full max-w-[8.5rem] rounded border border-yellow-400 bg-background px-1.5 py-0.5 text-center text-[11px] outline-none focus:ring-2 focus:ring-yellow-400/30"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        setEditing(true);
+      }}
+      className={
+        "mt-1 max-w-[8.5rem] truncate rounded px-1.5 py-0.5 text-[11px] transition " +
+        (label
+          ? "bg-yellow-100 text-yellow-900 hover:bg-yellow-200 dark:bg-yellow-500/20 dark:text-yellow-100 dark:hover:bg-yellow-500/30"
+          : "text-muted hover:bg-yellow-100/40 dark:hover:bg-yellow-500/10")
+      }
+      title={label ? "Επεξεργασία λόγου κράτησης" : "Πρόσθεσε λόγο κράτησης"}
+    >
+      {label ?? "Λόγος κράτησης"}
+    </button>
   );
 }
 
