@@ -19,11 +19,6 @@ type NavItem = {
   activePaths?: string[];
 };
 
-const SECTION_LABELS: Record<NavSection, string> = {
-  daily: "Καθημερινή χρήση",
-  config: "Διαμόρφωση",
-};
-
 const SECTION_ORDER: NavSection[] = ["daily", "config"];
 
 const NAV_ITEMS: NavItem[] = [
@@ -31,7 +26,6 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/calendar", label: "Ημερολόγιο", permission: null, section: "daily" },
   { href: "/members", label: "Διαχείριση Μελών", permission: "members", section: "daily" },
   { href: "/events", label: "Εκδηλώσεις", permission: "events", section: "daily" },
-  { href: "/sponsors", label: "Χορηγοί", permission: "events", section: "daily" },
   { href: "/seating", label: "Πλάνο Τραπεζιών", permission: "seating", section: "daily" },
   { href: "/finances", label: "Οικονομικά", permission: "finances", section: "daily" },
   {
@@ -109,18 +103,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <nav className="min-h-0 flex-1 overflow-hidden px-3 pb-3 lg:overflow-y-auto">
           <ul className="flex gap-1 overflow-x-auto lg:flex-col lg:gap-0.5 lg:overflow-x-visible">
-            {SECTION_ORDER.flatMap((section) => {
+            {SECTION_ORDER.flatMap((section, sectionIndex) => {
               const items = navItems.filter((it) => it.section === section);
               if (items.length === 0) return [];
               return [
-                <li
-                  key={`section-${section}`}
-                  className="hidden shrink-0 lg:block lg:shrink"
-                >
-                  <p className="mt-4 mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                    {SECTION_LABELS[section]}
-                  </p>
-                </li>,
+                sectionIndex > 0 ? (
+                  <li
+                    key={`divider-${section}`}
+                    className="hidden lg:my-2 lg:block lg:border-t lg:border-border/50"
+                    aria-hidden
+                  />
+                ) : null,
                 ...items.map((item) => {
                   const matchesExtra = (item.activePaths ?? []).some(
                     (p) => pathname === p || pathname.startsWith(p + "/")

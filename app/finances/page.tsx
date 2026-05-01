@@ -28,8 +28,9 @@ import type {
   Reservation,
 } from "@/lib/supabase/types";
 import { calculateDiscount, generateUuid } from "@/lib/utils/discounts";
+import SponsorsTab from "./SponsorsTab";
 
-type Tab = "payments" | "reservations";
+type Tab = "payments" | "reservations" | "sponsors";
 
 const inputClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
@@ -110,9 +111,18 @@ export default function FinancesPage() {
         <TabButton current={tab} value="reservations" onSelect={setTab}>
           Κρατήσεις Εκδηλώσεων
         </TabButton>
+        <TabButton current={tab} value="sponsors" onSelect={setTab}>
+          Χορηγοί
+        </TabButton>
       </div>
 
-      {tab === "payments" ? <PaymentsTab /> : <ReservationsTab />}
+      {tab === "payments" ? (
+        <PaymentsTab />
+      ) : tab === "reservations" ? (
+        <ReservationsTab />
+      ) : (
+        <SponsorsTab />
+      )}
     </div>
   );
 }
