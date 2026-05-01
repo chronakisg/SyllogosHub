@@ -1069,6 +1069,17 @@ function ReservationChip({
 }) {
   const count = getAttendeeCount(reservation);
   const anonymous = hasAnonymousAttendees(reservation);
+  const leadAttendee = (reservation.attendees ?? []).find(
+    (a) => a.is_lead && a.member
+  );
+  const leadName = leadAttendee?.member
+    ? `${leadAttendee.member.first_name} ${leadAttendee.member.last_name}`
+    : null;
+  const presentCount = (reservation.attendees ?? []).filter(
+    (a) => a.is_present
+  ).length;
+  const hasAbsent =
+    (reservation.attendees ?? []).length > 0 && presentCount < count;
   return (
     <div
       role="button"
@@ -1095,10 +1106,23 @@ function ReservationChip({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">
-            {reservation.group_name}
+            {leadName ? (
+              <>
+                <span
+                  aria-hidden
+                  className="mr-1 text-amber-600 dark:text-amber-400"
+                >
+                  ⭐
+                </span>
+                {leadName}
+              </>
+            ) : (
+              reservation.group_name
+            )}
           </div>
           <div className="mt-0.5 text-xs text-muted">
             {count} {count === 1 ? "άτομο" : "άτομα"}
+            {hasAbsent && ` · ${presentCount} παρόντες`}
             {anonymous && (
               <span
                 className="ml-1 text-amber-600 dark:text-amber-400"
