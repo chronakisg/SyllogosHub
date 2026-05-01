@@ -266,16 +266,10 @@ export default function EventsPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm text-muted">Εκδηλώσεις</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-            Διαχείριση Εκδηλώσεων
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            Δημιουργήστε εκδηλώσεις, ορίστε τιμές πρόσκλησης και χορηγούς.
-          </p>
-        </div>
+      <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-semibold tracking-tight">
+          Διαχείριση Εκδηλώσεων
+        </h1>
         <button
           type="button"
           onClick={openCreate}

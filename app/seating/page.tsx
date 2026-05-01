@@ -35,6 +35,8 @@ type VenueTable = {
   number: number;
   shape: TableShape;
   capacity: number;
+  is_reserved?: boolean;
+  reserved_label?: string;
 };
 
 type VenueMapConfig = {
@@ -55,12 +57,16 @@ function parseVenueConfig(raw: unknown): VenueMapConfig {
       (v.shape === "round" || v.shape === "square") &&
       typeof v.capacity === "number"
     ) {
-      tables.push({
+      const t: VenueTable = {
         id: v.id,
         number: v.number,
         shape: v.shape,
         capacity: v.capacity,
-      });
+      };
+      if (typeof v.is_reserved === "boolean") t.is_reserved = v.is_reserved;
+      if (typeof v.reserved_label === "string" && v.reserved_label.length > 0)
+        t.reserved_label = v.reserved_label;
+      tables.push(t);
     }
   }
   tables.sort((a, b) => a.number - b.number);
@@ -163,6 +169,21 @@ function SeatingView() {
     }
     return m;
   }, [reservations]);
+
+  const selectedReservation = useMemo(
+    () =>
+      selectedReservationId
+        ? reservations.find((r) => r.id === selectedReservationId) ?? null
+        : null,
+    [selectedReservationId, reservations]
+  );
+
+  const [assignmentConfirm, setAssignmentConfirm] = useState<{
+    reservationId: string;
+    tableNumber: number;
+    label: string | null;
+    groupName: string;
+  } | null>(null);
 
   const unassigned = useMemo(() => {
     const q = groupSearch.trim().toLowerCase();
@@ -469,6 +490,36 @@ function SeatingView() {
     [venueConfig.tables, saveVenueConfig]
   );
 
+  const handleToggleReserved = useCallback(
+    async (tableId: string) => {
+      await saveVenueConfig({
+        tables: venueConfig.tables.map((t) => {
+          if (t.id !== tableId) return t;
+          const next: VenueTable = { ...t, is_reserved: !t.is_reserved };
+          if (!next.is_reserved) delete next.reserved_label;
+          return next;
+        }),
+      });
+    },
+    [venueConfig.tables, saveVenueConfig]
+  );
+
+  const handleUpdateReservedLabel = useCallback(
+    async (tableId: string, label: string) => {
+      const trimmed = label.trim();
+      await saveVenueConfig({
+        tables: venueConfig.tables.map((t) => {
+          if (t.id !== tableId) return t;
+          const next: VenueTable = { ...t };
+          if (trimmed.length > 0) next.reserved_label = trimmed;
+          else delete next.reserved_label;
+          return next;
+        }),
+      });
+    },
+    [venueConfig.tables, saveVenueConfig]
+  );
+
   const handleUpdateGuests = useCallback(
     async (reservationId: string, guests: Guest[]) => {
       if (!clubId) return;
@@ -614,24 +665,17 @@ function SeatingView() {
 
   return (
     <div className="mx-auto w-full max-w-384">
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-sm text-muted">Εκδηλώσεις</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-            Πλάνο Τραπεζιών
-          </h1>
-          <p className="mt-1 max-w-xl text-sm text-muted">
-            Διαμορφώστε τα τραπέζια και αναθέστε παρέες. Οι αλλαγές
-            συγχρονίζονται σε πραγματικό χρόνο σε όλες τις συσκευές.
-          </p>
-        </div>
+      <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-semibold tracking-tight">
+          Πλάνο Τραπεζιών
+        </h1>
         <div className="flex flex-wrap items-center gap-2">
           {selectedEventId && (
             <a
               href={`/seating/entrance-list?event=${selectedEventId}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-background"
+              className="rounded-lg border border-border px-3 py-1.5 text-sm transition hover:bg-background"
             >
               📋 Λίστα Εισόδου & Check-in
             </a>
@@ -640,35 +684,59 @@ function SeatingView() {
         </div>
       </header>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <label htmlFor="event-picker" className="text-sm text-muted">
-          Εκδήλωση:
-        </label>
-        <select
-          id="event-picker"
-          value={selectedEventId ?? ""}
-          onChange={(e) => setSelectedEventId(e.target.value || null)}
-          disabled={initialLoading || events.length === 0}
-          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60"
-        >
-          {events.length === 0 ? (
-            <option value="">— Καμία εκδήλωση —</option>
-          ) : (
-            events.map((ev) => (
-              <option key={ev.id} value={ev.id}>
-                {ev.event_name} —{" "}
-                {new Date(ev.event_date).toLocaleDateString("el-GR")}
-              </option>
-            ))
-          )}
-        </select>
-        <button
-          type="button"
-          onClick={() => setAddEventOpen(true)}
-          className="rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-background"
-        >
-          + Νέα Εκδήλωση
-        </button>
+      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            id="event-picker"
+            value={selectedEventId ?? ""}
+            onChange={(e) => setSelectedEventId(e.target.value || null)}
+            disabled={initialLoading || events.length === 0}
+            aria-label="Εκδήλωση"
+            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60"
+          >
+            {events.length === 0 ? (
+              <option value="">— Καμία εκδήλωση —</option>
+            ) : (
+              events.map((ev) => (
+                <option key={ev.id} value={ev.id}>
+                  {ev.event_name} —{" "}
+                  {new Date(ev.event_date).toLocaleDateString("el-GR")}
+                </option>
+              ))
+            )}
+          </select>
+          <button
+            type="button"
+            onClick={() => setAddEventOpen(true)}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm transition hover:bg-background"
+          >
+            + Νέα Εκδήλωση
+          </button>
+        </div>
+        {activeEvent && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+            <span>
+              <span className="font-semibold text-foreground">
+                {revenueStats.totalPax}
+              </span>{" "}
+              άτομα
+            </span>
+            <span aria-hidden>·</span>
+            <span>
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                {revenueStats.paidGroups}
+              </span>{" "}
+              πληρωμένες
+            </span>
+            <span aria-hidden>·</span>
+            <span>
+              <span className="font-semibold text-amber-600 dark:text-amber-400">
+                {revenueStats.pendingGroups}
+              </span>{" "}
+              εκκρεμείς
+            </span>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -682,29 +750,6 @@ function SeatingView() {
           >
             ✕
           </button>
-        </div>
-      )}
-
-      {activeEvent && (
-        <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm">
-          <span className="text-muted">
-            Σύνολο ατόμων:{" "}
-            <span className="font-semibold text-foreground">
-              {revenueStats.totalPax}
-            </span>
-          </span>
-          <span className="text-muted">
-            Πληρωμένες παρέες:{" "}
-            <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-              {revenueStats.paidGroups}
-            </span>
-          </span>
-          <span className="text-muted">
-            Εκκρεμείς:{" "}
-            <span className="font-semibold text-amber-600 dark:text-amber-400">
-              {revenueStats.pendingGroups}
-            </span>
-          </span>
         </div>
       )}
 
@@ -840,10 +885,23 @@ function SeatingView() {
                     table={t}
                     reservation={reservationByTableNumber.get(t.number) ?? null}
                     pendingAssign={!!selectedReservationId}
+                    selectedReservation={selectedReservation}
                     onTableClick={() => {
-                      if (selectedReservationId) {
-                        assignReservation(selectedReservationId, t.number);
+                      if (!selectedReservationId || !selectedReservation) return;
+                      const occupant = reservationByTableNumber.get(t.number);
+                      if (occupant && occupant.id !== selectedReservationId) {
+                        return;
                       }
+                      if (t.is_reserved) {
+                        setAssignmentConfirm({
+                          reservationId: selectedReservationId,
+                          tableNumber: t.number,
+                          label: t.reserved_label ?? null,
+                          groupName: selectedReservation.group_name,
+                        });
+                        return;
+                      }
+                      assignReservation(selectedReservationId, t.number);
                     }}
                     onDropReservation={(id) =>
                       assignReservation(id, t.number)
@@ -855,6 +913,10 @@ function SeatingView() {
                     onRemoveTable={() => handleRemoveTable(t.id)}
                     onUpdateCapacity={(c) => handleUpdateCapacity(t.id, c)}
                     onToggleShape={() => handleToggleShape(t.id)}
+                    onToggleReserved={() => handleToggleReserved(t.id)}
+                    onUpdateReservedLabel={(l) =>
+                      handleUpdateReservedLabel(t.id, l)
+                    }
                     onOpenGuests={(reservationId) =>
                       setGuestPanelReservationId(reservationId)
                     }
@@ -901,6 +963,19 @@ function SeatingView() {
           onSubmit={async (input) => {
             await handleCreateEvent(input);
             setAddEventOpen(false);
+          }}
+        />
+      )}
+      {assignmentConfirm && (
+        <ConfirmAssignReservedModal
+          label={assignmentConfirm.label}
+          groupName={assignmentConfirm.groupName}
+          tableNumber={assignmentConfirm.tableNumber}
+          onClose={() => setAssignmentConfirm(null)}
+          onConfirm={() => {
+            const { reservationId, tableNumber } = assignmentConfirm;
+            setAssignmentConfirm(null);
+            void assignReservation(reservationId, tableNumber);
           }}
         />
       )}
@@ -988,6 +1063,17 @@ function ReservationChip({
 }) {
   const count = getAttendeeCount(reservation);
   const anonymous = hasAnonymousAttendees(reservation);
+  const leadAttendee = (reservation.attendees ?? []).find(
+    (a) => a.is_lead && a.member
+  );
+  const leadName = leadAttendee?.member
+    ? `${leadAttendee.member.first_name} ${leadAttendee.member.last_name}`
+    : null;
+  const presentCount = (reservation.attendees ?? []).filter(
+    (a) => a.is_present
+  ).length;
+  const hasAbsent =
+    (reservation.attendees ?? []).length > 0 && presentCount < count;
   return (
     <div
       role="button"
@@ -1014,10 +1100,23 @@ function ReservationChip({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">
-            {reservation.group_name}
+            {leadName ? (
+              <>
+                <span
+                  aria-hidden
+                  className="mr-1 text-amber-600 dark:text-amber-400"
+                >
+                  ⭐
+                </span>
+                {leadName}
+              </>
+            ) : (
+              reservation.group_name
+            )}
           </div>
           <div className="mt-0.5 text-xs text-muted">
             {count} {count === 1 ? "άτομο" : "άτομα"}
+            {hasAbsent && ` · ${presentCount} παρόντες`}
             {anonymous && (
               <span
                 className="ml-1 text-amber-600 dark:text-amber-400"
@@ -1063,23 +1162,29 @@ function TableCard({
   table,
   reservation,
   pendingAssign,
+  selectedReservation,
   onTableClick,
   onDropReservation,
   onUnassign,
   onRemoveTable,
   onUpdateCapacity,
   onToggleShape,
+  onToggleReserved,
+  onUpdateReservedLabel,
   onOpenGuests,
 }: {
   table: VenueTable;
   reservation: ReservationWithAttendees | null;
   pendingAssign: boolean;
+  selectedReservation: ReservationWithAttendees | null;
   onTableClick: () => void;
   onDropReservation: (reservationId: string) => void;
   onUnassign: () => void;
   onRemoveTable: () => void;
   onUpdateCapacity: (capacity: number) => void;
   onToggleShape: () => void;
+  onToggleReserved: () => void;
+  onUpdateReservedLabel: (label: string) => void;
   onOpenGuests: (reservationId: string) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
@@ -1093,6 +1198,10 @@ function TableCard({
   const shapeClasses =
     table.shape === "round" ? "rounded-full" : "rounded-xl";
 
+  const isReserved = !!table.is_reserved;
+  const isOccupied = !!reservation;
+  const lockDisabled = isOccupied;
+
   const status = paymentStatus(reservation ? [reservation] : []);
   const paidBorderClass =
     status === "paid"
@@ -1100,6 +1209,43 @@ function TableCard({
       : status === "mixed"
         ? "border-yellow-400"
         : "";
+
+  // Assignment-mode visual feedback (4-state)
+  const assignmentMode = pendingAssign && !!selectedReservation;
+  const occupiedByOther =
+    !!reservation &&
+    (!selectedReservation || reservation.id !== selectedReservation.id);
+  const fitsSelected = selectedReservation
+    ? selectedReservation.pax_count <= table.capacity
+    : false;
+  const assignDisabled = assignmentMode && occupiedByOther;
+
+  let cardSurfaceClass: string;
+  if (dragOver) {
+    cardSurfaceClass = "border-accent bg-accent/10";
+  } else if (assignmentMode) {
+    if (occupiedByOther) {
+      cardSurfaceClass = "border-border bg-surface opacity-50";
+    } else if (isReserved) {
+      cardSurfaceClass =
+        "border-yellow-400 bg-yellow-50 dark:bg-yellow-500/10";
+    } else if (fitsSelected) {
+      cardSurfaceClass =
+        "border-green-500 bg-green-50 dark:bg-green-500/10";
+    } else {
+      cardSurfaceClass =
+        "border-yellow-400 bg-yellow-50 dark:bg-yellow-500/10";
+    }
+  } else if (isReserved) {
+    cardSurfaceClass =
+      "border-yellow-400 bg-yellow-50 dark:bg-yellow-500/10";
+  } else if (reservation) {
+    cardSurfaceClass = (paidBorderClass || "border-border") + " bg-background";
+  } else {
+    cardSurfaceClass =
+      "border-dashed border-border bg-surface hover:border-accent/60";
+  }
+  const cursorClass = assignDisabled ? "cursor-not-allowed" : "cursor-pointer";
 
   return (
     <div
@@ -1115,35 +1261,60 @@ function TableCard({
         const id = e.dataTransfer.getData(DND_MIME);
         if (id) onDropReservation(id);
       }}
-      onClick={onTableClick}
+      onClick={() => {
+        if (assignDisabled) return;
+        onTableClick();
+      }}
       className={
-        "relative flex aspect-square cursor-pointer flex-col items-center justify-center border-2 p-3 text-center transition " +
+        "relative flex aspect-square flex-col items-center justify-center border-2 p-3 text-center transition " +
+        cursorClass +
+        " " +
         shapeClasses +
         " " +
-        (dragOver || pendingAssign
-          ? "border-accent bg-accent/10"
-          : reservation
-            ? (paidBorderClass || "border-border") + " bg-background"
-            : "border-dashed border-border bg-surface hover:border-accent/60")
+        cardSurfaceClass
       }
     >
       <button
         type="button"
-        title={reservation ? "Αποαντιστοίχιση παρέας" : "Διαγραφή τραπεζιού"}
         onClick={(e) => {
           e.stopPropagation();
-          if (reservation) onUnassign();
-          else onRemoveTable();
+          if (lockDisabled) return;
+          onToggleReserved();
         }}
-        className="absolute right-1.5 top-1.5 rounded-full border border-border bg-surface px-1.5 py-0.5 text-[10px] text-muted transition hover:border-danger/50 hover:text-danger"
+        disabled={lockDisabled}
+        aria-label={
+          isReserved ? "Αφαίρεση κράτησης τραπεζιού" : "Κράτηση τραπεζιού"
+        }
+        title={
+          lockDisabled
+            ? "Αφαίρεσε πρώτα την παρέα"
+            : isReserved
+              ? "Αφαίρεση κράτησης"
+              : "Κράτηση τραπεζιού"
+        }
+        className={
+          "absolute left-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border bg-surface text-base leading-none transition disabled:cursor-not-allowed disabled:opacity-40 " +
+          (isReserved
+            ? "border-yellow-400 text-yellow-700 hover:bg-yellow-100 dark:text-yellow-200 dark:hover:bg-yellow-500/20"
+            : "border-border text-muted hover:border-yellow-400 hover:text-yellow-700 dark:hover:text-yellow-200")
+        }
       >
-        {reservation ? "Αφαίρεση" : "✕"}
+        {isReserved ? "🔒" : "🔓"}
+      </button>
+      <button
+        type="button"
+        title="Διαγραφή τραπεζιού"
+        aria-label="Διαγραφή τραπεζιού"
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemoveTable();
+        }}
+        className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-base leading-none text-muted transition hover:border-danger/50 hover:text-danger"
+      >
+        ✕
       </button>
 
-      <div className="text-[10px] uppercase tracking-wide text-muted">
-        {table.shape === "round" ? "Στρογγυλό" : "Τετράγωνο"}
-      </div>
-      <div className="mt-0.5 text-2xl font-semibold leading-none">
+      <div className="text-2xl font-semibold leading-none">
         Νο {table.number}
       </div>
       <div
@@ -1177,29 +1348,53 @@ function TableCard({
         >
           +
         </button>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleShape();
-          }}
-          aria-label={
-            table.shape === "round"
-              ? "Αλλαγή σε τετράγωνο"
-              : "Αλλαγή σε στρογγυλό"
-          }
-          title={
-            table.shape === "round"
-              ? "Αλλαγή σε τετράγωνο"
-              : "Αλλαγή σε στρογγυλό"
-          }
-          className="ml-1 flex h-5 w-5 items-center justify-center rounded border border-border bg-surface text-xs leading-none transition hover:bg-background"
-        >
-          {table.shape === "round" ? "◯" : "▢"}
-        </button>
       </div>
 
-      {reservation ? (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleShape();
+        }}
+        aria-label={
+          table.shape === "round"
+            ? "Αλλαγή σε τετράγωνο"
+            : "Αλλαγή σε στρογγυλό"
+        }
+        title={
+          table.shape === "round"
+            ? "Αλλαγή σε τετράγωνο"
+            : "Αλλαγή σε στρογγυλό"
+        }
+        className="absolute bottom-2 left-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-base leading-none text-muted transition hover:border-accent/60 hover:text-foreground"
+      >
+        {table.shape === "round" ? "▢" : "◯"}
+      </button>
+
+      {reservation && (
+        <button
+          type="button"
+          title="Αφαίρεση παρέας από τραπέζι"
+          aria-label="Αφαίρεση παρέας από τραπέζι"
+          onClick={(e) => {
+            e.stopPropagation();
+            onUnassign();
+          }}
+          className="absolute bottom-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-base leading-none text-muted transition hover:border-accent/60 hover:text-foreground"
+        >
+          ↩
+        </button>
+      )}
+
+      <TableLabelEdit
+        customLabel={table.reserved_label}
+        defaultLabel={reservation?.group_name}
+        fallback={isReserved ? "— Κρατημένο —" : "— ελεύθερο —"}
+        emphasized={!!reservation}
+        onSave={onUpdateReservedLabel}
+      />
+
+      {reservation && (
         <div
           draggable
           onDragStart={(e) => {
@@ -1220,7 +1415,7 @@ function TableCard({
             }
           }}
           className={
-            "mt-2 w-full cursor-pointer truncate rounded-md px-2 py-1 text-xs font-medium active:cursor-grabbing " +
+            "mt-1 inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium active:cursor-grabbing " +
             (overCapacity
               ? "bg-danger/10 text-danger"
               : "bg-accent/10 text-accent")
@@ -1233,12 +1428,206 @@ function TableCard({
                 : "Διαχείριση καλεσμένων"
           }
         >
-          {reservation.group_name} · {reservationCount}
-          {overCapacity ? " ⚠" : reservationAnonymous ? " ⚠" : ""}
+          <span>· {reservationCount}</span>
+          {(overCapacity || reservationAnonymous) && <span aria-hidden>⚠</span>}
         </div>
-      ) : (
-        <div className="mt-2 text-[11px] text-muted">— ελεύθερο —</div>
       )}
+    </div>
+  );
+}
+
+function TableLabelEdit({
+  customLabel,
+  defaultLabel,
+  fallback,
+  emphasized,
+  onSave,
+}: {
+  customLabel: string | undefined;
+  defaultLabel: string | undefined;
+  fallback: string;
+  emphasized: boolean;
+  onSave: (label: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  function startEdit() {
+    setDraft(customLabel ?? defaultLabel ?? "");
+    setEditing(true);
+  }
+
+  function commit() {
+    setEditing(false);
+    const trimmed = draft.trim();
+    const next =
+      trimmed === "" || trimmed === (defaultLabel ?? "") ? "" : trimmed;
+    if (next !== (customLabel ?? "")) {
+      onSave(next);
+    }
+  }
+
+  function cancel() {
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div
+        className="mt-1 flex w-full justify-center"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <input
+          autoFocus
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              cancel();
+            }
+          }}
+          maxLength={60}
+          placeholder="Ετικέτα τραπεζιού"
+          className="w-full max-w-[10rem] rounded border border-yellow-400 bg-background px-1.5 py-0.5 text-center text-xs outline-none focus:ring-2 focus:ring-yellow-400/30"
+        />
+      </div>
+    );
+  }
+
+  const isCustom = !!customLabel;
+  const isPlaceholder = !customLabel && !defaultLabel;
+  const displayText = customLabel ?? defaultLabel ?? fallback;
+
+  let appearanceClass: string;
+  if (isCustom) {
+    appearanceClass =
+      "bg-yellow-100 text-yellow-900 hover:bg-yellow-200 dark:bg-yellow-500/20 dark:text-yellow-100 dark:hover:bg-yellow-500/30";
+  } else if (emphasized) {
+    appearanceClass =
+      "text-foreground hover:bg-yellow-100/40 dark:hover:bg-yellow-500/10";
+  } else {
+    appearanceClass =
+      "text-muted hover:bg-yellow-100/40 dark:hover:bg-yellow-500/10";
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        startEdit();
+      }}
+      className={
+        "mt-1 inline-flex min-h-8 max-w-[10rem] items-center justify-center truncate rounded px-2 py-1 text-xs font-medium transition " +
+        appearanceClass
+      }
+      title={
+        isCustom
+          ? "Επεξεργασία ετικέτας"
+          : isPlaceholder
+            ? "Πρόσθεσε ετικέτα τραπεζιού"
+            : "Επεξεργασία ετικέτας τραπεζιού"
+      }
+    >
+      {displayText}
+    </button>
+  );
+}
+
+function ConfirmAssignReservedModal({
+  label,
+  groupName,
+  tableNumber,
+  onClose,
+  onConfirm,
+}: {
+  label: string | null;
+  groupName: string;
+  tableNumber: number;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const MAROON = "#800000";
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      role="alertdialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-surface"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="flex items-center justify-between gap-3 border-b-2 px-5 py-3"
+          style={{ borderColor: MAROON, color: MAROON }}
+        >
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <span aria-hidden>🔒</span>
+            Κρατημένο τραπέζι
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-muted transition hover:bg-black/5"
+            aria-label="Κλείσιμο"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-3 px-5 py-4 text-sm">
+          <p>
+            Το <span className="font-semibold">Τραπέζι Νο {tableNumber}</span>{" "}
+            είναι κρατημένο
+            {label ? (
+              <>
+                {" "}
+                για <span className="font-semibold">«{label}»</span>
+              </>
+            ) : null}
+            . Θες πραγματικά να βάλεις την παρέα{" "}
+            <span className="font-semibold">«{groupName}»</span> εδώ;
+          </p>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border bg-white px-4 py-1.5 text-sm transition hover:bg-background dark:bg-transparent"
+          >
+            Άκυρο
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="inline-flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium text-white transition"
+            style={{ backgroundColor: MAROON }}
+          >
+            Ναι, αντιστοίχισε
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

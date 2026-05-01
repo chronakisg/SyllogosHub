@@ -155,14 +155,11 @@ export default function ApprovalsPage() {
 
   return (
     <div className="mx-auto w-full max-w-4xl">
-      <header className="mb-6">
+      <header className="mb-3">
         <p className="text-sm text-muted">Οικονομικά</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+        <h1 className="mt-0.5 text-xl font-semibold tracking-tight">
           Εκκρεμείς Εγκρίσεις
         </h1>
-        <p className="mt-1 text-sm text-muted">
-          Πληρωμές με χειροκίνητο override που χρειάζονται έγκριση.
-        </p>
       </header>
 
       {error && (

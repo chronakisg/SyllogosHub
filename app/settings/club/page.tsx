@@ -315,14 +315,11 @@ export default function ClubInfoPage() {
       >
         ← Ρυθμίσεις
       </Link>
-      <header className="mb-6">
+      <header className="mb-3">
         <p className="text-sm text-muted">Ρυθμίσεις › Ταυτότητα Συλλόγου</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+        <h1 className="mt-0.5 text-xl font-semibold tracking-tight">
           Ταυτότητα Συλλόγου
         </h1>
-        <p className="mt-1 text-sm text-muted">
-          Στοιχεία, branding και οπτική ταυτότητα.
-        </p>
       </header>
 
       {error && (

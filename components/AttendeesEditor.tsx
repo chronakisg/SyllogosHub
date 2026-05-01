@@ -350,7 +350,7 @@ export function AttendeesEditor({
 
   return (
     <ModalShell
-      title={`Άτομα: ${reservation.group_name}`}
+      title={reservation.group_name}
       onClose={onClose}
       headerAction={
         <button

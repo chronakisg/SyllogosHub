@@ -728,16 +728,10 @@ export default function MembersPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm text-muted">Μέλη</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-            Διαχείριση Μελών
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            Προσθέστε, αναζητήστε και επεξεργαστείτε τα μέλη του συλλόγου.
-          </p>
-        </div>
+      <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-semibold tracking-tight">
+          Διαχείριση Μελών
+        </h1>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"

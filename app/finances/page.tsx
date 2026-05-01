@@ -28,8 +28,9 @@ import type {
   Reservation,
 } from "@/lib/supabase/types";
 import { calculateDiscount, generateUuid } from "@/lib/utils/discounts";
+import SponsorsTab from "./SponsorsTab";
 
-type Tab = "payments" | "reservations";
+type Tab = "payments" | "reservations" | "sponsors";
 
 const inputClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
@@ -97,15 +98,10 @@ export default function FinancesPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl">
-      <header className="mb-6">
-        <p className="text-sm text-muted">Οικονομικά</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight">
+      <header className="mb-3">
+        <h1 className="text-xl font-semibold tracking-tight">
           Οικονομική Διαχείριση
         </h1>
-        <p className="mt-1 text-sm text-muted">
-          Καταχωρήστε πληρωμές μελών και διαχειριστείτε την κατάσταση
-          πληρωμής των κρατήσεων.
-        </p>
       </header>
 
       <div className="mb-6 inline-flex rounded-lg border border-border bg-surface p-1 text-sm">
@@ -115,9 +111,18 @@ export default function FinancesPage() {
         <TabButton current={tab} value="reservations" onSelect={setTab}>
           Κρατήσεις Εκδηλώσεων
         </TabButton>
+        <TabButton current={tab} value="sponsors" onSelect={setTab}>
+          Χορηγοί
+        </TabButton>
       </div>
 
-      {tab === "payments" ? <PaymentsTab /> : <ReservationsTab />}
+      {tab === "payments" ? (
+        <PaymentsTab />
+      ) : tab === "reservations" ? (
+        <ReservationsTab />
+      ) : (
+        <SponsorsTab />
+      )}
     </div>
   );
 }
