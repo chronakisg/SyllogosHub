@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-01  
+> Last updated: 2026-05-02  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -35,7 +35,7 @@
 
 ## 🟢 In Progress
 
-- [ ] **`feat/guest-list-attendees`** — PR pending merge to main
+_(no active branches)_
 
 ## 🔴 Critical / Production Blockers
 
@@ -53,23 +53,6 @@
   - UI: Dropdown στο "Νέα Παρέα" modal (default: τρέχων user)
   - Sidebar display: «Κράτηση από: ΧΡΟΝΑΚΗΣ ΓΙΩΡΓΟΣ»
   - Estimated: M-L
-
-- [ ] **Παρών / Απών** (check-in flow) — `reservation_attendees.is_present`
-  - Use case: στην είσοδο της εκδήλωσης, τσεκάρω ποιοι ήρθαν
-  - UI: Checkbox σε κάθε attendee row + entrance list view
-  - Default: `true` (όλοι παρόντες αρχικά)
-  - Sort tweak: present πάνω, απόντες κάτω (μέσα στο ίδιο bucket)
-  - Estimated: M
-  - Foundation για όλα τα επόμενα layers (invitation, QR, dashboard)
-  - Connects με STEP 4 entrance list ως manual check-in interface
-
-- [ ] **STEP 4 — Entrance List με ονόματα + capacity warnings**
-  - `app/seating/entrance-list/page.tsx` να εμφανίζει attendee names
-  - Capacity warnings (αν παρέα > τραπέζι)
-  - "Καθάρισε ανώνυμα" quick action
-  - Connects με `is_present` για live attendance
-  - Πρώτη πραγματική UI για presence layer
-  - Mobile-first design (hostess με tablet/κινητό)
 
 ### Members domain
 
@@ -112,18 +95,25 @@
   - Παρέες απόντες με κόκκινο highlight
   - Estimated: M
 
+### Finances domain
+
+- [ ] **Event Financials tab** — οικονομική επισκόπηση ανά εκδήλωση
+  - Replace το current "Κρατήσεις Εκδηλώσεων" tab (duplicate view με
+    Πλάνο Τραπεζιών — όλη η ίδια info υπάρχει εκεί)
+  - Νέο content: per-event income breakdown
+    - Πληρωμένες παρέες × event.ticket_price
+    - Αναμενόμενα έσοδα (εκκρεμείς παρέες)
+    - Χορηγίες (sum από sponsors_event για το event)
+    - Σύνολο εσόδων
+  - Phase 1: έσοδα-only (existing data, no schema changes)
+  - Phase 2 (future): event_expenses table + net profit/loss
+    - Νέα schema entries για ψυχαγωγία/catering/ενοίκιο
+    - Calculation κέρδος/ζημία
+  - Tab name: "Οικονομικά Εκδηλώσεων"
+  - Estimated: M (1-2 commits για Phase 1)
+  - Connects με: existing /finances state-based tabs pattern
+
 ### Sidebar & UX polish (chore branch)
-
-- [ ] **Move "Χορηγοί" από top-level menu → tab στα Οικονομικά**
-  - Εκτός από Πληρωμές Μελών / Κρατήσεις Εκδηλώσεων → νέο tab "Χορηγοί"
-  - Χορηγοί είναι money flow, ταιριάζει στα Οικονομικά conceptually
-  - Καθαρίζει το sidebar από occasionally-used item
-  - Estimated: M
-
-- [ ] **Remove section labels** στο sidebar
-  - "ΚΑΘΗΜΕΡΙΝΗ ΧΡΗΣΗ" + "ΔΙΑΜΟΡΦΩΣΗ" labels = visual noise
-  - Replace με thin divider πριν το "Ρυθμίσεις"
-  - Estimated: S
 
 - [ ] **Events page tabs** — Επερχόμενες / Παλαιότερες / Όλες
   - Default tab: "Επερχόμενες" (event_date >= today)
@@ -185,6 +175,46 @@
   - Estimated: S (write doc + add to README)
 
 ## ✅ Recently Done
+
+### feat/reserved-tables (merged 2026-05-01) — PR #5
+
+13 commits, comprehensive seating UX iteration:
+
+- [x] Reserved tables με VIP labels (cfbc289)
+- [x] Universal label override pattern — custom labels universally
+  εμφανίζονται, sticky across changes (ab93469)
+- [x] TableCard polish: 4-corner button symmetry, shape toggle
+  inversion, unassign as corner icon (058a416-37a40b0, 0ffc070)
+- [x] Smart visual feedback during assignment — 4-state
+  (πράσινο/κίτρινο/reserved/disabled) με capacity awareness (4416d84)
+- [x] Sidebar reservation card με ⭐ Lead member display +
+  conditional παρόντες counter (4987a3f)
+- [x] AttendeesEditor title cleanup (αφαίρεση "Άτομα:" prefix)
+- [x] Compact page headers global — 50% λιγότερο vertical space
+  σε όλες τις main pages (3f2a64b, 6569ed7)
+- [x] Sponsors → tab στα Οικονομικά consolidation (c108802)
+- [x] Sidebar section labels removal + thin divider
+
+### feat/presence-checkin (merged 2026-05-01) — PR #3
+
+- [x] Schema: reservation_attendees.is_present + checked_in_at
+  (commit 0ca10fe)
+- [x] AttendeesEditor: tap-to-toggle is_present με optimistic UI
+  + "Δεν ήρθε" badge + "X · Y παρόντες" counter (eadfa29)
+- [x] Entrance list (app/seating/entrance-list/page.tsx):
+  full mobile-first rewrite με capacity warnings +
+  "Καθάρισε ανώνυμους απόντες" cleanup action
+- [x] Sidebar button "📋 Λίστα Εισόδου & Check-in"
+- [x] Connection με is_present για live attendance tracking
+
+### chore/roadmap-vision-pr2 (merged 2026-05-01) — PR #4
+
+- [x] Vision & Architecture Compass section — end-game narrative
+  (QR check-in με electronic invitations) + 3 guiding principles +
+  6-layer build order
+- [x] Invitations & Check-in domain — 6 future-layer items
+  (token, public page, QR scanner, send via email/SMS/Viber,
+  live dashboard)
 
 ### Hotfix: reservation_attendees schema rebuild (2026-05-01)
 
