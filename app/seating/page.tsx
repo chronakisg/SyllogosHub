@@ -1290,7 +1290,7 @@ function TableCard({
           cornerShapeClass
         }
       >
-        {table.shape === "round" ? "◯" : "▢"}
+        {table.shape === "round" ? "▢" : "◯"}
       </button>
 
       <TableLabelEdit
