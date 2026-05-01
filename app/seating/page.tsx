@@ -1258,27 +1258,28 @@ function TableCard({
         >
           +
         </button>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleShape();
-          }}
-          aria-label={
-            table.shape === "round"
-              ? "Αλλαγή σε τετράγωνο"
-              : "Αλλαγή σε στρογγυλό"
-          }
-          title={
-            table.shape === "round"
-              ? "Αλλαγή σε τετράγωνο"
-              : "Αλλαγή σε στρογγυλό"
-          }
-          className="ml-1 flex h-5 w-5 items-center justify-center rounded border border-border bg-surface text-xs leading-none transition hover:bg-background"
-        >
-          {table.shape === "round" ? "◯" : "▢"}
-        </button>
       </div>
+
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleShape();
+        }}
+        aria-label={
+          table.shape === "round"
+            ? "Αλλαγή σε τετράγωνο"
+            : "Αλλαγή σε στρογγυλό"
+        }
+        title={
+          table.shape === "round"
+            ? "Αλλαγή σε τετράγωνο"
+            : "Αλλαγή σε στρογγυλό"
+        }
+        className="absolute bottom-1.5 left-1.5 inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-base leading-none text-muted transition hover:border-accent/60 hover:text-foreground"
+      >
+        {table.shape === "round" ? "◯" : "▢"}
+      </button>
 
       {isReserved && (
         <ReservedLabelEdit
