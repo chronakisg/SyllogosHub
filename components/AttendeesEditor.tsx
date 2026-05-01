@@ -60,6 +60,11 @@ export function AttendeesEditor({
     [reservation.attendees]
   );
   const totalCount = attendees.length;
+  const presentCount = useMemo(
+    () => attendees.filter((a) => a.is_present).length,
+    [attendees]
+  );
+  const hasAbsent = presentCount < totalCount;
 
   const existingMemberIds = useMemo(
     () =>
@@ -351,7 +356,8 @@ export function AttendeesEditor({
 
       <section className="mb-4">
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-          Λίστα ατόμων ({totalCount})
+          Λίστα ατόμων ({totalCount}
+          {hasAbsent && ` · ${presentCount} παρόντες`})
         </h3>
         {totalCount === 0 ? (
           <p className="rounded-md border border-dashed border-border p-3 text-center text-xs text-muted">
@@ -597,13 +603,17 @@ function AttendeeRow({
   const isMember = !!attendee.member_id && !!attendee.member;
   const isGuest = !attendee.member_id && !!attendee.guest_name;
   const isAnonymous = !attendee.member_id && !attendee.guest_name;
+  const isAbsent = !attendee.is_present;
+
+  const nameClass = isAbsent ? "font-medium line-through" : "font-medium";
+  const anonClass = isAbsent ? "text-muted line-through" : "text-muted";
 
   let label: ReactNode;
   if (isMember && attendee.member) {
     label = (
       <>
         <span aria-hidden>✅</span>{" "}
-        <span className="font-medium">
+        <span className={nameClass}>
           {attendee.member.first_name} {attendee.member.last_name}
         </span>{" "}
         <span className="text-muted">(μέλος)</span>
@@ -613,7 +623,7 @@ function AttendeeRow({
     label = (
       <>
         <span aria-hidden>🪪</span>{" "}
-        <span className="font-medium">{attendee.guest_name}</span>{" "}
+        <span className={nameClass}>{attendee.guest_name}</span>{" "}
         <span className="text-muted">(επισκέπτης)</span>
       </>
     );
@@ -621,15 +631,26 @@ function AttendeeRow({
     label = (
       <>
         <span aria-hidden>👻</span>{" "}
-        <span className="text-muted">Ανώνυμο</span>
+        <span className={anonClass}>Ανώνυμο</span>
       </>
     );
   }
 
   return (
-    <li className="flex flex-col gap-1 rounded-md border border-border bg-surface px-2 py-1.5 text-xs">
+    <li
+      className={`flex flex-col gap-1 rounded-md border border-border bg-surface px-2 py-1.5 text-xs ${
+        isAbsent ? "opacity-60" : ""
+      }`}
+    >
       <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate">{label}</span>
+        <span className="flex min-w-0 items-center gap-1.5 truncate">
+          <span className="min-w-0 truncate">{label}</span>
+          {isAbsent && (
+            <span className="shrink-0 rounded bg-muted/20 px-1.5 py-0.5 text-[10px] font-medium text-muted">
+              Δεν ήρθε
+            </span>
+          )}
+        </span>
         <div className="flex shrink-0 items-center gap-1">
           {attendee.is_lead && (
             <button

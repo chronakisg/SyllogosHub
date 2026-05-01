@@ -26,6 +26,8 @@ export const RESERVATION_SELECT = `
     member_id,
     guest_name,
     is_lead,
+    is_present,
+    checked_in_at,
     notes,
     created_at,
     updated_at,
@@ -60,6 +62,8 @@ export function sortAttendees(
     const bucketA = a.member_id ? 0 : a.guest_name ? 1 : 2;
     const bucketB = b.member_id ? 0 : b.guest_name ? 1 : 2;
     if (bucketA !== bucketB) return bucketA - bucketB;
+
+    if (a.is_present !== b.is_present) return a.is_present ? -1 : 1;
 
     if (bucketA === 0) {
       const lastA = a.member?.last_name ?? "";
