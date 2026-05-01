@@ -1140,6 +1140,13 @@ function TableCard({
   const isReserved = !!table.is_reserved;
   const isOccupied = !!reservation;
   const lockDisabled = isOccupied;
+  const isRound = table.shape === "round";
+  const cornerLockClass = isRound
+    ? "top-[15%] left-[15%]"
+    : "top-1.5 left-1.5";
+  const cornerShapeClass = isRound
+    ? "bottom-[15%] left-[15%]"
+    : "bottom-1.5 left-1.5";
 
   const status = paymentStatus(reservation ? [reservation] : []);
   const paidBorderClass =
@@ -1203,7 +1210,9 @@ function TableCard({
               : "Κράτηση τραπεζιού"
         }
         className={
-          "absolute left-1.5 top-1.5 inline-flex h-8 w-8 items-center justify-center rounded-full border bg-surface text-base leading-none transition disabled:cursor-not-allowed disabled:opacity-40 " +
+          "absolute inline-flex h-8 w-8 items-center justify-center rounded-full border bg-surface text-base leading-none transition disabled:cursor-not-allowed disabled:opacity-40 " +
+          cornerLockClass +
+          " " +
           (isReserved
             ? "border-yellow-400 text-yellow-700 hover:bg-yellow-100 dark:text-yellow-200 dark:hover:bg-yellow-500/20"
             : "border-border text-muted hover:border-yellow-400 hover:text-yellow-700 dark:hover:text-yellow-200")
@@ -1276,19 +1285,23 @@ function TableCard({
             ? "Αλλαγή σε τετράγωνο"
             : "Αλλαγή σε στρογγυλό"
         }
-        className="absolute bottom-1.5 left-1.5 inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-base leading-none text-muted transition hover:border-accent/60 hover:text-foreground"
+        className={
+          "absolute inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-base leading-none text-muted transition hover:border-accent/60 hover:text-foreground " +
+          cornerShapeClass
+        }
       >
         {table.shape === "round" ? "◯" : "▢"}
       </button>
 
-      {isReserved && (
-        <ReservedLabelEdit
-          label={table.reserved_label}
-          onSave={onUpdateReservedLabel}
-        />
-      )}
+      <TableLabelEdit
+        customLabel={table.reserved_label}
+        defaultLabel={reservation?.group_name}
+        fallback={isReserved ? "— Κρατημένο —" : "— ελεύθερο —"}
+        emphasized={!!reservation}
+        onSave={onUpdateReservedLabel}
+      />
 
-      {reservation ? (
+      {reservation && (
         <div
           draggable
           onDragStart={(e) => {
@@ -1309,7 +1322,7 @@ function TableCard({
             }
           }}
           className={
-            "mt-2 w-full cursor-pointer truncate rounded-md px-2 py-1 text-xs font-medium active:cursor-grabbing " +
+            "mt-1 inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium active:cursor-grabbing " +
             (overCapacity
               ? "bg-danger/10 text-danger"
               : "bg-accent/10 text-accent")
@@ -1322,42 +1335,47 @@ function TableCard({
                 : "Διαχείριση καλεσμένων"
           }
         >
-          {reservation.group_name} · {reservationCount}
-          {overCapacity ? " ⚠" : reservationAnonymous ? " ⚠" : ""}
-        </div>
-      ) : (
-        <div className="mt-2 text-[11px] text-muted">
-          {isReserved ? "— Κρατημένο —" : "— ελεύθερο —"}
+          <span>· {reservationCount}</span>
+          {(overCapacity || reservationAnonymous) && <span aria-hidden>⚠</span>}
         </div>
       )}
     </div>
   );
 }
 
-function ReservedLabelEdit({
-  label,
+function TableLabelEdit({
+  customLabel,
+  defaultLabel,
+  fallback,
+  emphasized,
   onSave,
 }: {
-  label: string | undefined;
+  customLabel: string | undefined;
+  defaultLabel: string | undefined;
+  fallback: string;
+  emphasized: boolean;
   onSave: (label: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(label ?? "");
+  const [draft, setDraft] = useState("");
 
-  useEffect(() => {
-    if (!editing) setDraft(label ?? "");
-  }, [label, editing]);
+  function startEdit() {
+    setDraft(customLabel ?? defaultLabel ?? "");
+    setEditing(true);
+  }
 
   function commit() {
     setEditing(false);
-    if ((draft.trim() || "") !== (label ?? "")) {
-      onSave(draft);
+    const trimmed = draft.trim();
+    const next =
+      trimmed === "" || trimmed === (defaultLabel ?? "") ? "" : trimmed;
+    if (next !== (customLabel ?? "")) {
+      onSave(next);
     }
   }
 
   function cancel() {
     setEditing(false);
-    setDraft(label ?? "");
   }
 
   if (editing) {
@@ -1381,12 +1399,28 @@ function ReservedLabelEdit({
               cancel();
             }
           }}
-          maxLength={40}
-          placeholder="Λόγος κράτησης"
-          className="w-full max-w-[8.5rem] rounded border border-yellow-400 bg-background px-1.5 py-0.5 text-center text-[11px] outline-none focus:ring-2 focus:ring-yellow-400/30"
+          maxLength={60}
+          placeholder="Ετικέτα τραπεζιού"
+          className="w-full max-w-[10rem] rounded border border-yellow-400 bg-background px-1.5 py-0.5 text-center text-xs outline-none focus:ring-2 focus:ring-yellow-400/30"
         />
       </div>
     );
+  }
+
+  const isCustom = !!customLabel;
+  const isPlaceholder = !customLabel && !defaultLabel;
+  const displayText = customLabel ?? defaultLabel ?? fallback;
+
+  let appearanceClass: string;
+  if (isCustom) {
+    appearanceClass =
+      "bg-yellow-100 text-yellow-900 hover:bg-yellow-200 dark:bg-yellow-500/20 dark:text-yellow-100 dark:hover:bg-yellow-500/30";
+  } else if (emphasized) {
+    appearanceClass =
+      "text-foreground hover:bg-yellow-100/40 dark:hover:bg-yellow-500/10";
+  } else {
+    appearanceClass =
+      "text-muted hover:bg-yellow-100/40 dark:hover:bg-yellow-500/10";
   }
 
   return (
@@ -1394,17 +1428,21 @@ function ReservedLabelEdit({
       type="button"
       onClick={(e) => {
         e.stopPropagation();
-        setEditing(true);
+        startEdit();
       }}
       className={
-        "mt-1 max-w-[8.5rem] truncate rounded px-1.5 py-0.5 text-[11px] transition " +
-        (label
-          ? "bg-yellow-100 text-yellow-900 hover:bg-yellow-200 dark:bg-yellow-500/20 dark:text-yellow-100 dark:hover:bg-yellow-500/30"
-          : "text-muted hover:bg-yellow-100/40 dark:hover:bg-yellow-500/10")
+        "mt-1 inline-flex min-h-8 max-w-[10rem] items-center justify-center truncate rounded px-2 py-1 text-xs font-medium transition " +
+        appearanceClass
       }
-      title={label ? "Επεξεργασία λόγου κράτησης" : "Πρόσθεσε λόγο κράτησης"}
+      title={
+        isCustom
+          ? "Επεξεργασία ετικέτας"
+          : isPlaceholder
+            ? "Πρόσθεσε ετικέτα τραπεζιού"
+            : "Επεξεργασία ετικέτας τραπεζιού"
+      }
     >
-      {label ?? "Λόγος κράτησης"}
+      {displayText}
     </button>
   );
 }
