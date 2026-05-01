@@ -170,6 +170,21 @@ function SeatingView() {
     return m;
   }, [reservations]);
 
+  const selectedReservation = useMemo(
+    () =>
+      selectedReservationId
+        ? reservations.find((r) => r.id === selectedReservationId) ?? null
+        : null,
+    [selectedReservationId, reservations]
+  );
+
+  const [assignmentConfirm, setAssignmentConfirm] = useState<{
+    reservationId: string;
+    tableNumber: number;
+    label: string | null;
+    groupName: string;
+  } | null>(null);
+
   const unassigned = useMemo(() => {
     const q = groupSearch.trim().toLowerCase();
     return reservations
@@ -876,10 +891,23 @@ function SeatingView() {
                     table={t}
                     reservation={reservationByTableNumber.get(t.number) ?? null}
                     pendingAssign={!!selectedReservationId}
+                    selectedReservation={selectedReservation}
                     onTableClick={() => {
-                      if (selectedReservationId) {
-                        assignReservation(selectedReservationId, t.number);
+                      if (!selectedReservationId || !selectedReservation) return;
+                      const occupant = reservationByTableNumber.get(t.number);
+                      if (occupant && occupant.id !== selectedReservationId) {
+                        return;
                       }
+                      if (t.is_reserved) {
+                        setAssignmentConfirm({
+                          reservationId: selectedReservationId,
+                          tableNumber: t.number,
+                          label: t.reserved_label ?? null,
+                          groupName: selectedReservation.group_name,
+                        });
+                        return;
+                      }
+                      assignReservation(selectedReservationId, t.number);
                     }}
                     onDropReservation={(id) =>
                       assignReservation(id, t.number)
@@ -941,6 +969,19 @@ function SeatingView() {
           onSubmit={async (input) => {
             await handleCreateEvent(input);
             setAddEventOpen(false);
+          }}
+        />
+      )}
+      {assignmentConfirm && (
+        <ConfirmAssignReservedModal
+          label={assignmentConfirm.label}
+          groupName={assignmentConfirm.groupName}
+          tableNumber={assignmentConfirm.tableNumber}
+          onClose={() => setAssignmentConfirm(null)}
+          onConfirm={() => {
+            const { reservationId, tableNumber } = assignmentConfirm;
+            setAssignmentConfirm(null);
+            void assignReservation(reservationId, tableNumber);
           }}
         />
       )}
@@ -1103,6 +1144,7 @@ function TableCard({
   table,
   reservation,
   pendingAssign,
+  selectedReservation,
   onTableClick,
   onDropReservation,
   onUnassign,
@@ -1116,6 +1158,7 @@ function TableCard({
   table: VenueTable;
   reservation: ReservationWithAttendees | null;
   pendingAssign: boolean;
+  selectedReservation: ReservationWithAttendees | null;
   onTableClick: () => void;
   onDropReservation: (reservationId: string) => void;
   onUnassign: () => void;
@@ -1149,9 +1192,32 @@ function TableCard({
         ? "border-yellow-400"
         : "";
 
+  // Assignment-mode visual feedback (4-state)
+  const assignmentMode = pendingAssign && !!selectedReservation;
+  const occupiedByOther =
+    !!reservation &&
+    (!selectedReservation || reservation.id !== selectedReservation.id);
+  const fitsSelected = selectedReservation
+    ? selectedReservation.pax_count <= table.capacity
+    : false;
+  const assignDisabled = assignmentMode && occupiedByOther;
+
   let cardSurfaceClass: string;
-  if (dragOver || pendingAssign) {
+  if (dragOver) {
     cardSurfaceClass = "border-accent bg-accent/10";
+  } else if (assignmentMode) {
+    if (occupiedByOther) {
+      cardSurfaceClass = "border-border bg-surface opacity-50";
+    } else if (isReserved) {
+      cardSurfaceClass =
+        "border-yellow-400 bg-yellow-50 dark:bg-yellow-500/10";
+    } else if (fitsSelected) {
+      cardSurfaceClass =
+        "border-green-500 bg-green-50 dark:bg-green-500/10";
+    } else {
+      cardSurfaceClass =
+        "border-yellow-400 bg-yellow-50 dark:bg-yellow-500/10";
+    }
   } else if (isReserved) {
     cardSurfaceClass =
       "border-yellow-400 bg-yellow-50 dark:bg-yellow-500/10";
@@ -1161,6 +1227,7 @@ function TableCard({
     cardSurfaceClass =
       "border-dashed border-border bg-surface hover:border-accent/60";
   }
+  const cursorClass = assignDisabled ? "cursor-not-allowed" : "cursor-pointer";
 
   return (
     <div
@@ -1176,9 +1243,14 @@ function TableCard({
         const id = e.dataTransfer.getData(DND_MIME);
         if (id) onDropReservation(id);
       }}
-      onClick={onTableClick}
+      onClick={() => {
+        if (assignDisabled) return;
+        onTableClick();
+      }}
       className={
-        "relative flex aspect-square cursor-pointer flex-col items-center justify-center border-2 p-3 text-center transition " +
+        "relative flex aspect-square flex-col items-center justify-center border-2 p-3 text-center transition " +
+        cursorClass +
+        " " +
         shapeClasses +
         " " +
         cardSurfaceClass
@@ -1447,6 +1519,98 @@ function TableLabelEdit({
     >
       {displayText}
     </button>
+  );
+}
+
+function ConfirmAssignReservedModal({
+  label,
+  groupName,
+  tableNumber,
+  onClose,
+  onConfirm,
+}: {
+  label: string | null;
+  groupName: string;
+  tableNumber: number;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const MAROON = "#800000";
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      role="alertdialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-surface"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="flex items-center justify-between gap-3 border-b-2 px-5 py-3"
+          style={{ borderColor: MAROON, color: MAROON }}
+        >
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <span aria-hidden>🔒</span>
+            Κρατημένο τραπέζι
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-muted transition hover:bg-black/5"
+            aria-label="Κλείσιμο"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-3 px-5 py-4 text-sm">
+          <p>
+            Το <span className="font-semibold">Τραπέζι Νο {tableNumber}</span>{" "}
+            είναι κρατημένο
+            {label ? (
+              <>
+                {" "}
+                για <span className="font-semibold">«{label}»</span>
+              </>
+            ) : null}
+            . Θες πραγματικά να βάλεις την παρέα{" "}
+            <span className="font-semibold">«{groupName}»</span> εδώ;
+          </p>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border bg-white px-4 py-1.5 text-sm transition hover:bg-background dark:bg-transparent"
+          >
+            Άκυρο
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="inline-flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium text-white transition"
+            style={{ backgroundColor: MAROON }}
+          >
+            Ναι, αντιστοίχισε
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
