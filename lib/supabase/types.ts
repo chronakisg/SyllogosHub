@@ -464,6 +464,8 @@ export type ReservationAttendee = {
   member_id: string | null;
   guest_name: string | null;
   is_lead: boolean;
+  is_present: boolean;
+  checked_in_at: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -476,6 +478,8 @@ export type ReservationAttendeeInsert = {
   member_id?: string | null;
   guest_name?: string | null;
   is_lead?: boolean;
+  is_present?: boolean;
+  checked_in_at?: string | null;
   notes?: string | null;
   created_at?: string;
   updated_at?: string;

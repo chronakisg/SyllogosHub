@@ -45,6 +45,27 @@
   - Soft vs hard delete decision
   - Estimated: M
 
+### Sidebar & UX polish (chore branch)
+
+- [ ] **Move "Χορηγοί" από top-level menu → tab στα Οικονομικά**
+  - Εκτός από Πληρωμές Μελών / Κρατήσεις Εκδηλώσεων → νέο tab "Χορηγοί"
+  - Χορηγοί είναι money flow, ταιριάζει στα Οικονομικά conceptually
+  - Καθαρίζει το sidebar από occasionally-used item
+  - Estimated: M
+
+- [ ] **Remove section labels** στο sidebar
+  - "ΚΑΘΗΜΕΡΙΝΗ ΧΡΗΣΗ" + "ΔΙΑΜΟΡΦΩΣΗ" labels = visual noise
+  - Replace με thin divider πριν το "Ρυθμίσεις"
+  - Estimated: S
+
+- [ ] **Events page tabs** — Επερχόμενες / Παλαιότερες / Όλες
+  - Default tab: "Επερχόμενες" (event_date >= today)
+  - Παλαιότερες: descending sort
+  - Counter στα tabs (3) (47)
+  - Σήμερα → Επερχόμενες bucket
+  - Δεν είναι hide/archive, μόνο διαχωρισμός
+  - Estimated: M
+
 ## 🟢 Nice to Have / Future
 
 ### Family & Genealogy
@@ -86,8 +107,26 @@
   - `reservations_backup_20260430`
   - `members_backup_20260430`
   - Παραμένουν ως safety net για το beta — drop όταν συγχωνευθεί feature
+- [ ] **Migration safety conventions** (process, όχι code)
+  - Snapshot pattern με `create table as select` αντιγράφει ΜΟΝΟ data, όχι FKs/constraints
+  - Για schema rollback: χρησιμοποίησε authentic migration files, όχι rename backup
+  - Pre-flight diagnostic queries πριν από κάθε destructive SQL operation
+  - Κλείνουμε rollback/scratch tabs στο SQL Editor μόλις ολοκληρωθεί migration
+  - Ποτέ destructive SQL χωρίς full block review πριν paste
+  - Rollback SQL ΔΕΝ μπαίνει σε chat ως "comment to keep handy" (risky paste)
+  - Document αυτές τις conventions σε `docs/MIGRATIONS.md` (όταν γίνει)
+  - Estimated: S (write doc + add to README)
 
 ## ✅ Recently Done
+
+### Hotfix: reservation_attendees schema rebuild (2026-05-01)
+
+- Accidental rollback (drop + rename backup) έσπασε όλα τα FKs του `reservation_attendees`
+- Snapshot table από `create table as select` δεν είχε αντιγράψει constraints/FKs/indexes
+- App έσπασε με "Could not find a relationship between 'reservations' and 'reservation_attendees'"
+- Hotfix: fresh start από authentic 0002 + 0003 schemas + backfill anonymous attendees
+- Data preserved: 1 reservation, 11 anonymous attendees, no real customer data lost
+- 11 attendees, 3 FKs, 6 indexes, 1 RLS policy, 1 trigger restored
 
 ### feat/guest-list-attendees (this branch)
 
