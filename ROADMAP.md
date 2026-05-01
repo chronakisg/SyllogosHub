@@ -1,8 +1,37 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-04-30  
+> Last updated: 2026-05-01  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
+
+## 🧭 Vision & Architecture Compass
+
+> Το end-game του seating domain είναι **ηλεκτρονικές προσκλήσεις με QR check-in**.
+> Κάθε attendee παίρνει unique link/QR. Στην είσοδο της εκδήλωσης, η hostess
+> σκανάρει και το σύστημα δείχνει τραπέζι + co-attendees, με auto check-in.
+
+### Guiding principles
+
+- **Static token, dynamic resolution.** Το QR/link περιέχει μόνο `attendee_id`.
+  Τα στοιχεία (τραπέζι, παρέα, co-attendees) διαβάζονται live τη στιγμή του scan
+  ή του open. Έτσι ακυρώσεις/μεταφορές/αλλαγές παρέας δεν invalidate-άρουν τις
+  ήδη απεσταλμένες προσκλήσεις.
+- **Παραδοσιακοί σύλλογοι = συνεχείς αλλαγές.** Ακυρώσεις και μετακινήσεις
+  γίνονται μέχρι την τελευταία στιγμή. Καμία απόφαση schema/UX δεν πρέπει να
+  υποθέτει "frozen state" μετά την αρχική κράτηση.
+- **Παρέα ≠ νοικοκυριό ≠ γενεαλογία.** Τρία διαφορετικά concepts που συνεργάζονται:
+  παρέα = ad-hoc group ανά εκδήλωση, νοικοκυριό = `family_id`, γενεαλογία = tree.
+
+### Build order (foundation → end-game)
+
+1. ✅ **Attendees layer** — `reservation_attendees` με member/guest/anonymous
+2. 🔜 **Presence layer** — `is_present` + manual check-in από entrance list
+3. 🔜 **Identity layer** — invitation token + public invitation page
+4. 🔜 **Scan layer** — QR scanner page + auto check-in
+5. 🔜 **Delivery layer** — send via email → SMS → Viber/WhatsApp
+6. 🔜 **Visibility layer** — live attendance dashboard για admin
+
+Κάθε layer έχει standalone value και μπορεί να σταματήσει οπουδήποτε.
 
 ## 🟢 In Progress
 
@@ -31,18 +60,56 @@
   - Default: `true` (όλοι παρόντες αρχικά)
   - Sort tweak: present πάνω, απόντες κάτω (μέσα στο ίδιο bucket)
   - Estimated: M
+  - Foundation για όλα τα επόμενα layers (invitation, QR, dashboard)
+  - Connects με STEP 4 entrance list ως manual check-in interface
 
 - [ ] **STEP 4 — Entrance List με ονόματα + capacity warnings**
   - `app/seating/entrance-list/page.tsx` να εμφανίζει attendee names
   - Capacity warnings (αν παρέα > τραπέζι)
   - "Καθάρισε ανώνυμα" quick action
   - Connects με `is_present` για live attendance
+  - Πρώτη πραγματική UI για presence layer
+  - Mobile-first design (hostess με tablet/κινητό)
 
 ### Members domain
 
 - [ ] **Member delete flow** — `/members` modal δεν έχει delete button
   - Considerations: cascade σε attendees, payment history retention
   - Soft vs hard delete decision
+  - Estimated: M
+
+### Invitations & Check-in domain (future layers)
+
+- [ ] **Invitation token** — `reservation_attendees.invitation_token` (uuid, unique)
+  - Generated on attendee creation
+  - Foundation για identity layer
+  - Estimated: S
+
+- [ ] **Public invitation page** — `app/invite/[token]/page.tsx`
+  - Live data: τραπέζι, παρέα, co-attendees, ώρα εκδήλωσης
+  - Branded με club theme
+  - QR code εμφανώς ως screen-show option ("Δείξε στην είσοδο")
+  - Estimated: M
+
+- [ ] **QR scanner page** — `app/seating/checkin/page.tsx`
+  - Camera access + QR decode (jsQR ή html5-qrcode)
+  - Auto-set `is_present = true` on scan
+  - Welcome screen: "Καλώς ήρθατε [Όνομα]! Τραπέζι [Νο], με [co-attendees]"
+  - Estimated: M-L
+
+- [ ] **Send invitations** — email πρώτα
+  - Edge function ή API route που στέλνει σε όλους τους attendees με email
+  - Template με club branding + QR + στοιχεία
+  - Track sent/delivered/opened (αργότερα)
+  - Estimated: M
+
+- [ ] **SMS/Viber/WhatsApp delivery** — second wave
+  - Provider TBD (Viber Business, Twilio, ή Greek SMS gateway)
+  - Estimated: L
+
+- [ ] **Live attendance dashboard** — `app/seating/live/page.tsx`
+  - Real-time count: "127 / 320 ήρθαν"
+  - Παρέες απόντες με κόκκινο highlight
   - Estimated: M
 
 ### Sidebar & UX polish (chore branch)
