@@ -1213,15 +1213,15 @@ function TableCard({
       </button>
       <button
         type="button"
-        title={reservation ? "Αποαντιστοίχιση παρέας" : "Διαγραφή τραπεζιού"}
+        title="Διαγραφή τραπεζιού"
+        aria-label="Διαγραφή τραπεζιού"
         onClick={(e) => {
           e.stopPropagation();
-          if (reservation) onUnassign();
-          else onRemoveTable();
+          onRemoveTable();
         }}
-        className="absolute right-2 top-2 rounded-full border border-border bg-surface px-1.5 py-0.5 text-[10px] text-muted transition hover:border-danger/50 hover:text-danger"
+        className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-base leading-none text-muted transition hover:border-danger/50 hover:text-danger"
       >
-        {reservation ? "Αφαίρεση" : "✕"}
+        ✕
       </button>
 
       <div className="text-2xl font-semibold leading-none">
@@ -1280,6 +1280,21 @@ function TableCard({
       >
         {table.shape === "round" ? "▢" : "◯"}
       </button>
+
+      {reservation && (
+        <button
+          type="button"
+          title="Αφαίρεση παρέας από τραπέζι"
+          aria-label="Αφαίρεση παρέας από τραπέζι"
+          onClick={(e) => {
+            e.stopPropagation();
+            onUnassign();
+          }}
+          className="absolute bottom-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-surface text-base leading-none text-muted transition hover:border-accent/60 hover:text-foreground"
+        >
+          ↩
+        </button>
+      )}
 
       <TableLabelEdit
         customLabel={table.reserved_label}
