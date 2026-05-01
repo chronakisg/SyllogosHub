@@ -665,24 +665,17 @@ function SeatingView() {
 
   return (
     <div className="mx-auto w-full max-w-384">
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-sm text-muted">Εκδηλώσεις</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-            Πλάνο Τραπεζιών
-          </h1>
-          <p className="mt-1 max-w-xl text-sm text-muted">
-            Διαμορφώστε τα τραπέζια και αναθέστε παρέες. Οι αλλαγές
-            συγχρονίζονται σε πραγματικό χρόνο σε όλες τις συσκευές.
-          </p>
-        </div>
+      <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-xl font-semibold tracking-tight">
+          Πλάνο Τραπεζιών
+        </h1>
         <div className="flex flex-wrap items-center gap-2">
           {selectedEventId && (
             <a
               href={`/seating/entrance-list?event=${selectedEventId}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-background"
+              className="rounded-lg border border-border px-3 py-1.5 text-sm transition hover:bg-background"
             >
               📋 Λίστα Εισόδου & Check-in
             </a>
@@ -691,35 +684,59 @@ function SeatingView() {
         </div>
       </header>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <label htmlFor="event-picker" className="text-sm text-muted">
-          Εκδήλωση:
-        </label>
-        <select
-          id="event-picker"
-          value={selectedEventId ?? ""}
-          onChange={(e) => setSelectedEventId(e.target.value || null)}
-          disabled={initialLoading || events.length === 0}
-          className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60"
-        >
-          {events.length === 0 ? (
-            <option value="">— Καμία εκδήλωση —</option>
-          ) : (
-            events.map((ev) => (
-              <option key={ev.id} value={ev.id}>
-                {ev.event_name} —{" "}
-                {new Date(ev.event_date).toLocaleDateString("el-GR")}
-              </option>
-            ))
-          )}
-        </select>
-        <button
-          type="button"
-          onClick={() => setAddEventOpen(true)}
-          className="rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-background"
-        >
-          + Νέα Εκδήλωση
-        </button>
+      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            id="event-picker"
+            value={selectedEventId ?? ""}
+            onChange={(e) => setSelectedEventId(e.target.value || null)}
+            disabled={initialLoading || events.length === 0}
+            aria-label="Εκδήλωση"
+            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:opacity-60"
+          >
+            {events.length === 0 ? (
+              <option value="">— Καμία εκδήλωση —</option>
+            ) : (
+              events.map((ev) => (
+                <option key={ev.id} value={ev.id}>
+                  {ev.event_name} —{" "}
+                  {new Date(ev.event_date).toLocaleDateString("el-GR")}
+                </option>
+              ))
+            )}
+          </select>
+          <button
+            type="button"
+            onClick={() => setAddEventOpen(true)}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm transition hover:bg-background"
+          >
+            + Νέα Εκδήλωση
+          </button>
+        </div>
+        {activeEvent && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+            <span>
+              <span className="font-semibold text-foreground">
+                {revenueStats.totalPax}
+              </span>{" "}
+              άτομα
+            </span>
+            <span aria-hidden>·</span>
+            <span>
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                {revenueStats.paidGroups}
+              </span>{" "}
+              πληρωμένες
+            </span>
+            <span aria-hidden>·</span>
+            <span>
+              <span className="font-semibold text-amber-600 dark:text-amber-400">
+                {revenueStats.pendingGroups}
+              </span>{" "}
+              εκκρεμείς
+            </span>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -733,29 +750,6 @@ function SeatingView() {
           >
             ✕
           </button>
-        </div>
-      )}
-
-      {activeEvent && (
-        <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm">
-          <span className="text-muted">
-            Σύνολο ατόμων:{" "}
-            <span className="font-semibold text-foreground">
-              {revenueStats.totalPax}
-            </span>
-          </span>
-          <span className="text-muted">
-            Πληρωμένες παρέες:{" "}
-            <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-              {revenueStats.paidGroups}
-            </span>
-          </span>
-          <span className="text-muted">
-            Εκκρεμείς:{" "}
-            <span className="font-semibold text-amber-600 dark:text-amber-400">
-              {revenueStats.pendingGroups}
-            </span>
-          </span>
         </div>
       )}
 
