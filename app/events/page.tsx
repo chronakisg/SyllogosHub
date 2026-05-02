@@ -34,6 +34,7 @@ import type {
   Sponsor,
   SponsorInsert,
 } from "@/lib/supabase/types";
+import { AddReservationModal } from "@/components/AddReservationModal";
 
 type EventListItem = EventRow & {
   event_entertainers?: Array<{
@@ -155,6 +156,9 @@ export default function EventsPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<EventRow | null>(null);
+  const [addReservationFor, setAddReservationFor] = useState<string | null>(
+    null
+  );
 
   const loadEvents = useCallback(async () => {
     if (!clubId) return;
@@ -225,6 +229,47 @@ export default function EventsPage() {
   function closeModal() {
     setModalOpen(false);
     setEditing(null);
+  }
+
+  async function handleCreateReservation(input: {
+    group_name: string;
+    pax_count: number;
+    event_id: string;
+    club_id: string;
+  }) {
+    const supabase = getBrowserClient();
+    const { data: created, error: iErr } = await supabase
+      .from("reservations")
+      .insert({
+        club_id: input.club_id,
+        event_id: input.event_id,
+        group_name: input.group_name,
+        pax_count: input.pax_count,
+        is_paid: false,
+        table_number: null,
+      })
+      .select("id")
+      .single();
+    if (iErr) throw iErr;
+
+    if (created && input.pax_count > 0) {
+      const rows = Array.from({ length: input.pax_count }, () => ({
+        reservation_id: created.id,
+        club_id: input.club_id,
+      }));
+      const { error: aErr } = await supabase
+        .from("reservation_attendees")
+        .insert(rows);
+      if (aErr) {
+        console.error(
+          "Reservation created but seeding anonymous attendees failed",
+          aErr
+        );
+      }
+    }
+
+    setAddReservationFor(null);
+    await loadEvents();
   }
 
   async function handleDelete(ev: EventWithStats) {
@@ -372,6 +417,13 @@ export default function EventsPage() {
                         </Link>
                         <button
                           type="button"
+                          onClick={() => setAddReservationFor(ev.id)}
+                          className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
+                        >
+                          + Παρέα
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => openEdit(ev)}
                           className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
                         >
@@ -405,6 +457,14 @@ export default function EventsPage() {
           }}
         />
       )}
+
+      <AddReservationModal
+        isOpen={!!addReservationFor && !!clubId}
+        onClose={() => setAddReservationFor(null)}
+        onSubmit={handleCreateReservation}
+        eventId={addReservationFor ?? ""}
+        clubId={clubId ?? ""}
+      />
     </div>
   );
 }

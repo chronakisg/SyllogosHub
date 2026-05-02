@@ -122,7 +122,6 @@ function SeatingView() {
 
   const [addTableOpen, setAddTableOpen] = useState(false);
   const [batchTablesOpen, setBatchTablesOpen] = useState(false);
-  const [addReservationOpen, setAddReservationOpen] = useState(false);
   const [addEventOpen, setAddEventOpen] = useState(false);
   const [groupSearch, setGroupSearch] = useState("");
   const [guestPanelReservationId, setGuestPanelReservationId] = useState<
@@ -568,51 +567,6 @@ function SeatingView() {
     ]
   );
 
-  const handleCreateReservation = useCallback(
-    async (input: {
-      group_name: string;
-      pax_count: number;
-      is_paid: boolean;
-    }) => {
-      if (!selectedEventId || !clubId) return;
-      try {
-        const supabase = getBrowserClient();
-        const { data: created, error: iErr } = await supabase
-          .from("reservations")
-          .insert({
-            club_id: clubId,
-            event_id: selectedEventId,
-            group_name: input.group_name,
-            pax_count: input.pax_count,
-            is_paid: input.is_paid,
-            table_number: null,
-          })
-          .select("id")
-          .single();
-        if (iErr) throw iErr;
-
-        if (created && input.pax_count > 0) {
-          const rows = Array.from({ length: input.pax_count }, () => ({
-            reservation_id: created.id,
-            club_id: clubId,
-          }));
-          const { error: aErr } = await supabase
-            .from("reservation_attendees")
-            .insert(rows);
-          if (aErr) {
-            console.error(
-              "Reservation created but seeding anonymous attendees failed",
-              aErr
-            );
-          }
-        }
-      } catch (err) {
-        setError(errorMessage(err, "Σφάλμα δημιουργίας παρέας."));
-      }
-    },
-    [selectedEventId, clubId]
-  );
-
   const handleCreateEvent = useCallback(
     async (input: { event_name: string; event_date: string }) => {
       if (!clubId) return;
@@ -784,13 +738,6 @@ function SeatingView() {
                   {unassigned.length === 1 ? "παρέα" : "παρέες"}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setAddReservationOpen(true)}
-                className="rounded-md border border-border px-2 py-1 text-xs transition hover:bg-background"
-              >
-                + Νέα Παρέα
-              </button>
             </div>
 
             <div className="mb-3">
@@ -946,15 +893,6 @@ function SeatingView() {
           onSubmit={async (input) => {
             await handleBatchAddTables(input);
             setBatchTablesOpen(false);
-          }}
-        />
-      )}
-      {addReservationOpen && (
-        <AddReservationModal
-          onClose={() => setAddReservationOpen(false)}
-          onSubmit={async (input) => {
-            await handleCreateReservation(input);
-            setAddReservationOpen(false);
           }}
         />
       )}
@@ -1856,93 +1794,6 @@ function BatchTablesModal({
           onCancel={onClose}
           submitting={saving}
           submitLabel="Δημιουργία"
-        />
-      </form>
-    </Modal>
-  );
-}
-
-function AddReservationModal({
-  onClose,
-  onSubmit,
-}: {
-  onClose: () => void;
-  onSubmit: (input: {
-    group_name: string;
-    pax_count: number;
-    is_paid: boolean;
-  }) => Promise<void>;
-}) {
-  const [groupName, setGroupName] = useState("");
-  const [pax, setPax] = useState("4");
-  const [paid, setPaid] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const g = groupName.trim();
-    const p = Number(pax);
-    if (!g) {
-      setErr("Το όνομα παρέας είναι υποχρεωτικό.");
-      return;
-    }
-    if (!Number.isInteger(p) || p <= 0) {
-      setErr("Τα άτομα πρέπει να είναι θετικός ακέραιος.");
-      return;
-    }
-    setSaving(true);
-    setErr(null);
-    try {
-      await onSubmit({ group_name: g, pax_count: p, is_paid: paid });
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Σφάλμα αποθήκευσης.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Modal title="Νέα Παρέα" onClose={onClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <Field label="Όνομα παρέας" required>
-          <input
-            type="text"
-            required
-            value={groupName}
-            onChange={(e) => setGroupName(e.target.value)}
-            placeholder="π.χ. Παρέα Κώστα"
-            className={inputClass}
-          />
-        </Field>
-        <Field label="Αριθμός ατόμων" required>
-          <input
-            type="number"
-            min={1}
-            required
-            value={pax}
-            onChange={(e) => setPax(e.target.value)}
-            className={inputClass}
-          />
-        </Field>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={paid}
-            onChange={(e) => setPaid(e.target.checked)}
-            className="h-4 w-4 rounded border-border"
-          />
-          Η παρέα έχει πληρώσει
-        </label>
-        {err && (
-          <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
-            {err}
-          </div>
-        )}
-        <ModalFooter
-          onCancel={onClose}
-          submitting={saving}
-          submitLabel="Προσθήκη"
         />
       </form>
     </Modal>
