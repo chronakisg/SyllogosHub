@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -194,6 +195,19 @@ function SeatingView() {
       .filter((r) => r.table_number == null)
       .filter((r) => !q || r.group_name.toLowerCase().includes(q))
       .sort((a, b) => a.group_name.localeCompare(b.group_name, "el"));
+  }, [reservations, groupSearch]);
+
+  const assigned = useMemo(() => {
+    const q = groupSearch.trim().toLowerCase();
+    return reservations
+      .filter((r) => r.table_number != null)
+      .filter((r) => !q || r.group_name.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const aT = a.table_number ?? Number.MAX_SAFE_INTEGER;
+        const bT = b.table_number ?? Number.MAX_SAFE_INTEGER;
+        if (aT !== bT) return aT - bT;
+        return a.group_name.localeCompare(b.group_name, "el");
+      });
   }, [reservations, groupSearch]);
 
   const loadEventData = useCallback(
@@ -735,7 +749,7 @@ function SeatingView() {
           >
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
-                <h2 className="font-semibold">Παρέες χωρίς τραπέζι</h2>
+                <h2 className="font-semibold">Παρέες χωρίς Τραπέζι</h2>
                 <p className="text-xs text-muted">
                   {unassigned.length}{" "}
                   {unassigned.length === 1 ? "παρέα" : "παρέες"}
@@ -792,6 +806,40 @@ function SeatingView() {
                   </li>
                 ))}
               </ul>
+            )}
+
+            {assigned.length > 0 && (
+              <>
+                <div className="mt-5 mb-3 flex items-center justify-between gap-2 border-t border-border pt-4">
+                  <div>
+                    <h2 className="font-semibold">Παρέες σε Τραπέζια</h2>
+                    <p className="text-xs text-muted">
+                      {assigned.length}{" "}
+                      {assigned.length === 1 ? "παρέα" : "παρέες"}
+                    </p>
+                  </div>
+                </div>
+                <ul className="flex flex-col gap-2">
+                  {assigned.map((r) => (
+                    <li key={r.id}>
+                      <ReservationChip
+                        reservation={r}
+                        selected={selectedReservationId === r.id}
+                        clubThreshold={clubThreshold}
+                        tableNumber={r.table_number}
+                        onToggleSelect={() =>
+                          setSelectedReservationId((prev) =>
+                            prev === r.id ? null : r.id
+                          )
+                        }
+                        onOpenAttendees={() =>
+                          setAttendeesEditorReservationId(r.id)
+                        }
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </aside>
 
@@ -998,12 +1046,14 @@ function ReservationChip({
   reservation,
   selected,
   clubThreshold,
+  tableNumber,
   onToggleSelect,
   onOpenAttendees,
 }: {
   reservation: ReservationWithAttendees;
   selected: boolean;
   clubThreshold: number;
+  tableNumber?: number | null;
   onToggleSelect: () => void;
   onOpenAttendees: () => void;
 }) {
@@ -1110,21 +1160,28 @@ function ReservationChip({
             </div>
           )}
         </div>
-        <button
-          type="button"
-          draggable={false}
-          onDragStart={(e) => e.preventDefault()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenAttendees();
-          }}
-          onKeyDown={(e) => e.stopPropagation()}
-          className="shrink-0 rounded-md border border-border bg-surface px-2 py-1 text-xs transition hover:bg-background"
-          title="Διαχείριση ατόμων"
-          aria-label="Διαχείριση ατόμων"
-        >
-          👤
-        </button>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <button
+            type="button"
+            draggable={false}
+            onDragStart={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenAttendees();
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="rounded-md border border-border bg-surface px-2 py-1 text-xs transition hover:bg-background"
+            title="Διαχείριση ατόμων"
+            aria-label="Διαχείριση ατόμων"
+          >
+            👤
+          </button>
+          {tableNumber != null && (
+            <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-white">
+              Νο {tableNumber}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1138,6 +1195,86 @@ function paymentStatus(list: ReservationWithAttendees[]): PaymentStatus {
   if (paidCount === 0) return "none";
   if (paidCount === list.length) return "paid";
   return "mixed";
+}
+
+function TablePopover({
+  reservation,
+  table,
+  clubThreshold,
+}: {
+  reservation: ReservationWithAttendees;
+  table: VenueTable;
+  clubThreshold: number;
+}) {
+  const attendees = reservation.attendees ?? [];
+  const totalCount = attendees.length;
+  const presentCount = attendees.filter(
+    (a) => a.presence_status === "present"
+  ).length;
+  const expectedCount = attendees.filter(
+    (a) => a.presence_status === "expected"
+  ).length;
+  const freeSeats = Math.max(0, table.capacity - presentCount);
+
+  let childCount = 0;
+  for (const a of attendees) {
+    if (resolveIsChild(a, clubThreshold).isChild) childCount += 1;
+  }
+  const adultCount = totalCount - childCount;
+
+  const leadAttendee = attendees.find((a) => a.is_lead && a.member);
+  const leadName = leadAttendee?.member
+    ? formatMemberName(leadAttendee.member)
+    : null;
+  const headerName = leadName ?? reservation.group_name;
+
+  return (
+    <div className="min-w-[220px] max-w-[280px] rounded-md border border-border bg-surface p-3 text-left text-xs shadow-lg">
+      <div className="text-sm font-medium">
+        Νο {table.number} — {table.capacity}{" "}
+        {table.capacity === 1 ? "θέση" : "θέσεις"}
+      </div>
+      <div className="mt-1 text-muted">
+        {presentCount}/{table.capacity} θέσεις · {freeSeats} ελεύθερες
+      </div>
+      <div className="mt-2 border-t border-border pt-2">
+        <div className="font-medium">
+          {leadName && (
+            <span
+              aria-hidden
+              className="mr-1 text-amber-600 dark:text-amber-400"
+            >
+              ⭐
+            </span>
+          )}
+          {headerName}
+        </div>
+        <div className="mt-0.5 text-muted">
+          {totalCount} {totalCount === 1 ? "άτομο" : "άτομα"}
+        </div>
+        {(presentCount > 0 || expectedCount > 0) && (
+          <div className="mt-0.5 text-muted">
+            {presentCount === 1 ? "1 παρών" : `${presentCount} παρόντες`}
+            {expectedCount > 0 && (
+              <>
+                {" · "}
+                {expectedCount === 1
+                  ? "1 αναμένεται"
+                  : `${expectedCount} αναμένονται`}
+              </>
+            )}
+          </div>
+        )}
+        {childCount > 0 && (
+          <div className="mt-0.5 text-muted">
+            {adultCount === 1 ? "1 ενήλικας" : `${adultCount} ενήλικες`}
+            {" · "}
+            {childCount === 1 ? "1 παιδί" : `${childCount} παιδιά`}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function TableCard({
@@ -1172,6 +1309,49 @@ function TableCard({
   onOpenGuests: (reservationId: string) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const [position, setPosition] = useState<"below" | "above">("below");
+  const showPopover = hovered || pinned;
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pinned) return;
+    function handleOutside(e: MouseEvent) {
+      if (!cardRef.current?.contains(e.target as Node)) {
+        setPinned(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [pinned]);
+
+  useEffect(() => {
+    if (!showPopover) return;
+    const rect = cardRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const POPOVER_ESTIMATE = 200;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    if (spaceBelow < POPOVER_ESTIMATE && spaceAbove > POPOVER_ESTIMATE) {
+      setPosition("above");
+    } else {
+      setPosition("below");
+    }
+  }, [showPopover]);
+
+  useEffect(() => {
+    if (!showPopover) return;
+    function handleEsc(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setHovered(false);
+        setPinned(false);
+      }
+    }
+    document.addEventListener("keydown", handleEsc);
+    return () => document.removeEventListener("keydown", handleEsc);
+  }, [showPopover]);
+
   const reservationCount = reservation ? getAttendeeCount(reservation) : 0;
   const reservationAnonymous = reservation
     ? hasAnonymousAttendees(reservation)
@@ -1179,17 +1359,9 @@ function TableCard({
   const overCapacity = reservation
     ? reservationCount > table.capacity
     : false;
-  const cateringCounts = useMemo(() => {
-    if (!reservation || !reservation.attendees?.length) {
-      return { adult: 0, child: 0 };
-    }
-    let child = 0;
-    for (const a of reservation.attendees) {
-      const r: IsChildResolution = resolveIsChild(a, clubThreshold);
-      if (r.isChild) child += 1;
-    }
-    return { adult: reservation.attendees.length - child, child };
-  }, [reservation, clubThreshold]);
+  const freeSeats = reservation
+    ? Math.max(0, table.capacity - reservationCount)
+    : 0;
   const shapeClasses =
     table.shape === "round" ? "rounded-full" : "rounded-xl";
 
@@ -1244,6 +1416,7 @@ function TableCard({
 
   return (
     <div
+      ref={cardRef}
       onDragOver={(e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
@@ -1257,9 +1430,21 @@ function TableCard({
         if (id) onDropReservation(id);
       }}
       onClick={() => {
-        if (assignDisabled) return;
-        onTableClick();
+        if (pendingAssign) {
+          if (assignDisabled) return;
+          onTableClick();
+          return;
+        }
+        if (reservation) {
+          setPinned((prev) => !prev);
+          return;
+        }
+        // empty table, no selection → no-op (parent's onTableClick is also no-op here)
       }}
+      onMouseEnter={() => {
+        if (reservation) setHovered(true);
+      }}
+      onMouseLeave={() => setHovered(false)}
       className={
         "relative flex aspect-square flex-col items-center justify-center border-2 p-3 text-center transition " +
         cursorClass +
@@ -1322,8 +1507,16 @@ function TableCard({
             e.stopPropagation();
             onUpdateCapacity(table.capacity - 1);
           }}
-          disabled={table.capacity <= 1}
+          disabled={
+            table.capacity <= 1 ||
+            (!!reservation && table.capacity <= reservationCount)
+          }
           aria-label="Μείωση χωρητικότητας"
+          title={
+            reservation && table.capacity <= reservationCount
+              ? "Δεν μπορείς να μειώσεις κάτω από τα άτομα της παρέας"
+              : "Μείωση χωρητικότητας"
+          }
           className="flex h-5 w-5 items-center justify-center rounded border border-border bg-surface text-xs leading-none transition hover:bg-background disabled:opacity-40"
         >
           −
@@ -1383,8 +1576,18 @@ function TableCard({
 
       <TableLabelEdit
         customLabel={table.reserved_label}
-        defaultLabel={reservation?.group_name}
-        fallback={isReserved ? "— Κρατημένο —" : "— ελεύθερο —"}
+        defaultLabel={undefined}
+        fallback={
+          reservation
+            ? freeSeats === 0
+              ? "Κατειλημμένο"
+              : `Κατειλημμένο · ${reservationCount} ${
+                  reservationCount === 1 ? "άτομο" : "άτομα"
+                }`
+            : isReserved
+              ? "— Κρατημένο —"
+              : "— ελεύθερο —"
+        }
         emphasized={!!reservation}
         onSave={onUpdateReservedLabel}
       />
@@ -1423,19 +1626,28 @@ function TableCard({
                 : "Διαχείριση καλεσμένων"
           }
         >
-          <span>· {reservationCount}</span>
+          {freeSeats > 0 ? (
+            <span>· {freeSeats} ελ.</span>
+          ) : (
+            !overCapacity &&
+            !reservationAnonymous && <span aria-hidden>·</span>
+          )}
           {(overCapacity || reservationAnonymous) && <span aria-hidden>⚠</span>}
         </div>
       )}
-      {reservation && cateringCounts.child > 0 && (
-        <div className="mt-1 text-[10px] text-muted">
-          {cateringCounts.adult === 1
-            ? "1 ενήλικας"
-            : `${cateringCounts.adult} ενήλικες`}
-          {" · "}
-          {cateringCounts.child === 1
-            ? "1 παιδί"
-            : `${cateringCounts.child} παιδιά`}
+      {showPopover && reservation && (
+        <div
+          className={
+            position === "below"
+              ? "pointer-events-none absolute left-1/2 top-full z-50 mt-1 -translate-x-1/2"
+              : "pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 -translate-x-1/2"
+          }
+        >
+          <TablePopover
+            reservation={reservation}
+            table={table}
+            clubThreshold={clubThreshold}
+          />
         </div>
       )}
     </div>
