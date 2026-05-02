@@ -1116,21 +1116,9 @@ function ReservationChip({
                   ⭐
                 </span>
                 {leadName}
-                {tableNumber != null && (
-                  <span className="ml-1 text-xs font-normal text-muted">
-                    → Τραπέζι {tableNumber}
-                  </span>
-                )}
               </>
             ) : (
-              <>
-                {reservation.group_name}
-                {tableNumber != null && (
-                  <span className="ml-1 text-xs font-normal text-muted">
-                    → Τραπέζι {tableNumber}
-                  </span>
-                )}
-              </>
+              reservation.group_name
             )}
           </div>
           <div className="mt-0.5 text-xs text-muted">
@@ -1187,6 +1175,13 @@ function ReservationChip({
           👤
         </button>
       </div>
+      {tableNumber != null && (
+        <div className="mt-2 flex justify-end">
+          <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-white">
+            Νο {tableNumber}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
