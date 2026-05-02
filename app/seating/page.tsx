@@ -1439,8 +1439,16 @@ function TableCard({
 
       <TableLabelEdit
         customLabel={table.reserved_label}
-        defaultLabel={reservation?.group_name}
-        fallback={isReserved ? "— Κρατημένο —" : "— ελεύθερο —"}
+        defaultLabel={undefined}
+        fallback={
+          reservation
+            ? `Κατειλημμένο · ${reservationCount} ${
+                reservationCount === 1 ? "άτομο" : "άτομα"
+              }`
+            : isReserved
+              ? "— Κρατημένο —"
+              : "— ελεύθερο —"
+        }
         emphasized={!!reservation}
         onSave={onUpdateReservedLabel}
       />
