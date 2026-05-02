@@ -15,10 +15,13 @@ import {
 import {
   getAge,
   nextPresenceStatus,
+  resolveIsChild,
   sortAttendees,
   type AttendeeWithMember,
+  type IsChildResolution,
   type ReservationWithAttendees,
 } from "@/lib/utils/attendees";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { ConfirmDeleteReservationModal } from "@/components/ConfirmDeleteReservationModal";
 
 type AddMode = "member" | "guest" | "anonymous";
@@ -57,6 +60,12 @@ export function AttendeesEditor({
       { presence_status: PresenceStatus; checked_in_at: string | null }
     >
   >({});
+  const [optimisticChildOverride, setOptimisticChildOverride] = useState<
+    Record<string, boolean | null>
+  >({});
+
+  const { club } = useCurrentClub();
+  const clubThreshold = club?.child_age_threshold ?? 15;
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 250);
@@ -66,10 +75,17 @@ export function AttendeesEditor({
   const attendees = useMemo(() => {
     const merged = (reservation.attendees ?? []).map((a) => {
       const o = optimisticPresence[a.id];
-      return o ? { ...a, ...o } : a;
+      const withPresence = o ? { ...a, ...o } : a;
+      if (a.id in optimisticChildOverride) {
+        return {
+          ...withPresence,
+          is_child_override: optimisticChildOverride[a.id],
+        };
+      }
+      return withPresence;
     });
     return sortAttendees(merged);
-  }, [reservation.attendees, optimisticPresence]);
+  }, [reservation.attendees, optimisticPresence, optimisticChildOverride]);
   const totalCount = attendees.length;
   const presentCount = useMemo(
     () => attendees.filter((a) => a.presence_status === "present").length,
@@ -83,6 +99,20 @@ export function AttendeesEditor({
     () => attendees.filter((a) => a.presence_status === "no_show").length,
     [attendees]
   );
+
+  const childResolutions = useMemo(() => {
+    const map = new Map<string, IsChildResolution>();
+    for (const a of attendees) {
+      map.set(a.id, resolveIsChild(a, clubThreshold));
+    }
+    return map;
+  }, [attendees, clubThreshold]);
+  const childCount = useMemo(
+    () =>
+      Array.from(childResolutions.values()).filter((r) => r.isChild).length,
+    [childResolutions]
+  );
+  const adultCount = totalCount - childCount;
 
   const existingMemberIds = useMemo(
     () =>
@@ -266,6 +296,40 @@ export function AttendeesEditor({
     }
   }
 
+  async function handleToggleChild(
+    attendeeId: string,
+    currentOverride: boolean | null
+  ) {
+    const newOverride: boolean | null =
+      currentOverride === null
+        ? true
+        : currentOverride === true
+          ? false
+          : null;
+    setOptimisticChildOverride((prev) => ({
+      ...prev,
+      [attendeeId]: newOverride,
+    }));
+    setError(null);
+    try {
+      const supabase = getBrowserClient();
+      const { error: uErr } = await supabase
+        .from("reservation_attendees")
+        .update({ is_child_override: newOverride })
+        .eq("id", attendeeId);
+      if (uErr) throw uErr;
+      await onUpdate();
+    } catch (err) {
+      setError(errorMessage(err, "Σφάλμα ενημέρωσης κατηγορίας ηλικίας."));
+    } finally {
+      setOptimisticChildOverride((prev) => {
+        const next = { ...prev };
+        delete next[attendeeId];
+        return next;
+      });
+    }
+  }
+
   async function handleRemove(attendeeId: string) {
     await runWithBusy(async () => {
       const supabase = getBrowserClient();
@@ -425,6 +489,14 @@ export function AttendeesEditor({
             }`}
           )
         </h3>
+        {childCount > 0 && (
+          <p className="mb-2 text-xs text-muted">
+            {totalCount} ·{" "}
+            {adultCount === 1 ? "1 ενήλικας" : `${adultCount} ενήλικες`}
+            {" · "}
+            {childCount === 1 ? "1 παιδί" : `${childCount} παιδιά`}
+          </p>
+        )}
         {totalCount === 0 ? (
           <p className="rounded-md border border-dashed border-border p-3 text-center text-xs text-muted">
             Δεν υπάρχουν άτομα.
@@ -443,8 +515,17 @@ export function AttendeesEditor({
                 promotionMatches={
                   promotingId === a.id ? promotionFilteredMembers : []
                 }
+                childResolution={
+                  childResolutions.get(a.id) ?? {
+                    isChild: false,
+                    source: "unknown",
+                  }
+                }
                 onTogglePresence={() =>
                   handleTogglePresence(a.id, a.presence_status)
+                }
+                onToggleChild={() =>
+                  handleToggleChild(a.id, a.is_child_override ?? null)
                 }
                 onToggleLead={() => handleToggleLead(a.id, a.is_lead)}
                 onRemove={() => handleRemove(a.id)}
@@ -642,7 +723,9 @@ function AttendeeRow({
   promotionGuestName,
   promotionSearch,
   promotionMatches,
+  childResolution,
   onTogglePresence,
+  onToggleChild,
   onToggleLead,
   onRemove,
   onStartPromote,
@@ -660,7 +743,9 @@ function AttendeeRow({
   promotionGuestName: string;
   promotionSearch: string;
   promotionMatches: Member[];
+  childResolution: IsChildResolution;
   onTogglePresence: () => void;
+  onToggleChild: () => void;
   onToggleLead: () => void;
   onRemove: () => void;
   onStartPromote: () => void;
@@ -759,6 +844,12 @@ function AttendeeRow({
       <div className="flex items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-1.5 truncate">
           {presenceIcon}
+          <ChildIndicator
+            attendee={attendee}
+            childResolution={childResolution}
+            disabled={disabled}
+            onToggleChild={onToggleChild}
+          />
           <span className="min-w-0 truncate">{label}</span>
           {isAbsent && (
             <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
@@ -900,6 +991,61 @@ function AttendeeRow({
         </div>
       )}
     </li>
+  );
+}
+
+function ChildIndicator({
+  attendee,
+  childResolution,
+  disabled,
+  onToggleChild,
+}: {
+  attendee: AttendeeWithMember;
+  childResolution: IsChildResolution;
+  disabled: boolean;
+  onToggleChild: () => void;
+}) {
+  const { isChild, source } = childResolution;
+  const memberAge = getAge(attendee.member?.birth_date ?? null);
+
+  let glyph: string;
+  if (source === "override" && !isChild) glyph = "🧑";
+  else if (isChild) glyph = "👶";
+  else glyph = "⚪";
+
+  let tooltip: string;
+  if (source === "unknown") {
+    tooltip = "Άγνωστη ηλικία — πάτησε για: Παιδί";
+  } else if (source === "auto" && !isChild) {
+    tooltip = "Ενήλικας (auto) — πάτησε για: Παιδί";
+  } else if (source === "auto" && isChild) {
+    tooltip = `Παιδί (auto από ηλικία ${memberAge}) — πάτησε για: Manual ενήλικας`;
+  } else if (source === "override" && isChild) {
+    tooltip = "Παιδί (manual) — πάτησε για: Manual ενήλικας";
+  } else {
+    tooltip = "Ενήλικας (manual) — πάτησε για: Auto";
+  }
+
+  const faded =
+    source === "unknown" || (source === "auto" && !isChild);
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggleChild();
+      }}
+      onKeyDown={(e) => e.stopPropagation()}
+      title={tooltip}
+      aria-label={tooltip}
+      className={`shrink-0 text-sm leading-none transition disabled:opacity-50 ${
+        faded ? "opacity-40 hover:opacity-80" : ""
+      }`}
+    >
+      {glyph}
+    </button>
   );
 }
 
