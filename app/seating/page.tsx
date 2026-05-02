@@ -1311,6 +1311,7 @@ function TableCard({
   const [dragOver, setDragOver] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [pinned, setPinned] = useState(false);
+  const [position, setPosition] = useState<"below" | "above">("below");
   const showPopover = hovered || pinned;
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -1324,6 +1325,32 @@ function TableCard({
     document.addEventListener("mousedown", handleOutside);
     return () => document.removeEventListener("mousedown", handleOutside);
   }, [pinned]);
+
+  useEffect(() => {
+    if (!showPopover) return;
+    const rect = cardRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const POPOVER_ESTIMATE = 200;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    if (spaceBelow < POPOVER_ESTIMATE && spaceAbove > POPOVER_ESTIMATE) {
+      setPosition("above");
+    } else {
+      setPosition("below");
+    }
+  }, [showPopover]);
+
+  useEffect(() => {
+    if (!showPopover) return;
+    function handleEsc(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setHovered(false);
+        setPinned(false);
+      }
+    }
+    document.addEventListener("keydown", handleEsc);
+    return () => document.removeEventListener("keydown", handleEsc);
+  }, [showPopover]);
 
   const reservationCount = reservation ? getAttendeeCount(reservation) : 0;
   const reservationAnonymous = reservation
@@ -1613,7 +1640,13 @@ function TableCard({
         </div>
       )}
       {showPopover && reservation && (
-        <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-1 -translate-x-1/2">
+        <div
+          className={
+            position === "below"
+              ? "pointer-events-none absolute left-1/2 top-full z-50 mt-1 -translate-x-1/2"
+              : "pointer-events-none absolute bottom-full left-1/2 z-50 mb-1 -translate-x-1/2"
+          }
+        >
           <TablePopover
             reservation={reservation}
             table={table}
