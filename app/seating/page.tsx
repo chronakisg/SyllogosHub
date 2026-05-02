@@ -1159,29 +1159,29 @@ function ReservationChip({
             </div>
           )}
         </div>
-        <button
-          type="button"
-          draggable={false}
-          onDragStart={(e) => e.preventDefault()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenAttendees();
-          }}
-          onKeyDown={(e) => e.stopPropagation()}
-          className="shrink-0 rounded-md border border-border bg-surface px-2 py-1 text-xs transition hover:bg-background"
-          title="Διαχείριση ατόμων"
-          aria-label="Διαχείριση ατόμων"
-        >
-          👤
-        </button>
-      </div>
-      {tableNumber != null && (
-        <div className="mt-2 flex justify-end">
-          <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-white">
-            Νο {tableNumber}
-          </span>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <button
+            type="button"
+            draggable={false}
+            onDragStart={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenAttendees();
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+            className="rounded-md border border-border bg-surface px-2 py-1 text-xs transition hover:bg-background"
+            title="Διαχείριση ατόμων"
+            aria-label="Διαχείριση ατόμων"
+          >
+            👤
+          </button>
+          {tableNumber != null && (
+            <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-white">
+              Νο {tableNumber}
+            </span>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
