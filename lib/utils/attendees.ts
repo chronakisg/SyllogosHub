@@ -108,6 +108,19 @@ export function getAge(birthDate: string | null): number | null {
   return age;
 }
 
+export function formatMemberName(
+  member:
+    | { first_name: string | null; last_name: string | null }
+    | null
+    | undefined
+): string {
+  if (!member) return "";
+  const last = (member.last_name ?? "").trim();
+  const first = (member.first_name ?? "").trim();
+  if (last && first) return `${last} ${first}`;
+  return last || first || "";
+}
+
 export type IsChildSource = "override" | "auto" | "unknown";
 
 export type IsChildResolution = {

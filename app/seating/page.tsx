@@ -22,6 +22,7 @@ import type {
 } from "@/lib/supabase/types";
 import {
   RESERVATION_SELECT,
+  formatMemberName,
   getAttendeeCount,
   hasAnonymousAttendees,
   isPresentLike,
@@ -1013,7 +1014,7 @@ function ReservationChip({
     (a) => a.is_lead && a.member
   );
   const leadName = leadAttendee?.member
-    ? `${leadAttendee.member.first_name} ${leadAttendee.member.last_name}`
+    ? formatMemberName(leadAttendee.member)
     : null;
   const presentCount = (reservation.attendees ?? []).filter((a) =>
     isPresentLike(a.presence_status)

@@ -13,6 +13,7 @@ import {
   type PresenceStatus,
 } from "@/lib/supabase/types";
 import {
+  formatMemberName,
   getAge,
   nextPresenceStatus,
   resolveIsChild,
@@ -595,9 +596,7 @@ export function AttendeesEditor({
                           onClick={() => handleAddMember(m.id)}
                           className="flex w-full items-center justify-between p-2 text-left text-xs transition hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          <span>
-                            {m.first_name} {m.last_name}
-                          </span>
+                          <span>{formatMemberName(m)}</span>
                           {already && (
                             <span className="text-amber-600 dark:text-amber-400">
                               ήδη στην παρέα
@@ -685,7 +684,7 @@ export function AttendeesEditor({
                   className="flex items-center justify-between gap-2 rounded-md bg-white/60 px-2 py-1 text-xs dark:bg-black/20"
                 >
                   <span>
-                    {m.first_name} {m.last_name}
+                    {formatMemberName(m)}
                     {(roleLabel || age != null) && (
                       <small className="ml-2 text-muted">
                         (
@@ -816,7 +815,7 @@ function AttendeeRow({
     label = (
       <>
         <span className={nameClass}>
-          {attendee.member.first_name} {attendee.member.last_name}
+          {formatMemberName(attendee.member)}
         </span>{" "}
         <span className="text-muted">(μέλος)</span>
       </>
@@ -974,7 +973,7 @@ function AttendeeRow({
                           onClick={() => onPromoteToMember(m.id)}
                           className="block w-full px-2 py-1 text-left text-[11px] transition hover:bg-surface disabled:opacity-60"
                         >
-                          {m.first_name} {m.last_name}
+                          {formatMemberName(m)}
                         </button>
                       </li>
                     ))
