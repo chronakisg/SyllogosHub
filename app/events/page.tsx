@@ -34,6 +34,9 @@ import type {
   Sponsor,
   SponsorInsert,
 } from "@/lib/supabase/types";
+import { AddReservationModal } from "@/components/AddReservationModal";
+
+type EventTab = "upcoming" | "past" | "all";
 
 type EventListItem = EventRow & {
   event_entertainers?: Array<{
@@ -155,6 +158,10 @@ export default function EventsPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<EventRow | null>(null);
+  const [addReservationFor, setAddReservationFor] = useState<string | null>(
+    null
+  );
+  const [activeTab, setActiveTab] = useState<EventTab>("upcoming");
 
   const loadEvents = useCallback(async () => {
     if (!clubId) return;
@@ -210,9 +217,26 @@ export default function EventsPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return events;
-    return events.filter((e) => e.event_name.toLowerCase().includes(q));
-  }, [events, search]);
+    const today = todayInAthens();
+    return events.filter((e) => {
+      const datePart = e.event_date.slice(0, 10);
+      if (activeTab === "upcoming" && datePart < today) return false;
+      if (activeTab === "past" && datePart >= today) return false;
+      if (q && !e.event_name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [events, search, activeTab]);
+
+  const tabCounts = useMemo(() => {
+    const today = todayInAthens();
+    let upcoming = 0;
+    let past = 0;
+    for (const e of events) {
+      if (e.event_date.slice(0, 10) < today) past++;
+      else upcoming++;
+    }
+    return { upcoming, past, all: events.length };
+  }, [events]);
 
   function openCreate() {
     setEditing(null);
@@ -225,6 +249,47 @@ export default function EventsPage() {
   function closeModal() {
     setModalOpen(false);
     setEditing(null);
+  }
+
+  async function handleCreateReservation(input: {
+    group_name: string;
+    pax_count: number;
+    event_id: string;
+    club_id: string;
+  }) {
+    const supabase = getBrowserClient();
+    const { data: created, error: iErr } = await supabase
+      .from("reservations")
+      .insert({
+        club_id: input.club_id,
+        event_id: input.event_id,
+        group_name: input.group_name,
+        pax_count: input.pax_count,
+        is_paid: false,
+        table_number: null,
+      })
+      .select("id")
+      .single();
+    if (iErr) throw iErr;
+
+    if (created && input.pax_count > 0) {
+      const rows = Array.from({ length: input.pax_count }, () => ({
+        reservation_id: created.id,
+        club_id: input.club_id,
+      }));
+      const { error: aErr } = await supabase
+        .from("reservation_attendees")
+        .insert(rows);
+      if (aErr) {
+        console.error(
+          "Reservation created but seeding anonymous attendees failed",
+          aErr
+        );
+      }
+    }
+
+    setAddReservationFor(null);
+    await loadEvents();
   }
 
   async function handleDelete(ev: EventWithStats) {
@@ -279,6 +344,33 @@ export default function EventsPage() {
         </button>
       </header>
 
+      <div className="mb-4 flex flex-wrap gap-2">
+        {(["upcoming", "past", "all"] as EventTab[]).map((tab) => {
+          const active = activeTab === tab;
+          const label =
+            tab === "upcoming"
+              ? "Επερχόμενες"
+              : tab === "past"
+                ? "Παλαιότερες"
+                : "Όλες";
+          return (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={
+                "rounded-md px-3 py-1.5 text-sm transition " +
+                (active
+                  ? "bg-accent font-medium text-white"
+                  : "border border-border text-muted hover:bg-background hover:text-foreground")
+              }
+            >
+              {label} ({tabCounts[tab]})
+            </button>
+          );
+        })}
+      </div>
+
       <div className="mb-4">
         <input
           type="search"
@@ -327,7 +419,13 @@ export default function EventsPage() {
                   <td colSpan={5} className="px-4 py-8 text-center text-muted">
                     {events.length === 0
                       ? "Δεν υπάρχουν ακόμη εκδηλώσεις."
-                      : "Δεν βρέθηκαν αποτελέσματα."}
+                      : search.trim() !== ""
+                        ? `Δεν βρέθηκαν αποτελέσματα για "${search.trim()}".`
+                        : activeTab === "upcoming"
+                          ? "Δεν υπάρχουν επερχόμενες εκδηλώσεις."
+                          : activeTab === "past"
+                            ? "Δεν υπάρχουν παλαιότερες εκδηλώσεις."
+                            : "Δεν υπάρχουν εκδηλώσεις."}
                   </td>
                 </tr>
               ) : (
@@ -372,6 +470,13 @@ export default function EventsPage() {
                         </Link>
                         <button
                           type="button"
+                          onClick={() => setAddReservationFor(ev.id)}
+                          className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
+                        >
+                          + Παρέα
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => openEdit(ev)}
                           className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
                         >
@@ -405,6 +510,14 @@ export default function EventsPage() {
           }}
         />
       )}
+
+      <AddReservationModal
+        isOpen={!!addReservationFor && !!clubId}
+        onClose={() => setAddReservationFor(null)}
+        onSubmit={handleCreateReservation}
+        eventId={addReservationFor ?? ""}
+        clubId={clubId ?? ""}
+      />
     </div>
   );
 }
@@ -828,7 +941,7 @@ function EventModal({
                 Τιμές
               </TabBtn>
               <TabBtn current={tab} value="entertainment" onSelect={setTab}>
-                Ψυχαγωγία
+                Συνεργάτες
               </TabBtn>
               <TabBtn current={tab} value="sponsors" onSelect={setTab}>
                 Χορηγοί
@@ -1069,7 +1182,7 @@ function EntertainmentTab({
 
       {rows.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted">
-          <span>Δεν έχει οριστεί ψυχαγωγία.</span>
+          <span>Δεν έχουν οριστεί συνεργάτες.</span>
           <button
             type="button"
             onClick={addEmpty}
@@ -1260,7 +1373,7 @@ function NewEntertainerDialog({
               className={inputClass}
             />
           </Field>
-          <Field label="Τύπος ψυχαγωγίας">
+          <Field label="Τύπος συνεργάτη">
             <select
               value={typeId}
               onChange={(e) => setTypeId(e.target.value)}

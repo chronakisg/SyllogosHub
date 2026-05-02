@@ -14,7 +14,6 @@ import {
 } from "@/lib/supabase/types";
 import {
   getAge,
-  isPresentLike,
   nextPresenceStatus,
   sortAttendees,
   type AttendeeWithMember,
@@ -73,10 +72,17 @@ export function AttendeesEditor({
   }, [reservation.attendees, optimisticPresence]);
   const totalCount = attendees.length;
   const presentCount = useMemo(
-    () => attendees.filter((a) => isPresentLike(a.presence_status)).length,
+    () => attendees.filter((a) => a.presence_status === "present").length,
     [attendees]
   );
-  const hasAbsent = presentCount < totalCount;
+  const expectedCount = useMemo(
+    () => attendees.filter((a) => a.presence_status === "expected").length,
+    [attendees]
+  );
+  const noShowCount = useMemo(
+    () => attendees.filter((a) => a.presence_status === "no_show").length,
+    [attendees]
+  );
 
   const existingMemberIds = useMemo(
     () =>
@@ -405,8 +411,19 @@ export function AttendeesEditor({
 
       <section className="mb-4">
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-          Λίστα ατόμων ({totalCount}
-          {hasAbsent && ` · ${presentCount} παρόντες`})
+          Λίστα ατόμων ({totalCount} άτομα ·{" "}
+          {presentCount === 1 ? "1 παρών" : `${presentCount} παρόντες`}
+          {expectedCount > 0 &&
+            ` · ${
+              expectedCount === 1
+                ? "1 αναμένεται"
+                : `${expectedCount} αναμένονται`
+            }`}
+          {noShowCount > 0 &&
+            ` · ${
+              noShowCount === 1 ? "1 δεν ήρθε" : `${noShowCount} δεν ήρθαν`
+            }`}
+          )
         </h3>
         {totalCount === 0 ? (
           <p className="rounded-md border border-dashed border-border p-3 text-center text-xs text-muted">
@@ -657,6 +674,8 @@ function AttendeeRow({
   const isMember = !!attendee.member_id && !!attendee.member;
   const isGuest = !attendee.member_id && !!attendee.guest_name;
   const isAnonymous = !attendee.member_id && !attendee.guest_name;
+  const isPresent = attendee.presence_status === "present";
+  const isExpected = attendee.presence_status === "expected";
   const isAbsent = attendee.presence_status === "no_show";
 
   const nameClass = `font-medium transition-all duration-150 ${
@@ -666,11 +685,37 @@ function AttendeeRow({
     isAbsent ? "line-through" : ""
   }`;
 
+  const presenceIcon = isPresent ? (
+    <span aria-hidden className="shrink-0 text-sm leading-none">
+      ✅
+    </span>
+  ) : isAbsent ? (
+    <span
+      aria-hidden
+      className="shrink-0 text-sm font-bold leading-none text-amber-600 dark:text-amber-400"
+    >
+      ✗
+    </span>
+  ) : (
+    <span
+      aria-hidden
+      className="shrink-0 text-sm leading-none text-muted/60"
+    >
+      ☐
+    </span>
+  );
+
+  const presenceLabel = isPresent
+    ? "Παρών"
+    : isAbsent
+      ? "Δεν ήρθε"
+      : "Αναμένεται";
+  const nextActionLabel = isPresent ? "Δεν ήρθε" : "Παρών";
+
   let label: ReactNode;
   if (isMember && attendee.member) {
     label = (
       <>
-        <span aria-hidden>✅</span>{" "}
         <span className={nameClass}>
           {attendee.member.first_name} {attendee.member.last_name}
         </span>{" "}
@@ -680,18 +725,12 @@ function AttendeeRow({
   } else if (isGuest) {
     label = (
       <>
-        <span aria-hidden>🪪</span>{" "}
         <span className={nameClass}>{attendee.guest_name}</span>{" "}
         <span className="text-muted">(επισκέπτης)</span>
       </>
     );
   } else {
-    label = (
-      <>
-        <span aria-hidden>👻</span>{" "}
-        <span className={anonClass}>Ανώνυμο</span>
-      </>
-    );
+    label = <span className={anonClass}>Ανώνυμο</span>;
   }
 
   function handleRowClick() {
@@ -710,19 +749,19 @@ function AttendeeRow({
           handleRowClick();
         }
       }}
-      aria-pressed={isPresentLike(attendee.presence_status)}
-      aria-label={`${
-        isPresentLike(attendee.presence_status) ? "Παρών" : "Απών"
-      } — πάτησε για αλλαγή`}
+      aria-pressed={isPresent}
+      aria-label={`${presenceLabel} — πάτησε για ${nextActionLabel}`}
+      title={`Πάτησε για: ${nextActionLabel}`}
       className={`flex cursor-pointer flex-col gap-1 rounded-md border border-border bg-surface px-2 py-1.5 text-xs transition-all duration-150 hover:bg-background ${
         isAbsent ? "opacity-60" : "opacity-100"
       }`}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-1.5 truncate">
+          {presenceIcon}
           <span className="min-w-0 truncate">{label}</span>
           {isAbsent && (
-            <span className="shrink-0 rounded bg-muted/20 px-1.5 py-0.5 text-[10px] font-medium text-muted">
+            <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
               Δεν ήρθε
             </span>
           )}

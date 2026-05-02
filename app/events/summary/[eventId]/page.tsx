@@ -244,9 +244,9 @@ export default function EventSummaryPage() {
           )}
         </SummaryCard>
 
-        <SummaryCard title="Ψυχαγωγία">
+        <SummaryCard title="Συνεργάτες">
           {entertainers.length === 0 ? (
-            <p className="text-sm text-muted">Δεν έχει οριστεί ψυχαγωγία.</p>
+            <p className="text-sm text-muted">Δεν έχουν οριστεί συνεργάτες.</p>
           ) : (
             <>
               <table className="w-full text-sm">

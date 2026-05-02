@@ -28,8 +28,8 @@ const CARDS: Card[] = [
   {
     href: "/settings/entertainment-types",
     icon: "🎵",
-    title: "Είδη Ψυχαγωγίας",
-    description: "DJ, Μπάντα, Ορχήστρα και άλλοι τύποι διασκεδαστών.",
+    title: "Είδη Συνεργατών",
+    description: "DJ, Μπάντα, Ορχήστρα και άλλοι τύποι συνεργατών.",
   },
   {
     href: "/discounts",
