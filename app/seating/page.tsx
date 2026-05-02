@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -1308,7 +1309,22 @@ function TableCard({
   onOpenGuests: (reservationId: string) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
-  const [showPopover, setShowPopover] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const showPopover = hovered || pinned;
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pinned) return;
+    function handleOutside(e: MouseEvent) {
+      if (!cardRef.current?.contains(e.target as Node)) {
+        setPinned(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [pinned]);
+
   const reservationCount = reservation ? getAttendeeCount(reservation) : 0;
   const reservationAnonymous = reservation
     ? hasAnonymousAttendees(reservation)
@@ -1381,6 +1397,7 @@ function TableCard({
 
   return (
     <div
+      ref={cardRef}
       onDragOver={(e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
@@ -1394,13 +1411,21 @@ function TableCard({
         if (id) onDropReservation(id);
       }}
       onClick={() => {
-        if (assignDisabled) return;
-        onTableClick();
+        if (pendingAssign) {
+          if (assignDisabled) return;
+          onTableClick();
+          return;
+        }
+        if (reservation) {
+          setPinned((prev) => !prev);
+          return;
+        }
+        // empty table, no selection → no-op (parent's onTableClick is also no-op here)
       }}
       onMouseEnter={() => {
-        if (reservation) setShowPopover(true);
+        if (reservation) setHovered(true);
       }}
-      onMouseLeave={() => setShowPopover(false)}
+      onMouseLeave={() => setHovered(false)}
       className={
         "relative flex aspect-square flex-col items-center justify-center border-2 p-3 text-center transition " +
         cursorClass +
