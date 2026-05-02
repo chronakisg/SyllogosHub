@@ -25,7 +25,6 @@ import {
   formatMemberName,
   getAttendeeCount,
   hasAnonymousAttendees,
-  isPresentLike,
   resolveIsChild,
   type IsChildResolution,
   type ReservationWithAttendees,
@@ -1016,11 +1015,12 @@ function ReservationChip({
   const leadName = leadAttendee?.member
     ? formatMemberName(leadAttendee.member)
     : null;
-  const presentCount = (reservation.attendees ?? []).filter((a) =>
-    isPresentLike(a.presence_status)
+  const actuallyPresentCount = (reservation.attendees ?? []).filter(
+    (a) => a.presence_status === "present"
   ).length;
-  const hasAbsent =
-    (reservation.attendees ?? []).length > 0 && presentCount < count;
+  const expectedCount = (reservation.attendees ?? []).filter(
+    (a) => a.presence_status === "expected"
+  ).length;
   const cateringCounts = useMemo(() => {
     if (!reservation.attendees?.length) {
       return { adult: 0, child: 0 };
@@ -1074,7 +1074,6 @@ function ReservationChip({
           </div>
           <div className="mt-0.5 text-xs text-muted">
             {count} {count === 1 ? "άτομο" : "άτομα"}
-            {hasAbsent && ` · ${presentCount} παρόντες`}
             {anonymous && (
               <span
                 className="ml-1 text-amber-600 dark:text-amber-400"
@@ -1084,6 +1083,21 @@ function ReservationChip({
               </span>
             )}
           </div>
+          {actuallyPresentCount > 0 && (
+            <div className="mt-0.5 text-[10px] text-muted">
+              {actuallyPresentCount === 1
+                ? "1 παρών"
+                : `${actuallyPresentCount} παρόντες`}
+              {expectedCount > 0 && (
+                <>
+                  {" · "}
+                  {expectedCount === 1
+                    ? "1 αναμένεται"
+                    : `${expectedCount} αναμένονται`}
+                </>
+              )}
+            </div>
+          )}
           {cateringCounts.child > 0 && (
             <div className="mt-0.5 text-[10px] text-muted">
               {cateringCounts.adult === 1
