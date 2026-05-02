@@ -10,9 +10,9 @@ export function isPresentLike(status: PresenceStatus): boolean {
 }
 
 export function nextPresenceStatus(current: PresenceStatus): PresenceStatus {
-  if (current === "expected") return "no_show";
-  if (current === "no_show") return "present";
-  return "no_show";
+  if (current === "expected") return "present";
+  if (current === "present") return "no_show";
+  return "expected";
 }
 
 export type AttendeeMemberSummary = Pick<
