@@ -941,7 +941,7 @@ function EventModal({
                 Τιμές
               </TabBtn>
               <TabBtn current={tab} value="entertainment" onSelect={setTab}>
-                Ψυχαγωγία
+                Συνεργάτες
               </TabBtn>
               <TabBtn current={tab} value="sponsors" onSelect={setTab}>
                 Χορηγοί
@@ -1182,7 +1182,7 @@ function EntertainmentTab({
 
       {rows.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted">
-          <span>Δεν έχει οριστεί ψυχαγωγία.</span>
+          <span>Δεν έχουν οριστεί συνεργάτες.</span>
           <button
             type="button"
             onClick={addEmpty}
@@ -1373,7 +1373,7 @@ function NewEntertainerDialog({
               className={inputClass}
             />
           </Field>
-          <Field label="Τύπος ψυχαγωγίας">
+          <Field label="Τύπος συνεργάτη">
             <select
               value={typeId}
               onChange={(e) => setTypeId(e.target.value)}

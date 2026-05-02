@@ -124,7 +124,7 @@ export default function EntertainmentTypesPage() {
       setCounts(merged);
       setError(null);
     } catch (err) {
-      setError(errorMessage(err, "Σφάλμα φόρτωσης ειδών ψυχαγωγίας."));
+      setError(errorMessage(err, "Σφάλμα φόρτωσης ειδών συνεργατών."));
     } finally {
       setLoading(false);
     }
@@ -214,7 +214,7 @@ export default function EntertainmentTypesPage() {
       setEditing(null);
       await load();
     } catch (err) {
-      setFormError(errorMessage(err, "Σφάλμα αποθήκευσης είδους ψυχαγωγίας."));
+      setFormError(errorMessage(err, "Σφάλμα αποθήκευσης είδους συνεργάτη."));
     } finally {
       setSaving(false);
     }
@@ -316,9 +316,9 @@ export default function EntertainmentTypesPage() {
       </Link>
       <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-sm text-muted">Ρυθμίσεις › Είδη Ψυχαγωγίας</p>
+          <p className="text-sm text-muted">Ρυθμίσεις › Είδη Συνεργατών</p>
           <h1 className="mt-0.5 text-xl font-semibold tracking-tight">
-            Είδη Ψυχαγωγίας
+            Είδη Συνεργατών
           </h1>
         </div>
         <button
