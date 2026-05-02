@@ -779,6 +779,7 @@ function SeatingView() {
                     <ReservationChip
                       reservation={r}
                       selected={selectedReservationId === r.id}
+                      clubThreshold={clubThreshold}
                       onToggleSelect={() =>
                         setSelectedReservationId((prev) =>
                           prev === r.id ? null : r.id
@@ -996,11 +997,13 @@ function RealtimeIndicator({ ready }: { ready: boolean }) {
 function ReservationChip({
   reservation,
   selected,
+  clubThreshold,
   onToggleSelect,
   onOpenAttendees,
 }: {
   reservation: ReservationWithAttendees;
   selected: boolean;
+  clubThreshold: number;
   onToggleSelect: () => void;
   onOpenAttendees: () => void;
 }) {
@@ -1017,6 +1020,17 @@ function ReservationChip({
   ).length;
   const hasAbsent =
     (reservation.attendees ?? []).length > 0 && presentCount < count;
+  const cateringCounts = useMemo(() => {
+    if (!reservation.attendees?.length) {
+      return { adult: 0, child: 0 };
+    }
+    let child = 0;
+    for (const a of reservation.attendees) {
+      const r: IsChildResolution = resolveIsChild(a, clubThreshold);
+      if (r.isChild) child += 1;
+    }
+    return { adult: reservation.attendees.length - child, child };
+  }, [reservation, clubThreshold]);
   return (
     <div
       role="button"
@@ -1069,6 +1083,17 @@ function ReservationChip({
               </span>
             )}
           </div>
+          {cateringCounts.child > 0 && (
+            <div className="mt-0.5 text-[10px] text-muted">
+              {cateringCounts.adult === 1
+                ? "1 ενήλικας"
+                : `${cateringCounts.adult} ενήλικες`}
+              {" · "}
+              {cateringCounts.child === 1
+                ? "1 παιδί"
+                : `${cateringCounts.child} παιδιά`}
+            </div>
+          )}
         </div>
         <button
           type="button"
