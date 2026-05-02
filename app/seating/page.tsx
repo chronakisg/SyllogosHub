@@ -1359,17 +1359,9 @@ function TableCard({
   const overCapacity = reservation
     ? reservationCount > table.capacity
     : false;
-  const cateringCounts = useMemo(() => {
-    if (!reservation || !reservation.attendees?.length) {
-      return { adult: 0, child: 0 };
-    }
-    let child = 0;
-    for (const a of reservation.attendees) {
-      const r: IsChildResolution = resolveIsChild(a, clubThreshold);
-      if (r.isChild) child += 1;
-    }
-    return { adult: reservation.attendees.length - child, child };
-  }, [reservation, clubThreshold]);
+  const freeSeats = reservation
+    ? Math.max(0, table.capacity - reservationCount)
+    : 0;
   const shapeClasses =
     table.shape === "round" ? "rounded-full" : "rounded-xl";
 
@@ -1515,8 +1507,16 @@ function TableCard({
             e.stopPropagation();
             onUpdateCapacity(table.capacity - 1);
           }}
-          disabled={table.capacity <= 1}
+          disabled={
+            table.capacity <= 1 ||
+            (!!reservation && table.capacity <= reservationCount)
+          }
           aria-label="Μείωση χωρητικότητας"
+          title={
+            reservation && table.capacity <= reservationCount
+              ? "Δεν μπορείς να μειώσεις κάτω από τα άτομα της παρέας"
+              : "Μείωση χωρητικότητας"
+          }
           className="flex h-5 w-5 items-center justify-center rounded border border-border bg-surface text-xs leading-none transition hover:bg-background disabled:opacity-40"
         >
           −
@@ -1579,9 +1579,11 @@ function TableCard({
         defaultLabel={undefined}
         fallback={
           reservation
-            ? `Κατειλημμένο · ${reservationCount} ${
-                reservationCount === 1 ? "άτομο" : "άτομα"
-              }`
+            ? freeSeats === 0
+              ? "Κατειλημμένο"
+              : `Κατειλημμένο · ${reservationCount} ${
+                  reservationCount === 1 ? "άτομο" : "άτομα"
+                }`
             : isReserved
               ? "— Κρατημένο —"
               : "— ελεύθερο —"
@@ -1624,19 +1626,13 @@ function TableCard({
                 : "Διαχείριση καλεσμένων"
           }
         >
-          <span>· {reservationCount}</span>
+          {freeSeats > 0 ? (
+            <span>· {freeSeats} ελ.</span>
+          ) : (
+            !overCapacity &&
+            !reservationAnonymous && <span aria-hidden>·</span>
+          )}
           {(overCapacity || reservationAnonymous) && <span aria-hidden>⚠</span>}
-        </div>
-      )}
-      {reservation && cateringCounts.child > 0 && (
-        <div className="mt-1 text-[10px] text-muted">
-          {cateringCounts.adult === 1
-            ? "1 ενήλικας"
-            : `${cateringCounts.adult} ενήλικες`}
-          {" · "}
-          {cateringCounts.child === 1
-            ? "1 παιδί"
-            : `${cateringCounts.child} παιδιά`}
         </div>
       )}
       {showPopover && reservation && (
