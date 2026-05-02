@@ -135,7 +135,7 @@ export default function ClubInfoPage() {
   const isPrivileged = role.isSystemAdmin || role.isPresident;
 
   useEffect(() => {
-    if (!hydrated && !clubLoading) {
+    if (!hydrated && !clubLoading && club !== null) {
       setForm(fromSettings(settings.id ? settings : null, clubName, club));
       setHydrated(true);
     }
