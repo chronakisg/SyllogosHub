@@ -36,6 +36,8 @@ import type {
 } from "@/lib/supabase/types";
 import { AddReservationModal } from "@/components/AddReservationModal";
 
+type EventTab = "upcoming" | "past" | "all";
+
 type EventListItem = EventRow & {
   event_entertainers?: Array<{
     entertainers: { id: string; name: string } | null;
@@ -159,6 +161,7 @@ export default function EventsPage() {
   const [addReservationFor, setAddReservationFor] = useState<string | null>(
     null
   );
+  const [activeTab, setActiveTab] = useState<EventTab>("upcoming");
 
   const loadEvents = useCallback(async () => {
     if (!clubId) return;
@@ -214,9 +217,26 @@ export default function EventsPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return events;
-    return events.filter((e) => e.event_name.toLowerCase().includes(q));
-  }, [events, search]);
+    const today = todayInAthens();
+    return events.filter((e) => {
+      const datePart = e.event_date.slice(0, 10);
+      if (activeTab === "upcoming" && datePart < today) return false;
+      if (activeTab === "past" && datePart >= today) return false;
+      if (q && !e.event_name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [events, search, activeTab]);
+
+  const tabCounts = useMemo(() => {
+    const today = todayInAthens();
+    let upcoming = 0;
+    let past = 0;
+    for (const e of events) {
+      if (e.event_date.slice(0, 10) < today) past++;
+      else upcoming++;
+    }
+    return { upcoming, past, all: events.length };
+  }, [events]);
 
   function openCreate() {
     setEditing(null);
@@ -324,6 +344,33 @@ export default function EventsPage() {
         </button>
       </header>
 
+      <div className="mb-4 flex flex-wrap gap-2">
+        {(["upcoming", "past", "all"] as EventTab[]).map((tab) => {
+          const active = activeTab === tab;
+          const label =
+            tab === "upcoming"
+              ? "Επερχόμενες"
+              : tab === "past"
+                ? "Παλαιότερες"
+                : "Όλες";
+          return (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={
+                "rounded-md px-3 py-1.5 text-sm transition " +
+                (active
+                  ? "bg-accent font-medium text-white"
+                  : "border border-border text-muted hover:bg-background hover:text-foreground")
+              }
+            >
+              {label} ({tabCounts[tab]})
+            </button>
+          );
+        })}
+      </div>
+
       <div className="mb-4">
         <input
           type="search"
@@ -372,7 +419,13 @@ export default function EventsPage() {
                   <td colSpan={5} className="px-4 py-8 text-center text-muted">
                     {events.length === 0
                       ? "Δεν υπάρχουν ακόμη εκδηλώσεις."
-                      : "Δεν βρέθηκαν αποτελέσματα."}
+                      : search.trim() !== ""
+                        ? `Δεν βρέθηκαν αποτελέσματα για "${search.trim()}".`
+                        : activeTab === "upcoming"
+                          ? "Δεν υπάρχουν επερχόμενες εκδηλώσεις."
+                          : activeTab === "past"
+                            ? "Δεν υπάρχουν παλαιότερες εκδηλώσεις."
+                            : "Δεν υπάρχουν εκδηλώσεις."}
                   </td>
                 </tr>
               ) : (
