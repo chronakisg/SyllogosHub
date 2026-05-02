@@ -10,9 +10,12 @@ import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import {
   FAMILY_ROLE_LABELS,
   type Member,
+  type PresenceStatus,
 } from "@/lib/supabase/types";
 import {
   getAge,
+  isPresentLike,
+  nextPresenceStatus,
   sortAttendees,
   type AttendeeWithMember,
   type ReservationWithAttendees,
@@ -50,7 +53,10 @@ export function AttendeesEditor({
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [optimisticPresence, setOptimisticPresence] = useState<
-    Record<string, { is_present: boolean; checked_in_at: string | null }>
+    Record<
+      string,
+      { presence_status: PresenceStatus; checked_in_at: string | null }
+    >
   >({});
 
   useEffect(() => {
@@ -67,7 +73,7 @@ export function AttendeesEditor({
   }, [reservation.attendees, optimisticPresence]);
   const totalCount = attendees.length;
   const presentCount = useMemo(
-    () => attendees.filter((a) => a.is_present).length,
+    () => attendees.filter((a) => isPresentLike(a.presence_status)).length,
     [attendees]
   );
   const hasAbsent = presentCount < totalCount;
@@ -219,20 +225,27 @@ export function AttendeesEditor({
 
   async function handleTogglePresence(
     attendeeId: string,
-    currentlyPresent: boolean
+    currentStatus: PresenceStatus
   ) {
-    const newPresent = !currentlyPresent;
-    const newCheckedInAt = newPresent ? new Date().toISOString() : null;
+    const newStatus = nextPresenceStatus(currentStatus);
+    const newCheckedInAt =
+      newStatus === "present" ? new Date().toISOString() : null;
     setOptimisticPresence((prev) => ({
       ...prev,
-      [attendeeId]: { is_present: newPresent, checked_in_at: newCheckedInAt },
+      [attendeeId]: {
+        presence_status: newStatus,
+        checked_in_at: newCheckedInAt,
+      },
     }));
     setError(null);
     try {
       const supabase = getBrowserClient();
       const { error: uErr } = await supabase
         .from("reservation_attendees")
-        .update({ is_present: newPresent, checked_in_at: newCheckedInAt })
+        .update({
+          presence_status: newStatus,
+          checked_in_at: newCheckedInAt,
+        })
         .eq("id", attendeeId);
       if (uErr) throw uErr;
       await onUpdate();
@@ -414,7 +427,7 @@ export function AttendeesEditor({
                   promotingId === a.id ? promotionFilteredMembers : []
                 }
                 onTogglePresence={() =>
-                  handleTogglePresence(a.id, a.is_present)
+                  handleTogglePresence(a.id, a.presence_status)
                 }
                 onToggleLead={() => handleToggleLead(a.id, a.is_lead)}
                 onRemove={() => handleRemove(a.id)}
@@ -644,7 +657,7 @@ function AttendeeRow({
   const isMember = !!attendee.member_id && !!attendee.member;
   const isGuest = !attendee.member_id && !!attendee.guest_name;
   const isAnonymous = !attendee.member_id && !attendee.guest_name;
-  const isAbsent = !attendee.is_present;
+  const isAbsent = attendee.presence_status === "no_show";
 
   const nameClass = `font-medium transition-all duration-150 ${
     isAbsent ? "line-through" : ""
@@ -697,9 +710,9 @@ function AttendeeRow({
           handleRowClick();
         }
       }}
-      aria-pressed={attendee.is_present}
+      aria-pressed={isPresentLike(attendee.presence_status)}
       aria-label={`${
-        attendee.is_present ? "Παρών" : "Απών"
+        isPresentLike(attendee.presence_status) ? "Παρών" : "Απών"
       } — πάτησε για αλλαγή`}
       className={`flex cursor-pointer flex-col gap-1 rounded-md border border-border bg-surface px-2 py-1.5 text-xs transition-all duration-150 hover:bg-background ${
         isAbsent ? "opacity-60" : "opacity-100"

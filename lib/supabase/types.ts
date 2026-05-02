@@ -457,6 +457,8 @@ export type ReservationInsert = {
 
 export type ReservationUpdate = Partial<Omit<Reservation, "id" | "created_at">>;
 
+export type PresenceStatus = "expected" | "present" | "no_show";
+
 export type ReservationAttendee = {
   id: string;
   reservation_id: string;
@@ -464,7 +466,7 @@ export type ReservationAttendee = {
   member_id: string | null;
   guest_name: string | null;
   is_lead: boolean;
-  is_present: boolean;
+  presence_status: PresenceStatus;
   checked_in_at: string | null;
   notes: string | null;
   created_at: string;
@@ -478,7 +480,7 @@ export type ReservationAttendeeInsert = {
   member_id?: string | null;
   guest_name?: string | null;
   is_lead?: boolean;
-  is_present?: boolean;
+  presence_status?: PresenceStatus;
   checked_in_at?: string | null;
   notes?: string | null;
   created_at?: string;
