@@ -25,6 +25,8 @@ import {
   getAttendeeCount,
   hasAnonymousAttendees,
   isPresentLike,
+  resolveIsChild,
+  type IsChildResolution,
   type ReservationWithAttendees,
 } from "@/lib/utils/attendees";
 import { AttendeesEditor } from "@/components/AttendeesEditor";
@@ -95,7 +97,8 @@ export default function SeatingPage() {
 
 function SeatingView() {
   const role = useRole();
-  const { clubId, loading: clubLoading } = useCurrentClub();
+  const { clubId, club, loading: clubLoading } = useCurrentClub();
+  const clubThreshold = club?.child_age_threshold ?? 15;
   const searchParams = useSearchParams();
   const eventParam = searchParams.get("event");
   const [events, setEvents] = useState<EventRow[]>([]);
@@ -832,6 +835,7 @@ function SeatingView() {
                     key={t.id}
                     table={t}
                     reservation={reservationByTableNumber.get(t.number) ?? null}
+                    clubThreshold={clubThreshold}
                     pendingAssign={!!selectedReservationId}
                     selectedReservation={selectedReservation}
                     onTableClick={() => {
@@ -1099,6 +1103,7 @@ function paymentStatus(list: ReservationWithAttendees[]): PaymentStatus {
 function TableCard({
   table,
   reservation,
+  clubThreshold,
   pendingAssign,
   selectedReservation,
   onTableClick,
@@ -1113,6 +1118,7 @@ function TableCard({
 }: {
   table: VenueTable;
   reservation: ReservationWithAttendees | null;
+  clubThreshold: number;
   pendingAssign: boolean;
   selectedReservation: ReservationWithAttendees | null;
   onTableClick: () => void;
@@ -1133,6 +1139,17 @@ function TableCard({
   const overCapacity = reservation
     ? reservationCount > table.capacity
     : false;
+  const cateringCounts = useMemo(() => {
+    if (!reservation || !reservation.attendees?.length) {
+      return { adult: 0, child: 0 };
+    }
+    let child = 0;
+    for (const a of reservation.attendees) {
+      const r: IsChildResolution = resolveIsChild(a, clubThreshold);
+      if (r.isChild) child += 1;
+    }
+    return { adult: reservation.attendees.length - child, child };
+  }, [reservation, clubThreshold]);
   const shapeClasses =
     table.shape === "round" ? "rounded-full" : "rounded-xl";
 
@@ -1368,6 +1385,17 @@ function TableCard({
         >
           <span>· {reservationCount}</span>
           {(overCapacity || reservationAnonymous) && <span aria-hidden>⚠</span>}
+        </div>
+      )}
+      {reservation && cateringCounts.child > 0 && (
+        <div className="mt-1 text-[10px] text-muted">
+          {cateringCounts.adult === 1
+            ? "1 ενήλικας"
+            : `${cateringCounts.adult} ενήλικες`}
+          {" · "}
+          {cateringCounts.child === 1
+            ? "1 παιδί"
+            : `${cateringCounts.child} παιδιά`}
         </div>
       )}
     </div>
