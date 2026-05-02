@@ -44,8 +44,8 @@ export function AttendeesEditor({
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [guestNameInput, setGuestNameInput] = useState("");
-  const [anonymousCountInput, setAnonymousCountInput] = useState("1");
-  const [anonymousAsChildren, setAnonymousAsChildren] = useState(false);
+  const [anonymousAdultCount, setAnonymousAdultCount] = useState("0");
+  const [anonymousChildCount, setAnonymousChildCount] = useState("0");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [promotingId, setPromotingId] = useState<string | null>(null);
@@ -238,29 +238,30 @@ export function AttendeesEditor({
   }
 
   async function handleAddAnonymous() {
-    const n = Number(anonymousCountInput);
-    if (!Number.isInteger(n) || n <= 0) {
-      setError("Ο αριθμός ατόμων πρέπει να είναι θετικός ακέραιος.");
+    const adult = Number(anonymousAdultCount) || 0;
+    const child = Number(anonymousChildCount) || 0;
+    const total = adult + child;
+    if (total < 1) {
+      setError("Πρέπει να προσθέσεις τουλάχιστον 1 άτομο.");
       return;
     }
-    if (n > 50) {
-      setError("Μέγιστο 50 ανώνυμα ανά προσθήκη.");
+    if (total > 50) {
+      setError("Σύνολο ατόμων πρέπει να είναι έως 50.");
       return;
     }
     await runWithBusy(async () => {
       const supabase = getBrowserClient();
-      const isChild = anonymousAsChildren;
-      const rows = Array.from({ length: n }, () => ({
+      const rows = Array.from({ length: total }, (_, i) => ({
         reservation_id: reservation.id,
         club_id: reservation.club_id,
-        is_child_override: isChild ? true : null,
+        is_child_override: i < child ? true : null,
       }));
       const { error: iErr } = await supabase
         .from("reservation_attendees")
         .insert(rows);
       if (iErr) throw iErr;
-      setAnonymousCountInput("1");
-      setAnonymousAsChildren(false);
+      setAnonymousAdultCount("0");
+      setAnonymousChildCount("0");
     });
   }
 
@@ -634,26 +635,38 @@ export function AttendeesEditor({
         )}
 
         {addMode === "anonymous" && (
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-muted">Πλήθος:</label>
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={anonymousCountInput}
-              onChange={(e) => setAnonymousCountInput(e.target.value)}
-              className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-              disabled={busy}
-            />
-            <label className="inline-flex cursor-pointer items-center gap-1 text-xs text-muted">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex items-center gap-1.5 text-xs text-muted">
+              <span>Ενήλικες:</span>
               <input
-                type="checkbox"
-                checked={anonymousAsChildren}
-                onChange={(e) => setAnonymousAsChildren(e.target.checked)}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={anonymousAdultCount}
+                onChange={(e) =>
+                  setAnonymousAdultCount(
+                    e.target.value.replace(/[^0-9]/g, "")
+                  )
+                }
+                className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                 disabled={busy}
-                className="h-3 w-3 accent-accent"
               />
-              <span>Παιδιά</span>
+            </label>
+            <label className="inline-flex items-center gap-1.5 text-xs text-muted">
+              <span>Παιδιά:</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={anonymousChildCount}
+                onChange={(e) =>
+                  setAnonymousChildCount(
+                    e.target.value.replace(/[^0-9]/g, "")
+                  )
+                }
+                className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                disabled={busy}
+              />
             </label>
             <button
               type="button"
