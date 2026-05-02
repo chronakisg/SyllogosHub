@@ -8,6 +8,7 @@ interface AddReservationModalProps {
   onSubmit: (input: {
     group_name: string;
     pax_count: number;
+    child_count: number;
     event_id: string;
     club_id: string;
   }) => Promise<void>;
@@ -28,14 +29,16 @@ export function AddReservationModal({
   const titleId = useId();
   const firstFieldRef = useRef<HTMLInputElement | null>(null);
   const [groupName, setGroupName] = useState("");
-  const [pax, setPax] = useState("");
+  const [adultCount, setAdultCount] = useState("4");
+  const [childCount, setChildCount] = useState("0");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setGroupName("");
-      setPax("");
+      setAdultCount("4");
+      setChildCount("0");
       setErr(null);
       setSaving(false);
       firstFieldRef.current?.focus();
@@ -56,6 +59,10 @@ export function AddReservationModal({
 
   if (!isOpen) return null;
 
+  const adultNum = Number(adultCount) || 0;
+  const childNum = Number(childCount) || 0;
+  const total = adultNum + childNum;
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const g = groupName.trim();
@@ -63,13 +70,12 @@ export function AddReservationModal({
       setErr("Το όνομα παρέας είναι υποχρεωτικό.");
       return;
     }
-    if (!pax.trim()) {
-      setErr("Ο αριθμός ατόμων είναι υποχρεωτικός.");
+    if (total < 1) {
+      setErr("Πρέπει να υπάρχει τουλάχιστον 1 άτομο.");
       return;
     }
-    const p = Number(pax);
-    if (!Number.isInteger(p) || p < 1 || p > 99) {
-      setErr("Ο αριθμός ατόμων πρέπει να είναι από 1 έως 99.");
+    if (total > 99) {
+      setErr("Σύνολο ατόμων πρέπει να είναι έως 99.");
       return;
     }
     setSaving(true);
@@ -77,7 +83,8 @@ export function AddReservationModal({
     try {
       await onSubmit({
         group_name: g,
-        pax_count: p,
+        pax_count: total,
+        child_count: childNum,
         event_id: eventId,
         club_id: clubId,
       });
@@ -124,23 +131,49 @@ export function AddReservationModal({
               className={inputClass}
             />
           </label>
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-muted">
-              Αριθμός ατόμων<span className="text-danger"> *</span>
-            </span>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              required
-              value={pax}
-              onChange={(e) =>
-                setPax(e.target.value.replace(/[^0-9]/g, ""))
-              }
-              placeholder="π.χ. 8"
-              className={inputClass}
-            />
-          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">
+                Ενήλικες
+              </span>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={adultCount}
+                onChange={(e) =>
+                  setAdultCount(e.target.value.replace(/[^0-9]/g, ""))
+                }
+                className={inputClass}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-muted">
+                Παιδιά
+              </span>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={childCount}
+                onChange={(e) =>
+                  setChildCount(e.target.value.replace(/[^0-9]/g, ""))
+                }
+                className={inputClass}
+              />
+            </label>
+          </div>
+          {total === 0 ? (
+            <p className="text-xs text-muted/60">
+              Πρόσθεσε τουλάχιστον 1 άτομο
+            </p>
+          ) : (
+            <p className="text-xs text-muted">
+              Σύνολο:{" "}
+              <strong className="text-foreground">{total}</strong>{" "}
+              {total === 1 ? "άτομο" : "άτομα"}
+            </p>
+          )}
           {err && (
             <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
               {err}

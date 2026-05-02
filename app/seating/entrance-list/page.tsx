@@ -17,6 +17,7 @@ import type {
 } from "@/lib/supabase/types";
 import {
   RESERVATION_SELECT,
+  formatMemberName,
   isPresentLike,
   nextPresenceStatus,
   sortAttendees,
@@ -413,7 +414,7 @@ function ReservationCard({
     (a) => a.is_lead && a.member
   );
   const leadName = leadAttendee?.member
-    ? `${leadAttendee.member.first_name} ${leadAttendee.member.last_name}`
+    ? formatMemberName(leadAttendee.member)
     : null;
 
   return (
@@ -467,7 +468,7 @@ function AttendeeCheckinRow({
   let name: string;
   let kindIcon: string;
   if (isMember && attendee.member) {
-    name = `${attendee.member.first_name} ${attendee.member.last_name}`;
+    name = formatMemberName(attendee.member);
     kindIcon = "✅";
   } else if (isGuest) {
     name = attendee.guest_name ?? "";

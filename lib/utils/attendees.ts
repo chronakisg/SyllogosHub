@@ -39,6 +39,7 @@ export const RESERVATION_SELECT = `
     is_lead,
     presence_status,
     checked_in_at,
+    is_child_override,
     notes,
     created_at,
     updated_at,
@@ -105,4 +106,52 @@ export function getAge(birthDate: string | null): number | null {
     (now.getMonth() === d.getMonth() && now.getDate() < d.getDate());
   if (beforeBirthday) age -= 1;
   return age;
+}
+
+export function formatMemberName(
+  member:
+    | { first_name: string | null; last_name: string | null }
+    | null
+    | undefined
+): string {
+  if (!member) return "";
+  const last = (member.last_name ?? "").trim();
+  const first = (member.first_name ?? "").trim();
+  if (last && first) return `${last} ${first}`;
+  return last || first || "";
+}
+
+export type IsChildSource = "override" | "auto" | "unknown";
+
+export type IsChildResolution = {
+  isChild: boolean;
+  source: IsChildSource;
+};
+
+/**
+ * Resolves whether an attendee is treated as a child for catering purposes.
+ *
+ * Priority order:
+ * 1. Manual override (is_child_override !== null) — always wins
+ * 2. Auto-derive from member.birth_date vs club threshold
+ * 3. Default to adult (source: 'unknown') for guests/anonymous without birth_date
+ *
+ * Note: This is a CATERING concern (μενού planning).
+ * NOT to be confused with discount_rules.age_max (PRICING concern).
+ */
+export function resolveIsChild(
+  attendee: AttendeeWithMember,
+  clubThreshold: number
+): IsChildResolution {
+  if (
+    attendee.is_child_override !== null &&
+    attendee.is_child_override !== undefined
+  ) {
+    return { isChild: attendee.is_child_override, source: "override" };
+  }
+  const age = getAge(attendee.member?.birth_date ?? null);
+  if (age !== null) {
+    return { isChild: age < clubThreshold, source: "auto" };
+  }
+  return { isChild: false, source: "unknown" };
 }

@@ -13,12 +13,16 @@ import {
   type PresenceStatus,
 } from "@/lib/supabase/types";
 import {
+  formatMemberName,
   getAge,
   nextPresenceStatus,
+  resolveIsChild,
   sortAttendees,
   type AttendeeWithMember,
+  type IsChildResolution,
   type ReservationWithAttendees,
 } from "@/lib/utils/attendees";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { ConfirmDeleteReservationModal } from "@/components/ConfirmDeleteReservationModal";
 
 type AddMode = "member" | "guest" | "anonymous";
@@ -40,7 +44,8 @@ export function AttendeesEditor({
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [guestNameInput, setGuestNameInput] = useState("");
-  const [anonymousCountInput, setAnonymousCountInput] = useState("1");
+  const [anonymousAdultCount, setAnonymousAdultCount] = useState("0");
+  const [anonymousChildCount, setAnonymousChildCount] = useState("0");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [promotingId, setPromotingId] = useState<string | null>(null);
@@ -57,6 +62,12 @@ export function AttendeesEditor({
       { presence_status: PresenceStatus; checked_in_at: string | null }
     >
   >({});
+  const [optimisticChildOverride, setOptimisticChildOverride] = useState<
+    Record<string, boolean | null>
+  >({});
+
+  const { club } = useCurrentClub();
+  const clubThreshold = club?.child_age_threshold ?? 15;
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 250);
@@ -66,10 +77,17 @@ export function AttendeesEditor({
   const attendees = useMemo(() => {
     const merged = (reservation.attendees ?? []).map((a) => {
       const o = optimisticPresence[a.id];
-      return o ? { ...a, ...o } : a;
+      const withPresence = o ? { ...a, ...o } : a;
+      if (a.id in optimisticChildOverride) {
+        return {
+          ...withPresence,
+          is_child_override: optimisticChildOverride[a.id],
+        };
+      }
+      return withPresence;
     });
     return sortAttendees(merged);
-  }, [reservation.attendees, optimisticPresence]);
+  }, [reservation.attendees, optimisticPresence, optimisticChildOverride]);
   const totalCount = attendees.length;
   const presentCount = useMemo(
     () => attendees.filter((a) => a.presence_status === "present").length,
@@ -83,6 +101,20 @@ export function AttendeesEditor({
     () => attendees.filter((a) => a.presence_status === "no_show").length,
     [attendees]
   );
+
+  const childResolutions = useMemo(() => {
+    const map = new Map<string, IsChildResolution>();
+    for (const a of attendees) {
+      map.set(a.id, resolveIsChild(a, clubThreshold));
+    }
+    return map;
+  }, [attendees, clubThreshold]);
+  const childCount = useMemo(
+    () =>
+      Array.from(childResolutions.values()).filter((r) => r.isChild).length,
+    [childResolutions]
+  );
+  const adultCount = totalCount - childCount;
 
   const existingMemberIds = useMemo(
     () =>
@@ -206,26 +238,30 @@ export function AttendeesEditor({
   }
 
   async function handleAddAnonymous() {
-    const n = Number(anonymousCountInput);
-    if (!Number.isInteger(n) || n <= 0) {
-      setError("Ο αριθμός ατόμων πρέπει να είναι θετικός ακέραιος.");
+    const adult = Number(anonymousAdultCount) || 0;
+    const child = Number(anonymousChildCount) || 0;
+    const total = adult + child;
+    if (total < 1) {
+      setError("Πρέπει να προσθέσεις τουλάχιστον 1 άτομο.");
       return;
     }
-    if (n > 50) {
-      setError("Μέγιστο 50 ανώνυμα ανά προσθήκη.");
+    if (total > 50) {
+      setError("Σύνολο ατόμων πρέπει να είναι έως 50.");
       return;
     }
     await runWithBusy(async () => {
       const supabase = getBrowserClient();
-      const rows = Array.from({ length: n }, () => ({
+      const rows = Array.from({ length: total }, (_, i) => ({
         reservation_id: reservation.id,
         club_id: reservation.club_id,
+        is_child_override: i < child ? true : null,
       }));
       const { error: iErr } = await supabase
         .from("reservation_attendees")
         .insert(rows);
       if (iErr) throw iErr;
-      setAnonymousCountInput("1");
+      setAnonymousAdultCount("0");
+      setAnonymousChildCount("0");
     });
   }
 
@@ -259,6 +295,40 @@ export function AttendeesEditor({
       setError(errorMessage(err, "Σφάλμα ενημέρωσης παρουσίας."));
     } finally {
       setOptimisticPresence((prev) => {
+        const next = { ...prev };
+        delete next[attendeeId];
+        return next;
+      });
+    }
+  }
+
+  async function handleToggleChild(
+    attendeeId: string,
+    currentOverride: boolean | null
+  ) {
+    const newOverride: boolean | null =
+      currentOverride === null
+        ? true
+        : currentOverride === true
+          ? false
+          : null;
+    setOptimisticChildOverride((prev) => ({
+      ...prev,
+      [attendeeId]: newOverride,
+    }));
+    setError(null);
+    try {
+      const supabase = getBrowserClient();
+      const { error: uErr } = await supabase
+        .from("reservation_attendees")
+        .update({ is_child_override: newOverride })
+        .eq("id", attendeeId);
+      if (uErr) throw uErr;
+      await onUpdate();
+    } catch (err) {
+      setError(errorMessage(err, "Σφάλμα ενημέρωσης κατηγορίας ηλικίας."));
+    } finally {
+      setOptimisticChildOverride((prev) => {
         const next = { ...prev };
         delete next[attendeeId];
         return next;
@@ -425,6 +495,14 @@ export function AttendeesEditor({
             }`}
           )
         </h3>
+        {childCount > 0 && (
+          <p className="mb-2 text-xs text-muted">
+            {totalCount} ·{" "}
+            {adultCount === 1 ? "1 ενήλικας" : `${adultCount} ενήλικες`}
+            {" · "}
+            {childCount === 1 ? "1 παιδί" : `${childCount} παιδιά`}
+          </p>
+        )}
         {totalCount === 0 ? (
           <p className="rounded-md border border-dashed border-border p-3 text-center text-xs text-muted">
             Δεν υπάρχουν άτομα.
@@ -443,8 +521,17 @@ export function AttendeesEditor({
                 promotionMatches={
                   promotingId === a.id ? promotionFilteredMembers : []
                 }
+                childResolution={
+                  childResolutions.get(a.id) ?? {
+                    isChild: false,
+                    source: "unknown",
+                  }
+                }
                 onTogglePresence={() =>
                   handleTogglePresence(a.id, a.presence_status)
+                }
+                onToggleChild={() =>
+                  handleToggleChild(a.id, a.is_child_override ?? null)
                 }
                 onToggleLead={() => handleToggleLead(a.id, a.is_lead)}
                 onRemove={() => handleRemove(a.id)}
@@ -510,9 +597,7 @@ export function AttendeesEditor({
                           onClick={() => handleAddMember(m.id)}
                           className="flex w-full items-center justify-between p-2 text-left text-xs transition hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          <span>
-                            {m.first_name} {m.last_name}
-                          </span>
+                          <span>{formatMemberName(m)}</span>
                           {already && (
                             <span className="text-amber-600 dark:text-amber-400">
                               ήδη στην παρέα
@@ -550,17 +635,39 @@ export function AttendeesEditor({
         )}
 
         {addMode === "anonymous" && (
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-muted">Πλήθος:</label>
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={anonymousCountInput}
-              onChange={(e) => setAnonymousCountInput(e.target.value)}
-              className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-              disabled={busy}
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex items-center gap-1.5 text-xs text-muted">
+              <span>Ενήλικες:</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={anonymousAdultCount}
+                onChange={(e) =>
+                  setAnonymousAdultCount(
+                    e.target.value.replace(/[^0-9]/g, "")
+                  )
+                }
+                className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                disabled={busy}
+              />
+            </label>
+            <label className="inline-flex items-center gap-1.5 text-xs text-muted">
+              <span>Παιδιά:</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={anonymousChildCount}
+                onChange={(e) =>
+                  setAnonymousChildCount(
+                    e.target.value.replace(/[^0-9]/g, "")
+                  )
+                }
+                className="w-16 rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                disabled={busy}
+              />
+            </label>
             <button
               type="button"
               onClick={handleAddAnonymous}
@@ -590,7 +697,7 @@ export function AttendeesEditor({
                   className="flex items-center justify-between gap-2 rounded-md bg-white/60 px-2 py-1 text-xs dark:bg-black/20"
                 >
                   <span>
-                    {m.first_name} {m.last_name}
+                    {formatMemberName(m)}
                     {(roleLabel || age != null) && (
                       <small className="ml-2 text-muted">
                         (
@@ -642,7 +749,9 @@ function AttendeeRow({
   promotionGuestName,
   promotionSearch,
   promotionMatches,
+  childResolution,
   onTogglePresence,
+  onToggleChild,
   onToggleLead,
   onRemove,
   onStartPromote,
@@ -660,7 +769,9 @@ function AttendeeRow({
   promotionGuestName: string;
   promotionSearch: string;
   promotionMatches: Member[];
+  childResolution: IsChildResolution;
   onTogglePresence: () => void;
+  onToggleChild: () => void;
   onToggleLead: () => void;
   onRemove: () => void;
   onStartPromote: () => void;
@@ -717,7 +828,7 @@ function AttendeeRow({
     label = (
       <>
         <span className={nameClass}>
-          {attendee.member.first_name} {attendee.member.last_name}
+          {formatMemberName(attendee.member)}
         </span>{" "}
         <span className="text-muted">(μέλος)</span>
       </>
@@ -759,6 +870,12 @@ function AttendeeRow({
       <div className="flex items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-1.5 truncate">
           {presenceIcon}
+          <ChildIndicator
+            attendee={attendee}
+            childResolution={childResolution}
+            disabled={disabled}
+            onToggleChild={onToggleChild}
+          />
           <span className="min-w-0 truncate">{label}</span>
           {isAbsent && (
             <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
@@ -869,7 +986,7 @@ function AttendeeRow({
                           onClick={() => onPromoteToMember(m.id)}
                           className="block w-full px-2 py-1 text-left text-[11px] transition hover:bg-surface disabled:opacity-60"
                         >
-                          {m.first_name} {m.last_name}
+                          {formatMemberName(m)}
                         </button>
                       </li>
                     ))
@@ -900,6 +1017,61 @@ function AttendeeRow({
         </div>
       )}
     </li>
+  );
+}
+
+function ChildIndicator({
+  attendee,
+  childResolution,
+  disabled,
+  onToggleChild,
+}: {
+  attendee: AttendeeWithMember;
+  childResolution: IsChildResolution;
+  disabled: boolean;
+  onToggleChild: () => void;
+}) {
+  const { isChild, source } = childResolution;
+  const memberAge = getAge(attendee.member?.birth_date ?? null);
+
+  let glyph: string;
+  if (source === "override" && !isChild) glyph = "🧑";
+  else if (isChild) glyph = "👶";
+  else glyph = "⚪";
+
+  let tooltip: string;
+  if (source === "unknown") {
+    tooltip = "Άγνωστη ηλικία — πάτησε για: Παιδί";
+  } else if (source === "auto" && !isChild) {
+    tooltip = "Ενήλικας (auto) — πάτησε για: Παιδί";
+  } else if (source === "auto" && isChild) {
+    tooltip = `Παιδί (auto από ηλικία ${memberAge}) — πάτησε για: Manual ενήλικας`;
+  } else if (source === "override" && isChild) {
+    tooltip = "Παιδί (manual) — πάτησε για: Manual ενήλικας";
+  } else {
+    tooltip = "Ενήλικας (manual) — πάτησε για: Auto";
+  }
+
+  const faded =
+    source === "unknown" || (source === "auto" && !isChild);
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggleChild();
+      }}
+      onKeyDown={(e) => e.stopPropagation()}
+      title={tooltip}
+      aria-label={tooltip}
+      className={`shrink-0 text-sm leading-none transition disabled:opacity-50 ${
+        faded ? "opacity-40 hover:opacity-80" : ""
+      }`}
+    >
+      {glyph}
+    </button>
   );
 }
 

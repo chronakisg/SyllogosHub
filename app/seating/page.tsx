@@ -22,9 +22,11 @@ import type {
 } from "@/lib/supabase/types";
 import {
   RESERVATION_SELECT,
+  formatMemberName,
   getAttendeeCount,
   hasAnonymousAttendees,
-  isPresentLike,
+  resolveIsChild,
+  type IsChildResolution,
   type ReservationWithAttendees,
 } from "@/lib/utils/attendees";
 import { AttendeesEditor } from "@/components/AttendeesEditor";
@@ -95,7 +97,8 @@ export default function SeatingPage() {
 
 function SeatingView() {
   const role = useRole();
-  const { clubId, loading: clubLoading } = useCurrentClub();
+  const { clubId, club, loading: clubLoading } = useCurrentClub();
+  const clubThreshold = club?.child_age_threshold ?? 15;
   const searchParams = useSearchParams();
   const eventParam = searchParams.get("event");
   const [events, setEvents] = useState<EventRow[]>([]);
@@ -776,6 +779,7 @@ function SeatingView() {
                     <ReservationChip
                       reservation={r}
                       selected={selectedReservationId === r.id}
+                      clubThreshold={clubThreshold}
                       onToggleSelect={() =>
                         setSelectedReservationId((prev) =>
                           prev === r.id ? null : r.id
@@ -832,6 +836,7 @@ function SeatingView() {
                     key={t.id}
                     table={t}
                     reservation={reservationByTableNumber.get(t.number) ?? null}
+                    clubThreshold={clubThreshold}
                     pendingAssign={!!selectedReservationId}
                     selectedReservation={selectedReservation}
                     onTableClick={() => {
@@ -992,11 +997,13 @@ function RealtimeIndicator({ ready }: { ready: boolean }) {
 function ReservationChip({
   reservation,
   selected,
+  clubThreshold,
   onToggleSelect,
   onOpenAttendees,
 }: {
   reservation: ReservationWithAttendees;
   selected: boolean;
+  clubThreshold: number;
   onToggleSelect: () => void;
   onOpenAttendees: () => void;
 }) {
@@ -1006,13 +1013,25 @@ function ReservationChip({
     (a) => a.is_lead && a.member
   );
   const leadName = leadAttendee?.member
-    ? `${leadAttendee.member.first_name} ${leadAttendee.member.last_name}`
+    ? formatMemberName(leadAttendee.member)
     : null;
-  const presentCount = (reservation.attendees ?? []).filter((a) =>
-    isPresentLike(a.presence_status)
+  const actuallyPresentCount = (reservation.attendees ?? []).filter(
+    (a) => a.presence_status === "present"
   ).length;
-  const hasAbsent =
-    (reservation.attendees ?? []).length > 0 && presentCount < count;
+  const expectedCount = (reservation.attendees ?? []).filter(
+    (a) => a.presence_status === "expected"
+  ).length;
+  const cateringCounts = useMemo(() => {
+    if (!reservation.attendees?.length) {
+      return { adult: 0, child: 0 };
+    }
+    let child = 0;
+    for (const a of reservation.attendees) {
+      const r: IsChildResolution = resolveIsChild(a, clubThreshold);
+      if (r.isChild) child += 1;
+    }
+    return { adult: reservation.attendees.length - child, child };
+  }, [reservation, clubThreshold]);
   return (
     <div
       role="button"
@@ -1055,7 +1074,6 @@ function ReservationChip({
           </div>
           <div className="mt-0.5 text-xs text-muted">
             {count} {count === 1 ? "άτομο" : "άτομα"}
-            {hasAbsent && ` · ${presentCount} παρόντες`}
             {anonymous && (
               <span
                 className="ml-1 text-amber-600 dark:text-amber-400"
@@ -1065,6 +1083,32 @@ function ReservationChip({
               </span>
             )}
           </div>
+          {actuallyPresentCount > 0 && (
+            <div className="mt-0.5 text-[10px] text-muted">
+              {actuallyPresentCount === 1
+                ? "1 παρών"
+                : `${actuallyPresentCount} παρόντες`}
+              {expectedCount > 0 && (
+                <>
+                  {" · "}
+                  {expectedCount === 1
+                    ? "1 αναμένεται"
+                    : `${expectedCount} αναμένονται`}
+                </>
+              )}
+            </div>
+          )}
+          {cateringCounts.child > 0 && (
+            <div className="mt-0.5 text-[10px] text-muted">
+              {cateringCounts.adult === 1
+                ? "1 ενήλικας"
+                : `${cateringCounts.adult} ενήλικες`}
+              {" · "}
+              {cateringCounts.child === 1
+                ? "1 παιδί"
+                : `${cateringCounts.child} παιδιά`}
+            </div>
+          )}
         </div>
         <button
           type="button"
@@ -1099,6 +1143,7 @@ function paymentStatus(list: ReservationWithAttendees[]): PaymentStatus {
 function TableCard({
   table,
   reservation,
+  clubThreshold,
   pendingAssign,
   selectedReservation,
   onTableClick,
@@ -1113,6 +1158,7 @@ function TableCard({
 }: {
   table: VenueTable;
   reservation: ReservationWithAttendees | null;
+  clubThreshold: number;
   pendingAssign: boolean;
   selectedReservation: ReservationWithAttendees | null;
   onTableClick: () => void;
@@ -1133,6 +1179,17 @@ function TableCard({
   const overCapacity = reservation
     ? reservationCount > table.capacity
     : false;
+  const cateringCounts = useMemo(() => {
+    if (!reservation || !reservation.attendees?.length) {
+      return { adult: 0, child: 0 };
+    }
+    let child = 0;
+    for (const a of reservation.attendees) {
+      const r: IsChildResolution = resolveIsChild(a, clubThreshold);
+      if (r.isChild) child += 1;
+    }
+    return { adult: reservation.attendees.length - child, child };
+  }, [reservation, clubThreshold]);
   const shapeClasses =
     table.shape === "round" ? "rounded-full" : "rounded-xl";
 
@@ -1368,6 +1425,17 @@ function TableCard({
         >
           <span>· {reservationCount}</span>
           {(overCapacity || reservationAnonymous) && <span aria-hidden>⚠</span>}
+        </div>
+      )}
+      {reservation && cateringCounts.child > 0 && (
+        <div className="mt-1 text-[10px] text-muted">
+          {cateringCounts.adult === 1
+            ? "1 ενήλικας"
+            : `${cateringCounts.adult} ενήλικες`}
+          {" · "}
+          {cateringCounts.child === 1
+            ? "1 παιδί"
+            : `${cateringCounts.child} παιδιά`}
         </div>
       )}
     </div>

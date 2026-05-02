@@ -5,6 +5,7 @@ export type Club = {
   id: string;
   slug: string;
   name: string;
+  child_age_threshold: number;
   created_at: string;
 };
 
@@ -12,6 +13,7 @@ export type ClubInsert = {
   id?: string;
   slug: string;
   name: string;
+  child_age_threshold?: number;
   created_at?: string;
 };
 
@@ -468,6 +470,7 @@ export type ReservationAttendee = {
   is_lead: boolean;
   presence_status: PresenceStatus;
   checked_in_at: string | null;
+  is_child_override: boolean | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -482,6 +485,7 @@ export type ReservationAttendeeInsert = {
   is_lead?: boolean;
   presence_status?: PresenceStatus;
   checked_in_at?: string | null;
+  is_child_override?: boolean | null;
   notes?: string | null;
   created_at?: string;
   updated_at?: string;
