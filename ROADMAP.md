@@ -184,21 +184,40 @@ _(no active branches)_
 
 ### Finances domain
 
-- [ ] **📊 Event Financials tab** — οικονομική επισκόπηση ανά εκδήλωση
-  - Replace το current "Κρατήσεις Εκδηλώσεων" tab (duplicate view με
-    Πλάνο Τραπεζιών — όλη η ίδια info υπάρχει εκεί)
-  - Νέο content: per-event income breakdown
-    - Πληρωμένες παρέες × event.ticket_price
-    - Αναμενόμενα έσοδα (εκκρεμείς παρέες)
-    - Χορηγίες (sum από sponsors_event για το event)
+- [ ] **📊 Event Dashboard (replaces 'Κρατήσεις Εκδηλώσεων' tab)**
+
+  Stack: 📊 Διαχειριστικό
+
+  Strategic context: Το current "Κρατήσεις Εκδηλώσεων" tab είναι
+  duplicate view του Πλάνου Τραπεζιών (παρέες-list με payment status).
+  Replace με κεντρικό oικονομικό dashboard ανά event.
+
+  Layout:
+  - **ΕΣΟΔΑ**
+    - Παρέες × ticket_price (ηλικιακά αναλυμένα):
+      "6 ενήλικες × 30€ + 2 παιδιά × 2€ + 3 ανώνυμοι × 30€"
+    - Χορηγίες (money sum)
     - Σύνολο εσόδων
-  - Phase 1: έσοδα-only (existing data, no schema changes)
-  - Phase 2 (future): event_expenses table + net profit/loss
-    - Νέα schema entries για ψυχαγωγία/catering/ενοίκιο
-    - Calculation κέρδος/ζημία
-  - Tab name: "Οικονομικά Εκδηλώσεων"
-  - Estimated: M (1-2 commits για Phase 1)
-  - Connects με: existing /finances state-based tabs pattern
+  - **ΕΞΟΔΑ** (depends on event_expenses schema)
+    - DJ: 500€
+    - Φωτογράφος: 300€
+    - Ενοίκιο: 200€
+    - Σύνολο εξόδων
+  - **ΑΠΟΤΕΛΕΣΜΑ**
+    - Καθαρό κέρδος/ζημία
+  - **LIVE STATUS** (την ημέρα)
+    - Παρόντες counter
+    - Εκκρεμείς πληρωμές
+  - **QUICK ACTIONS**
+    - "💰 Άνοιγμα Ταμείου" → Cashier Interface
+
+  Phase 1 (έσοδα-only): παρέες × ticket + sponsors
+  Phase 2: + event_expenses + net result
+  Phase 3: + live status + cashier integration
+
+  Estimated: L (3-phase implementation)
+  Replaces: cherry-pick του 29f5078 (abandoned event-financials-tab branch)
+  Connects με: event_expenses + age_categorization + Cashier Interface
 
 ### Sidebar & UX polish (chore branch)
 
@@ -209,6 +228,134 @@ _(no active branches)_
   - Σήμερα → Επερχόμενες bucket
   - Δεν είναι hide/archive, μόνο διαχωρισμός
   - Estimated: M
+
+### 🎩 Operational interfaces
+
+- [ ] **💰 Cashier Interface (Φάση 2 — Είσοδος/Ταμείο)**
+
+  Stack: 🎩 Operational
+
+  Strategic context: Διακριτός ρόλος από maître. Ο ταμίας/προεδρείο
+  στην πόρτα κάνει payment + check-in. Ο maître μέσα στο χώρο κάνει
+  guidance + waiter notifications. Δεν είναι ίδιος user, ίδιο interface.
+
+  Νέο menu location: TBD (πιθανότατα tab μέσα στα Events ή
+  top-level menu "Ταμείο")
+
+  Flow:
+  - Search by attendee name (fuzzy match όλων των reservations του
+    selected event)
+  - Action card per attendee/παρέα:
+    - Όνομα + Παρέα + Τραπέζι (location info)
+    - Payment status: ✅ Πληρωμένο / ⚠️ Εκκρεμές
+    - Buttons: [Πληρώθηκε τώρα] + [Check-in]
+    - Future: [Εκτύπωση εισιτηρίου]
+  - Παρέες έρχονται σπαστά (2 τώρα, 2 αργότερα)
+  - Per-attendee check-in (όχι bulk)
+  - Πληρωμή είναι παρέα-level (ένας πληρώνει για όλη την ομάδα)
+
+  ΟΧΙ νούμερα/ποσά μετά τη φάση πληρωμής — μόνο "πληρωμένο ναι/όχι"
+  σαν gating signal.
+
+  Estimated: L (multi-commit, νέο page, search component, action card,
+  payment integration)
+  Connects με: 3-state presence (διαβάζει presence_status),
+  Event Dashboard (entry point button)
+
+### Schema evolution
+
+- [ ] **👶 Age Categorization (Ενήλικας / Παιδί)**
+
+  Stack: Touches και τα δύο
+  - 📊 AttendeesEditor: per-attendee age category assignment
+  - 🎩 Maître interface: counts breakdown ανά τραπέζι
+  - 📊 Event Dashboard: revenue calculation ανά κατηγορία
+
+  Use case: σερβιτόρος θέλει να ξέρει πόσα παιδικά μενού να ετοιμάσει.
+  Κοινωνικά events έχουν διαφορετικές τιμές για ενήλικες vs παιδιά.
+
+  Schema:
+  ```sql
+  alter table reservation_attendees
+    add column age_category text
+      default 'adult'
+      check (age_category in ('adult', 'child'));
+  ```
+
+  Auto-detect από `member.birth_date` (όταν `member_id` exists),
+  manual override για guests/anonymous.
+
+  UI:
+  - AttendeesEditor: toggle ή dropdown per attendee row
+  - Maître interface: counts breakdown badge per table
+
+  Phase 1: 2 categories (adult/child)
+  Phase 2 (future): expanded — έφηβος, βρέφος (free), member-of-board
+
+  Estimated: M (schema migration + UI σε 2 stacks)
+  Connects με: pricing logic (διαφορετικά prices per category),
+  catering planning (maître)
+
+- [ ] **💵 Event Expenses Schema**
+
+  Stack: 📊 Διαχειριστικό
+
+  Schema:
+  ```sql
+  create table event_expenses (
+    id uuid primary key default gen_random_uuid(),
+    club_id uuid not null,
+    event_id uuid not null references events(id),
+    category text not null check (category in (
+      'entertainment',  -- DJ, μουσικοί, ορχήστρα
+      'photography',    -- φωτογράφος
+      'venue',          -- ενοίκιο χώρου
+      'catering',       -- φαγητό
+      'decoration',     -- διακόσμηση
+      'transportation', -- μεταφορικά
+      'other'
+    )),
+    description text,
+    amount numeric not null,
+    paid_at timestamptz,
+    notes text,
+    created_at timestamptz default now()
+  );
+  ```
+
+  Foundation για Event Dashboard expenses section.
+
+  Estimated: S-M (schema + simple CRUD UI)
+  Connects με: Event Dashboard (Phase 2)
+
+### 📱 Mobile & Cross-cutting
+
+- [ ] **📱 Mobile UX Polish — orientation + header optimization**
+
+  Stack: 📊 + 🎩 (επηρεάζει και τα δύο)
+
+  Field testing έδειξε 2 issues σε tablet + κινητό PWA installation:
+
+  **Issue 1: Orientation locked to portrait**
+  - manifest.json έχει `'orientation': 'portrait'` (ή parsed κάπως)
+  - Tablet ειδικά χρειάζεται landscape για:
+    - Πλάνο Τραπεζιών (wide layout)
+    - Events listing (πολλές στήλες)
+  - Plan:
+    - Change manifest → `'orientation': 'any'`
+    - Audit όλα τα pages σε landscape
+    - Adjust max-width containers
+
+  **Issue 2: Header taking ~340px on mobile**
+  - Logo + club name + tab nav + user card = wasted space
+  - Plan για mobile (<768px):
+    - Collapse logo σε icon
+    - Hamburger menu για nav
+    - User card → dropdown από avatar
+    - Target: ~50-60px total header
+
+  Estimated: M (responsive design + manifest update + multi-page audit)
+  Priority: High (UX blocker σε field use)
 
 ## 🟢 Nice to Have / Future
 
@@ -239,12 +386,111 @@ _(no active branches)_
   - `ConfirmDeleteReservationModal` είναι standalone
   - Refactor σε `components/Modal.tsx` + `components/ConfirmDialog.tsx`
 
+- [ ] **📜 Σύνοψη inline expand στο /events listing**
+
+  Stack: 📊 Διαχειριστικό
+
+  Strategic context: Σήμερα το "Σύνοψη →" button οδηγεί σε ξεχωριστή
+  σελίδα. Καλό για print, αλλά για quick check-up αξίζει inline view.
+
+  UI:
+  - Expandable row στο /events listing
+  - Click ▾ → εμφανίζεται summary inline κάτω από τη γραμμή
+  - Click ▴ → collapse
+  - Reuse existing summary component (data fetch + display)
+  - "Πλήρης Σύνοψη" link μέσα στο expanded view → printable page
+
+  Estimated: S-M (expandable row UI, reuse existing summary)
+
+### 🎩 Operational interfaces (future)
+
+- [ ] **🎩 Maître / Floor Manager Interface**
+
+  Stack: 🎩 Operational (sub-role)
+
+  Strategic context: Διακριτός user role: maître ≠ προεδρείο.
+  Ο maître στο χώρο της εκδήλωσης χρειάζεται εντελώς διαφορετική info
+  από τον ταμία στην είσοδο.
+
+  Page: `/seating/floor` (ή `/seating/maitre`)
+
+  View: Tables grid με:
+  - Fill ratio: 5/8 (πραγματικά παρόντες)
+  - Status indicator: αναμένει / σερβίρισμα / γεμάτο
+  - Counts breakdown: 6👨 + 2👶 (ηλικιακή κατανομή)
+
+  ΟΧΙ:
+  - Ονόματα παρεών
+  - Νούμερα €
+  - Payment info
+  - Check-in actions
+
+  Actions:
+  - "Ειδοποίηση σερβιτόρων" όταν τραπέζι γεμίζει (push notification
+    ή visual signal)
+  - Read-only για όλα τα άλλα
+
+  Estimated: M (νέο page + simplified UI + age breakdown)
+  Connects με: 3-state presence, age_categorization, push notifications
+
+- [ ] **🎫 Print Tickets (στο Cashier flow)**
+
+  Stack: 🎩 Operational (sub-feature του Cashier)
+
+  Use case: Στο ταμείο, μετά πληρωμή + check-in, εκτύπωση
+  εισιτηρίου με την πληροφορία τραπεζιού.
+
+  Ticket content:
+  - Όνομα attendee
+  - Όνομα εκδήλωσης + ημερομηνία
+  - Τραπέζι (πού να καθίσει)
+  - Co-attendees της παρέας (προαιρετικό)
+  - Branding συλλόγου
+  - QR code για future re-scan
+
+  Print options:
+  - Browser print (thermal-receipt-friendly layout)
+  - PDF download (mobile preview)
+
+  Estimated: S (στο Cashier flow ως sub-feature)
+  Depends on: Cashier Interface
+
+### Schema evolution (future)
+
+- [ ] **🏗️ Event Partners Schema (replaces entertainment string)**
+
+  Stack: 📊 Διαχειριστικό
+
+  Strategic context: Σήμερα τα entertainment partners είναι free-form
+  text. Πρέπει structured data ώστε να συνδέονται με event_expenses
+  (DJ name + DJ fee).
+
+  Schema:
+  - Migrate από flat 'entertainment' field → structured table
+  - `event_partners (id, event_id, role, name, contact, fee, notes)`
+  - Roles: DJ, ορχήστρα, φωτογράφος, βιντεολήπτης, decorator, etc.
+
+  Sync με event_expenses: ένας partner = ένα expense entry
+  (auto-link by event + role).
+
+  UI:
+  - Replace simple text field στο edit modal με structured form
+  - "+ Συνεργάτης" → name + role dropdown + fee
+  - Display στο event dashboard: lista με ρόλους
+
+  Migration challenge: existing entertainment data → manual review
+  + categorization.
+
+  Estimated: M (schema + migration script + UI overhaul)
+  Connects με: event_expenses, Event Dashboard
+
 ### Tech Debt & Cleanup
 
 - [ ] **📊 Re-launch abandoned `feat/event-financials-tab` branch**
   - Branch deleted 2026-05-03, commit hash `29f5078` preserved για future cherry-pick
   - Original work: payment toggle στον AttendeesEditor (single commit)
-  - Re-launch when Presence 3-state migration ολοκληρωθεί (avoid schema conflicts)
+  - **Superseded by:** Event Dashboard entry (πιο comprehensive 3-phase plan)
+  - Cherry-pick μπορεί ακόμα να χρησιμοποιηθεί ως starting point για το payment toggle aspect
   - `git cherry-pick 29f5078` σε νέο branch όταν έρθει η ώρα
   - Estimated: S (cherry-pick + rebase resolution)
 
