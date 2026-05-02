@@ -89,10 +89,6 @@ function EntranceListView() {
       { presence_status: PresenceStatus; checked_in_at: string | null }
     >
   >({});
-  const [confirmCleanupOpen, setConfirmCleanupOpen] = useState(false);
-  const [cleanupBusy, setCleanupBusy] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-
   const refetch = useCallback(async () => {
     if (!eventId || !clubId) return;
     const supabase = getBrowserClient();
@@ -184,12 +180,6 @@ function EntranceListView() {
     };
   }, [eventId, clubId, refetch]);
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3000);
-    return () => clearTimeout(t);
-  }, [toast]);
-
   const venueTables = useMemo(
     () => parseVenueConfig(event?.venue_map_config),
     [event]
@@ -219,15 +209,13 @@ function EntranceListView() {
   const totals = useMemo(() => {
     let present = 0;
     let total = 0;
-    let anonymousAbsent = 0;
     for (const r of reservationsWithOptimistic) {
       for (const a of r.attendees) {
         total += 1;
         if (isPresentLike(a.presence_status)) present += 1;
-        else if (!a.member_id && !a.guest_name) anonymousAbsent += 1;
       }
     }
-    return { present, total, anonymousAbsent };
+    return { present, total };
   }, [reservationsWithOptimistic]);
 
   async function handleTogglePresence(
@@ -267,31 +255,6 @@ function EntranceListView() {
     }
   }
 
-  async function handleCleanupAnonymousAbsent() {
-    setCleanupBusy(true);
-    setError(null);
-    try {
-      const reservationIds = reservations.map((r) => r.id);
-      if (reservationIds.length === 0) return;
-      const supabase = getBrowserClient();
-      const { error: dErr, count } = await supabase
-        .from("reservation_attendees")
-        .delete({ count: "exact" })
-        .eq("presence_status", "no_show")
-        .is("member_id", null)
-        .is("guest_name", null)
-        .in("reservation_id", reservationIds);
-      if (dErr) throw dErr;
-      setConfirmCleanupOpen(false);
-      setToast(`Διαγράφηκαν ${count ?? 0} ανώνυμοι attendees.`);
-      await refetch();
-    } catch (err) {
-      setError(errorMessage(err, "Σφάλμα κατά τη διαγραφή."));
-    } finally {
-      setCleanupBusy(false);
-    }
-  }
-
   if (loading) {
     return (
       <div className="mx-auto max-w-3xl p-10 text-center text-muted">
@@ -323,15 +286,6 @@ function EntranceListView() {
     <div className="mx-auto max-w-4xl p-4 print:p-0 sm:p-6">
       {/* Action bar */}
       <div className="mb-4 flex flex-wrap justify-end gap-2 print:hidden">
-        {totals.anonymousAbsent > 0 && (
-          <button
-            type="button"
-            onClick={() => setConfirmCleanupOpen(true)}
-            className="rounded-lg border border-amber-500/40 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/20"
-          >
-            🧹 Καθάρισε ανώνυμους απόντες ({totals.anonymousAbsent})
-          </button>
-        )}
         <button
           type="button"
           onClick={() => window.print()}
@@ -419,25 +373,6 @@ function EntranceListView() {
           </div>
         )}
       </article>
-
-      {/* Cleanup confirm dialog */}
-      <CleanupConfirmDialog
-        isOpen={confirmCleanupOpen}
-        count={totals.anonymousAbsent}
-        busy={cleanupBusy}
-        onClose={() => setConfirmCleanupOpen(false)}
-        onConfirm={handleCleanupAnonymousAbsent}
-      />
-
-      {/* Toast */}
-      {toast && (
-        <div
-          role="status"
-          className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-foreground px-4 py-2 text-sm text-background shadow-lg print:hidden"
-        >
-          {toast}
-        </div>
-      )}
 
       <style jsx global>{`
         @media print {
@@ -594,112 +529,3 @@ function AttendeeCheckinRow({
   );
 }
 
-function CleanupConfirmDialog({
-  isOpen,
-  count,
-  busy,
-  onClose,
-  onConfirm,
-}: {
-  isOpen: boolean;
-  count: number;
-  busy: boolean;
-  onClose: () => void;
-  onConfirm: () => void | Promise<void>;
-}) {
-  useEffect(() => {
-    if (!isOpen) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !busy) {
-        e.preventDefault();
-        onClose();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [isOpen, busy, onClose]);
-
-  if (!isOpen) return null;
-  const MAROON = "#800000";
-
-  return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-      role="alertdialog"
-      aria-modal="true"
-      onClick={() => {
-        if (!busy) onClose();
-      }}
-    >
-      <div
-        className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-surface"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div
-          className="flex items-center justify-between gap-3 border-b-2 px-5 py-3"
-          style={{ borderColor: MAROON, color: MAROON }}
-        >
-          <h2 className="flex items-center gap-2 text-base font-semibold">
-            <span aria-hidden>🧹</span>
-            Καθάρισε ανώνυμους απόντες;
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            className="rounded p-1 text-muted transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label="Κλείσιμο"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div className="space-y-3 px-5 py-4 text-sm">
-          <p>
-            Θα διαγραφούν{" "}
-            <span className="font-semibold">{count}</span> ανώνυμοι attendees
-            που δεν ήρθαν. Δεν επηρεάζει ονοματισμένους ή παρόντες.
-          </p>
-          <p className="text-muted">
-            Αυτή η ενέργεια <strong>δεν αναιρείται</strong>.
-          </p>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            className="rounded-md border border-border bg-white px-4 py-1.5 text-sm transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-50 dark:bg-transparent"
-          >
-            Ακύρωση
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (!busy) void onConfirm();
-            }}
-            disabled={busy}
-            className="inline-flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ backgroundColor: MAROON }}
-          >
-            {busy ? (
-              <>
-                <span
-                  className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white"
-                  aria-hidden
-                />
-                Διαγραφή…
-              </>
-            ) : (
-              <>
-                <span aria-hidden>🗑️</span>
-                Διαγραφή {count} attendees
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
