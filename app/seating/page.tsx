@@ -1196,6 +1196,86 @@ function paymentStatus(list: ReservationWithAttendees[]): PaymentStatus {
   return "mixed";
 }
 
+function TablePopover({
+  reservation,
+  table,
+  clubThreshold,
+}: {
+  reservation: ReservationWithAttendees;
+  table: VenueTable;
+  clubThreshold: number;
+}) {
+  const attendees = reservation.attendees ?? [];
+  const totalCount = attendees.length;
+  const presentCount = attendees.filter(
+    (a) => a.presence_status === "present"
+  ).length;
+  const expectedCount = attendees.filter(
+    (a) => a.presence_status === "expected"
+  ).length;
+  const freeSeats = Math.max(0, table.capacity - presentCount);
+
+  let childCount = 0;
+  for (const a of attendees) {
+    if (resolveIsChild(a, clubThreshold).isChild) childCount += 1;
+  }
+  const adultCount = totalCount - childCount;
+
+  const leadAttendee = attendees.find((a) => a.is_lead && a.member);
+  const leadName = leadAttendee?.member
+    ? formatMemberName(leadAttendee.member)
+    : null;
+  const headerName = leadName ?? reservation.group_name;
+
+  return (
+    <div className="min-w-[220px] max-w-[280px] rounded-md border border-border bg-surface p-3 text-left text-xs shadow-lg">
+      <div className="text-sm font-medium">
+        Νο {table.number} — {table.capacity}{" "}
+        {table.capacity === 1 ? "θέση" : "θέσεις"}
+      </div>
+      <div className="mt-1 text-muted">
+        {presentCount}/{table.capacity} θέσεις · {freeSeats} ελεύθερες
+      </div>
+      <div className="mt-2 border-t border-border pt-2">
+        <div className="font-medium">
+          {leadName && (
+            <span
+              aria-hidden
+              className="mr-1 text-amber-600 dark:text-amber-400"
+            >
+              ⭐
+            </span>
+          )}
+          {headerName}
+        </div>
+        <div className="mt-0.5 text-muted">
+          {totalCount} {totalCount === 1 ? "άτομο" : "άτομα"}
+        </div>
+        {(presentCount > 0 || expectedCount > 0) && (
+          <div className="mt-0.5 text-muted">
+            {presentCount === 1 ? "1 παρών" : `${presentCount} παρόντες`}
+            {expectedCount > 0 && (
+              <>
+                {" · "}
+                {expectedCount === 1
+                  ? "1 αναμένεται"
+                  : `${expectedCount} αναμένονται`}
+              </>
+            )}
+          </div>
+        )}
+        {childCount > 0 && (
+          <div className="mt-0.5 text-muted">
+            {adultCount === 1 ? "1 ενήλικας" : `${adultCount} ενήλικες`}
+            {" · "}
+            {childCount === 1 ? "1 παιδί" : `${childCount} παιδιά`}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function TableCard({
   table,
   reservation,
@@ -1228,6 +1308,7 @@ function TableCard({
   onOpenGuests: (reservationId: string) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
+  const [showPopover, setShowPopover] = useState(false);
   const reservationCount = reservation ? getAttendeeCount(reservation) : 0;
   const reservationAnonymous = reservation
     ? hasAnonymousAttendees(reservation)
@@ -1316,6 +1397,10 @@ function TableCard({
         if (assignDisabled) return;
         onTableClick();
       }}
+      onMouseEnter={() => {
+        if (reservation) setShowPopover(true);
+      }}
+      onMouseLeave={() => setShowPopover(false)}
       className={
         "relative flex aspect-square flex-col items-center justify-center border-2 p-3 text-center transition " +
         cursorClass +
@@ -1500,6 +1585,15 @@ function TableCard({
           {cateringCounts.child === 1
             ? "1 παιδί"
             : `${cateringCounts.child} παιδιά`}
+        </div>
+      )}
+      {showPopover && reservation && (
+        <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-1 -translate-x-1/2">
+          <TablePopover
+            reservation={reservation}
+            table={table}
+            clubThreshold={clubThreshold}
+          />
         </div>
       )}
     </div>
