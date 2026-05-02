@@ -196,6 +196,19 @@ function SeatingView() {
       .sort((a, b) => a.group_name.localeCompare(b.group_name, "el"));
   }, [reservations, groupSearch]);
 
+  const assigned = useMemo(() => {
+    const q = groupSearch.trim().toLowerCase();
+    return reservations
+      .filter((r) => r.table_number != null)
+      .filter((r) => !q || r.group_name.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const aT = a.table_number ?? Number.MAX_SAFE_INTEGER;
+        const bT = b.table_number ?? Number.MAX_SAFE_INTEGER;
+        if (aT !== bT) return aT - bT;
+        return a.group_name.localeCompare(b.group_name, "el");
+      });
+  }, [reservations, groupSearch]);
+
   const loadEventData = useCallback(
     async (eventId: string) => {
       if (!clubId) return;
@@ -735,7 +748,7 @@ function SeatingView() {
           >
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
-                <h2 className="font-semibold">Παρέες χωρίς τραπέζι</h2>
+                <h2 className="font-semibold">Παρέες χωρίς Τραπέζι</h2>
                 <p className="text-xs text-muted">
                   {unassigned.length}{" "}
                   {unassigned.length === 1 ? "παρέα" : "παρέες"}
@@ -792,6 +805,40 @@ function SeatingView() {
                   </li>
                 ))}
               </ul>
+            )}
+
+            {assigned.length > 0 && (
+              <>
+                <div className="mt-5 mb-3 flex items-center justify-between gap-2 border-t border-border pt-4">
+                  <div>
+                    <h2 className="font-semibold">Παρέες σε Τραπέζια</h2>
+                    <p className="text-xs text-muted">
+                      {assigned.length}{" "}
+                      {assigned.length === 1 ? "παρέα" : "παρέες"}
+                    </p>
+                  </div>
+                </div>
+                <ul className="flex flex-col gap-2">
+                  {assigned.map((r) => (
+                    <li key={r.id}>
+                      <ReservationChip
+                        reservation={r}
+                        selected={selectedReservationId === r.id}
+                        clubThreshold={clubThreshold}
+                        tableNumber={r.table_number}
+                        onToggleSelect={() =>
+                          setSelectedReservationId((prev) =>
+                            prev === r.id ? null : r.id
+                          )
+                        }
+                        onOpenAttendees={() =>
+                          setAttendeesEditorReservationId(r.id)
+                        }
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </aside>
 
@@ -998,12 +1045,14 @@ function ReservationChip({
   reservation,
   selected,
   clubThreshold,
+  tableNumber,
   onToggleSelect,
   onOpenAttendees,
 }: {
   reservation: ReservationWithAttendees;
   selected: boolean;
   clubThreshold: number;
+  tableNumber?: number | null;
   onToggleSelect: () => void;
   onOpenAttendees: () => void;
 }) {
@@ -1067,9 +1116,21 @@ function ReservationChip({
                   ⭐
                 </span>
                 {leadName}
+                {tableNumber != null && (
+                  <span className="ml-1 text-xs font-normal text-muted">
+                    → Τραπέζι {tableNumber}
+                  </span>
+                )}
               </>
             ) : (
-              reservation.group_name
+              <>
+                {reservation.group_name}
+                {tableNumber != null && (
+                  <span className="ml-1 text-xs font-normal text-muted">
+                    → Τραπέζι {tableNumber}
+                  </span>
+                )}
+              </>
             )}
           </div>
           <div className="mt-0.5 text-xs text-muted">
