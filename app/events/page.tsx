@@ -254,6 +254,7 @@ export default function EventsPage() {
   async function handleCreateReservation(input: {
     group_name: string;
     pax_count: number;
+    child_count: number;
     event_id: string;
     club_id: string;
   }) {
@@ -273,9 +274,10 @@ export default function EventsPage() {
     if (iErr) throw iErr;
 
     if (created && input.pax_count > 0) {
-      const rows = Array.from({ length: input.pax_count }, () => ({
+      const rows = Array.from({ length: input.pax_count }, (_, i) => ({
         reservation_id: created.id,
         club_id: input.club_id,
+        is_child_override: i < input.child_count ? true : null,
       }));
       const { error: aErr } = await supabase
         .from("reservation_attendees")
