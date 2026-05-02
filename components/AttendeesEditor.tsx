@@ -44,6 +44,7 @@ export function AttendeesEditor({
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [guestNameInput, setGuestNameInput] = useState("");
   const [anonymousCountInput, setAnonymousCountInput] = useState("1");
+  const [anonymousAsChildren, setAnonymousAsChildren] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [promotingId, setPromotingId] = useState<string | null>(null);
@@ -247,15 +248,18 @@ export function AttendeesEditor({
     }
     await runWithBusy(async () => {
       const supabase = getBrowserClient();
+      const isChild = anonymousAsChildren;
       const rows = Array.from({ length: n }, () => ({
         reservation_id: reservation.id,
         club_id: reservation.club_id,
+        is_child_override: isChild ? true : null,
       }));
       const { error: iErr } = await supabase
         .from("reservation_attendees")
         .insert(rows);
       if (iErr) throw iErr;
       setAnonymousCountInput("1");
+      setAnonymousAsChildren(false);
     });
   }
 
@@ -642,6 +646,16 @@ export function AttendeesEditor({
               className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
               disabled={busy}
             />
+            <label className="inline-flex cursor-pointer items-center gap-1 text-xs text-muted">
+              <input
+                type="checkbox"
+                checked={anonymousAsChildren}
+                onChange={(e) => setAnonymousAsChildren(e.target.checked)}
+                disabled={busy}
+                className="h-3 w-3 accent-accent"
+              />
+              <span>Παιδιά</span>
+            </label>
             <button
               type="button"
               onClick={handleAddAnonymous}
