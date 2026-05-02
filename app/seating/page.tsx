@@ -1126,7 +1126,6 @@ function ReservationChip({
                 ⚠
               </span>
             )}
-            {reservation.is_paid ? " · Πληρωμένο" : ""}
           </div>
         </div>
         <button
