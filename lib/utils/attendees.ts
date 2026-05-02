@@ -39,6 +39,7 @@ export const RESERVATION_SELECT = `
     is_lead,
     presence_status,
     checked_in_at,
+    is_child_override,
     notes,
     created_at,
     updated_at,

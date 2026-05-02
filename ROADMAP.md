@@ -274,27 +274,46 @@ _(no active branches)_
   Use case: σερβιτόρος θέλει να ξέρει πόσα παιδικά μενού να ετοιμάσει.
   Κοινωνικά events έχουν διαφορετικές τιμές για ενήλικες vs παιδιά.
 
-  Schema:
+  Schema (3-state nullable boolean approach — υπερισχύει του παλιού
+  `age_category text` design):
   ```sql
+  alter table clubs
+    add column child_age_threshold smallint
+      not null default 15
+      check (child_age_threshold between 0 and 30);
+
   alter table reservation_attendees
-    add column age_category text
-      default 'adult'
-      check (age_category in ('adult', 'child'));
+    add column is_child_override boolean default null;
+  -- NULL  = auto-derive (member.birth_date vs club threshold)
+  -- TRUE  = explicit child override
+  -- FALSE = explicit adult override
   ```
 
-  Auto-detect από `member.birth_date` (όταν `member_id` exists),
-  manual override για guests/anonymous.
+  Per-club configurable threshold — διαφορετικοί σύλλογοι έχουν
+  διαφορετικά όρια "παιδιού" για catering planning.
+
+  Resolution logic: αν `is_child_override !== null` → υπερισχύει.
+  Αλλιώς αυτο-υπολογίζεται από `member.birth_date` σε σχέση με
+  `clubs.child_age_threshold`. Manual override πάντα διαθέσιμο
+  (για guests, anonymous, ή edge cases χωρίς birth_date).
+
+  Διαχωρισμός concerns:
+  - `clubs.child_age_threshold` = catering threshold (μενού)
+  - `discount_rules.age_max` = pricing threshold (εκπτώσεις)
+  Παράλληλα, διαφορετικά business domains.
 
   UI:
-  - AttendeesEditor: toggle ή dropdown per attendee row
-  - Maître interface: counts breakdown badge per table
+  - AttendeesEditor: per-row child toggle με auto-indicator
+    όταν source='auto'
+  - Maître TableCard: counts breakdown "🧑 X · 👶 Y" (μόνο όταν child>0)
+  - Settings/Club: configurable threshold input (1-30)
 
   Phase 1: 2 categories (adult/child)
   Phase 2 (future): expanded — έφηβος, βρέφος (free), member-of-board
 
-  Estimated: M (schema migration + UI σε 2 stacks)
-  Connects με: pricing logic (διαφορετικά prices per category),
-  catering planning (maître)
+  Estimated: M (schema migration + UI σε 2 stacks, 5 commits)
+  Connects με: pricing logic (διαφορετικά prices per category — ξένο
+  domain), catering planning (maître — main domain)
 
 - [ ] **💵 Event Expenses Schema**
 
