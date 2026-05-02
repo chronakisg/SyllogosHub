@@ -19,6 +19,7 @@ import {
   useClubSettings,
 } from "@/lib/hooks/useClubSettings";
 import type {
+  Club,
   ClubSettings,
   ClubSettingsInsert,
   ClubSettingsUpdate,
@@ -89,9 +90,14 @@ type FormState = {
   primary_color: string;
   secondary_color: string;
   accent_color: string;
+  child_age_threshold: string;
 };
 
-function fromSettings(s: ClubSettings | null, name: string): FormState {
+function fromSettings(
+  s: ClubSettings | null,
+  name: string,
+  clubRow: Club | null
+): FormState {
   return {
     name,
     foundation_year:
@@ -107,14 +113,18 @@ function fromSettings(s: ClubSettings | null, name: string): FormState {
     primary_color: s?.primary_color ?? DEFAULT_PRIMARY,
     secondary_color: s?.secondary_color ?? DEFAULT_SECONDARY,
     accent_color: s?.accent_color ?? DEFAULT_ACCENT,
+    child_age_threshold:
+      clubRow?.child_age_threshold != null
+        ? String(clubRow.child_age_threshold)
+        : "15",
   };
 }
 
 export default function ClubInfoPage() {
   const role = useRole();
   const { settings, clubName, loading: clubLoading } = useClubSettings();
-  const { clubId } = useCurrentClub();
-  const [form, setForm] = useState<FormState>(fromSettings(null, ""));
+  const { clubId, club } = useCurrentClub();
+  const [form, setForm] = useState<FormState>(fromSettings(null, "", null));
   const [hydrated, setHydrated] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -126,10 +136,10 @@ export default function ClubInfoPage() {
 
   useEffect(() => {
     if (!hydrated && !clubLoading) {
-      setForm(fromSettings(settings.id ? settings : null, clubName));
+      setForm(fromSettings(settings.id ? settings : null, clubName, club));
       setHydrated(true);
     }
-  }, [settings, clubName, clubLoading, hydrated]);
+  }, [settings, clubName, clubLoading, hydrated, club]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -223,7 +233,7 @@ export default function ClubInfoPage() {
   }
 
   function handleCancel() {
-    setForm(fromSettings(settings.id ? settings : null, clubName));
+    setForm(fromSettings(settings.id ? settings : null, clubName, club));
     setError(null);
     setInfo(null);
   }
@@ -249,6 +259,17 @@ export default function ClubInfoPage() {
       }
       foundationYear = y;
     }
+    const thresholdRaw = form.child_age_threshold.trim();
+    const threshold = Number(thresholdRaw);
+    if (
+      !thresholdRaw ||
+      !Number.isInteger(threshold) ||
+      threshold < 1 ||
+      threshold > 30
+    ) {
+      setError("Το όριο ηλικίας πρέπει να είναι μεταξύ 1 και 30 ετών.");
+      return;
+    }
     setSaving(true);
     try {
       const supabase = getBrowserClient();
@@ -270,7 +291,7 @@ export default function ClubInfoPage() {
 
       const { error: nameErr } = await supabase
         .from("clubs")
-        .update({ name })
+        .update({ name, child_age_threshold: threshold })
         .eq("id", clubId);
       if (nameErr) throw nameErr;
 
@@ -440,6 +461,27 @@ export default function ClubInfoPage() {
                 placeholder="https://instagram.com/…"
                 className={inputClass}
               />
+            </Field>
+          </div>
+          <div className="mt-6 border-t border-border pt-4">
+            <Field label="Όριο ηλικίας παιδιού">
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={30}
+                  value={form.child_age_threshold}
+                  onChange={bind("child_age_threshold")}
+                  className={inputClass + " w-24"}
+                />
+                <span className="text-sm text-muted">ετών</span>
+              </div>
+              <p className="mt-2 text-xs text-muted">
+                ⓘ Χρησιμοποιείται για catering planning (παιδικά μενού).
+                Δεν επηρεάζει εκπτώσεις πληρωμής — αυτές ορίζονται
+                ξεχωριστά στις Εκπτώσεις.
+              </p>
             </Field>
           </div>
         </section>
