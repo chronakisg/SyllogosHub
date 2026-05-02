@@ -24,6 +24,7 @@ import {
   RESERVATION_SELECT,
   getAttendeeCount,
   hasAnonymousAttendees,
+  isPresentLike,
   type ReservationWithAttendees,
 } from "@/lib/utils/attendees";
 import { AttendeesEditor } from "@/components/AttendeesEditor";
@@ -1069,8 +1070,8 @@ function ReservationChip({
   const leadName = leadAttendee?.member
     ? `${leadAttendee.member.first_name} ${leadAttendee.member.last_name}`
     : null;
-  const presentCount = (reservation.attendees ?? []).filter(
-    (a) => a.is_present
+  const presentCount = (reservation.attendees ?? []).filter((a) =>
+    isPresentLike(a.presence_status)
   ).length;
   const hasAbsent =
     (reservation.attendees ?? []).length > 0 && presentCount < count;

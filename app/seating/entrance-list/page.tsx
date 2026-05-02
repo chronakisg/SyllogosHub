@@ -11,9 +11,14 @@ import {
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useClubSettings } from "@/lib/hooks/useClubSettings";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
-import type { Event as EventRow } from "@/lib/supabase/types";
+import type {
+  Event as EventRow,
+  PresenceStatus,
+} from "@/lib/supabase/types";
 import {
   RESERVATION_SELECT,
+  isPresentLike,
+  nextPresenceStatus,
   sortAttendees,
   type AttendeeWithMember,
   type ReservationWithAttendees,
@@ -79,7 +84,10 @@ function EntranceListView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [optimisticPresence, setOptimisticPresence] = useState<
-    Record<string, { is_present: boolean; checked_in_at: string | null }>
+    Record<
+      string,
+      { presence_status: PresenceStatus; checked_in_at: string | null }
+    >
   >({});
   const [confirmCleanupOpen, setConfirmCleanupOpen] = useState(false);
   const [cleanupBusy, setCleanupBusy] = useState(false);
@@ -215,7 +223,7 @@ function EntranceListView() {
     for (const r of reservationsWithOptimistic) {
       for (const a of r.attendees) {
         total += 1;
-        if (a.is_present) present += 1;
+        if (isPresentLike(a.presence_status)) present += 1;
         else if (!a.member_id && !a.guest_name) anonymousAbsent += 1;
       }
     }
@@ -224,20 +232,27 @@ function EntranceListView() {
 
   async function handleTogglePresence(
     attendeeId: string,
-    currentlyPresent: boolean
+    currentStatus: PresenceStatus
   ) {
-    const newPresent = !currentlyPresent;
-    const newCheckedInAt = newPresent ? new Date().toISOString() : null;
+    const newStatus = nextPresenceStatus(currentStatus);
+    const newCheckedInAt =
+      newStatus === "present" ? new Date().toISOString() : null;
     setOptimisticPresence((prev) => ({
       ...prev,
-      [attendeeId]: { is_present: newPresent, checked_in_at: newCheckedInAt },
+      [attendeeId]: {
+        presence_status: newStatus,
+        checked_in_at: newCheckedInAt,
+      },
     }));
     setError(null);
     try {
       const supabase = getBrowserClient();
       const { error: uErr } = await supabase
         .from("reservation_attendees")
-        .update({ is_present: newPresent, checked_in_at: newCheckedInAt })
+        .update({
+          presence_status: newStatus,
+          checked_in_at: newCheckedInAt,
+        })
         .eq("id", attendeeId);
       if (uErr) throw uErr;
       await refetch();
@@ -262,7 +277,7 @@ function EntranceListView() {
       const { error: dErr, count } = await supabase
         .from("reservation_attendees")
         .delete({ count: "exact" })
-        .eq("is_present", false)
+        .eq("presence_status", "no_show")
         .is("member_id", null)
         .is("guest_name", null)
         .in("reservation_id", reservationIds);
@@ -449,9 +464,11 @@ function ReservationCard({
 }: {
   reservation: ReservationWithAttendees;
   tableCapacity: number | null;
-  onTogglePresence: (attendeeId: string, currentlyPresent: boolean) => void;
+  onTogglePresence: (attendeeId: string, currentStatus: PresenceStatus) => void;
 }) {
-  const presentCount = reservation.attendees.filter((a) => a.is_present).length;
+  const presentCount = reservation.attendees.filter((a) =>
+    isPresentLike(a.presence_status)
+  ).length;
   const totalCount = reservation.attendees.length;
   const overCapacity =
     tableCapacity != null && presentCount > tableCapacity
@@ -493,7 +510,7 @@ function ReservationCard({
           <AttendeeCheckinRow
             key={a.id}
             attendee={a}
-            onTogglePresence={() => onTogglePresence(a.id, a.is_present)}
+            onTogglePresence={() => onTogglePresence(a.id, a.presence_status)}
           />
         ))}
       </ul>
@@ -510,7 +527,7 @@ function AttendeeCheckinRow({
 }) {
   const isMember = !!attendee.member_id && !!attendee.member;
   const isGuest = !attendee.member_id && !!attendee.guest_name;
-  const isAbsent = !attendee.is_present;
+  const isAbsent = attendee.presence_status === "no_show";
 
   let name: string;
   let kindIcon: string;
@@ -540,14 +557,14 @@ function AttendeeCheckinRow({
           handleClick();
         }
       }}
-      aria-pressed={attendee.is_present}
+      aria-pressed={isPresentLike(attendee.presence_status)}
       className={`flex cursor-pointer items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 py-2 text-sm transition-all duration-150 hover:bg-background print:cursor-default print:py-1.5 print:hover:bg-transparent ${
         isAbsent ? "opacity-60" : "opacity-100"
       }`}
     >
       <span className="flex min-w-0 items-center gap-2 truncate">
         <span aria-hidden className="hidden print:inline">
-          {attendee.is_present ? "✓" : "⏸"}
+          {isPresentLike(attendee.presence_status) ? "✓" : "⏸"}
         </span>
         <span aria-hidden className="print:hidden">
           {kindIcon}

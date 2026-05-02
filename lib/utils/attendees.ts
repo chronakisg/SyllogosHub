@@ -1,8 +1,19 @@
 import type {
   Member,
+  PresenceStatus,
   Reservation,
   ReservationAttendee,
 } from "@/lib/supabase/types";
+
+export function isPresentLike(status: PresenceStatus): boolean {
+  return status !== "no_show";
+}
+
+export function nextPresenceStatus(current: PresenceStatus): PresenceStatus {
+  if (current === "expected") return "no_show";
+  if (current === "no_show") return "present";
+  return "no_show";
+}
 
 export type AttendeeMemberSummary = Pick<
   Member,
@@ -26,7 +37,7 @@ export const RESERVATION_SELECT = `
     member_id,
     guest_name,
     is_lead,
-    is_present,
+    presence_status,
     checked_in_at,
     notes,
     created_at,
@@ -63,7 +74,9 @@ export function sortAttendees(
     const bucketB = b.member_id ? 0 : b.guest_name ? 1 : 2;
     if (bucketA !== bucketB) return bucketA - bucketB;
 
-    if (a.is_present !== b.is_present) return a.is_present ? -1 : 1;
+    const aPresent = isPresentLike(a.presence_status);
+    const bPresent = isPresentLike(b.presence_status);
+    if (aPresent !== bPresent) return aPresent ? -1 : 1;
 
     if (bucketA === 0) {
       const lastA = a.member?.last_name ?? "";
