@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-02  
+> Last updated: 2026-05-03  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -33,6 +33,57 @@
 
 Κάθε layer έχει standalone value και μπορεί να σταματήσει οπουδήποτε.
 
+## 🏗️ Architectural Stacks
+
+> Το SyllogosHub χωρίζεται σε **δύο διακριτά mental models** που εξυπηρετούν
+> διαφορετικές χρονικές στιγμές και διαφορετικούς χρήστες. Το ίδιο data layer
+> (events, reservations, attendees) τροφοδοτεί και τα δύο, αλλά κάθε stack
+> έχει δικό του UX footprint.
+
+### 📊 Διαχειριστικό Stack — admin / planning (πριν την εκδήλωση)
+
+Χρήστης: γραμματεία συλλόγου, ταμίας, υπεύθυνος εκδήλωσης.
+Χρονική στιγμή: από booking μέχρι post-event reporting.
+
+- `/events` + `/events/summary/[eventId]` — event lifecycle
+- `/seating` — table plan, παρέες, lead members (το **planning** view)
+- `/members` — member CRUD, family relations
+- `/finances` (+ `/finances/approvals`, `/finances/discounts`, receipt views)
+- `/sponsors` (consolidated tab μέσα στα Οικονομικά)
+- `/calendar`, `/permissions`, `/settings/*`
+- Components: `AttendeesEditor`, `TableCard`, sidebar reservation card
+
+### 🎩 Operational Stack — event-time (την ώρα της εκδήλωσης)
+
+Χρήστης: hostess, maître d', υπεύθυνος εισόδου.
+Χρονική στιγμή: live, στην πόρτα της εκδήλωσης.
+
+- `/seating/entrance-list` — mobile-first check-in από list με capacity warnings
+- 🔜 `/seating/checkin` — QR scanner page με auto check-in
+- 🔜 `/seating/live` — real-time attendance dashboard
+- 🔜 `/invite/[token]` — public invitation page (attendee-facing)
+- Mental model: read-mostly, optimistic UI, mobile-first, low-friction toggles
+- ΟΧΙ νούμερα/ποσά/εκπτώσεις — η hostess χρειάζεται status signal
+  (πληρωμένο: ναι/όχι), όχι οικονομικό detail.
+
+### Standalone-able principle
+
+Κάθε stack πρέπει να μπορεί να λειτουργήσει **χωρίς εξαρτήσεις από features που
+δεν αφορούν το use case** του πελάτη.
+
+- **Seating χωρίς Finances**: ένας οργανωτής γάμου, ιδιωτικού πάρτυ, ή εστιάτορας
+  θέλει table planning + παρέες + check-in, αλλά **όχι** πληρωμές/χορηγίες.
+  Το Finances είναι opt-in module, όχι hard dependency.
+- **Operational χωρίς Διαχειριστικό polish**: η hostess στην πόρτα δεν χρειάζεται
+  AttendeesEditor — μόνο toggle + counter.
+- **Διαχειριστικό χωρίς Operational**: μικροί σύλλογοι μπορεί να μην κάνουν ποτέ
+  QR check-in — το planning stack στέκει standalone.
+
+> **Implication για design decisions:** schema/UX επιλογές δεν πρέπει να
+> coupling-άρουν τα δύο stacks. Π.χ. το `is_present` toggle δουλεύει χωρίς
+> invitation token, το ticket_price δουλεύει χωρίς ever να χρησιμοποιηθεί
+> entrance list.
+
 ## 🟢 In Progress
 
 _(no active branches)_
@@ -53,6 +104,42 @@ _(no active branches)_
   - UI: Dropdown στο "Νέα Παρέα" modal (default: τρέχων user)
   - Sidebar display: «Κράτηση από: ΧΡΟΝΑΚΗΣ ΓΙΩΡΓΟΣ»
   - Estimated: M-L
+
+- [ ] **🎩 Presence UX Revisions — 3-state model**
+
+  Stack: Πρωτίστως 🎩 Operational (manual lock είναι event-time action),
+  αλλά touches και 📊 Διαχειριστικό (AttendeesEditor counters).
+
+  Strategic context: Παραδοσιακοί σύλλογοι ≠ formal events. Άνθρωποι
+  έρχονται σταδιακά (στις 21:00 μπορεί 3 από 11, στις 23:00 και τα 11).
+  Το current 2-state model (παρών/απών) είναι λάθος για αυτό το context.
+
+  Schema migration: `is_present` boolean → `presence_status` enum
+  - `expected` (default — αναμένεται να έρθει)
+  - `present` (έχει check-in)
+  - `no_show` (manual mark μετά grace period)
+
+  Backfill: existing data → "expected" (όχι "present" όπως το current
+  default), αφού το current optimistic default ήταν semantically λάθος.
+
+  UI changes:
+  - "Δεν ήρθε" badge → "Αναμένεται" (soft gray, όχι red)
+  - Sidebar counter (📊): "11 άτομα · 8 παρόντες · 3 αναμένονται"
+  - Entrance list (🎩): 3 buckets αντί για 2
+
+  New: Manual "Κλείδωμα παρουσιών" action (🎩 operational)
+  - Button στο /seating/entrance-list page (πρωτεύον location)
+  - Confirmation dialog: "Όσοι αναμένονται θα μαρκαριστούν ως no-show"
+  - Reserved tables που είναι άδεια: confirmation dialog για unlock
+  - Reverse-able: ΟΧΙ auto-undo, αλλά manual revert per attendee
+    (no_show → expected χειροκίνητα)
+
+  Remove: existing "Καθάρισε ανώνυμους απόντες" feature
+  - Anti-pattern: σταδιακή άφιξη είναι κανονική σε παραδοσιακό context
+  - Replaced by: 3-state model + manual lock
+
+  Estimated: M (multi-commit, schema migration, UI overhaul σε 2 stacks)
+  Connects με: Vision Layer 2 (Presence Layer ολοκληρώνεται με αυτό)
 
 ### Members domain
 
@@ -97,7 +184,7 @@ _(no active branches)_
 
 ### Finances domain
 
-- [ ] **Event Financials tab** — οικονομική επισκόπηση ανά εκδήλωση
+- [ ] **📊 Event Financials tab** — οικονομική επισκόπηση ανά εκδήλωση
   - Replace το current "Κρατήσεις Εκδηλώσεων" tab (duplicate view με
     Πλάνο Τραπεζιών — όλη η ίδια info υπάρχει εκεί)
   - Νέο content: per-event income breakdown
@@ -153,6 +240,13 @@ _(no active branches)_
   - Refactor σε `components/Modal.tsx` + `components/ConfirmDialog.tsx`
 
 ### Tech Debt & Cleanup
+
+- [ ] **📊 Re-launch abandoned `feat/event-financials-tab` branch**
+  - Branch deleted 2026-05-03, commit hash `29f5078` preserved για future cherry-pick
+  - Original work: payment toggle στον AttendeesEditor (single commit)
+  - Re-launch when Presence 3-state migration ολοκληρωθεί (avoid schema conflicts)
+  - `git cherry-pick 29f5078` σε νέο branch όταν έρθει η ώρα
+  - Estimated: S (cherry-pick + rebase resolution)
 
 - [ ] **xlsx → exceljs migration** (security concerns με xlsx package)
 - [ ] **Drop unused `reservations.guests` jsonb column**
