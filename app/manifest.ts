@@ -7,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Πλατφόρμα διαχείρισης συλλόγων και πολιτιστικών ενώσεων",
     start_url: "/",
     display: "standalone",
-    orientation: "portrait",
+    orientation: "any",
     background_color: "#ffffff",
     theme_color: "#800000",
     lang: "el",
