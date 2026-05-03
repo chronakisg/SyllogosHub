@@ -135,6 +135,8 @@ function SeatingView() {
   const [quickEditSaving, setQuickEditSaving] = useState(false);
   const [quickEditError, setQuickEditError] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  const [draggedReservationId, setDraggedReservationId] =
+    useState<string | null>(null);
 
   useEffect(() => {
     if (!clubId) return;
@@ -188,6 +190,13 @@ function SeatingView() {
     tableNumber: number;
     label: string | null;
     groupName: string;
+  } | null>(null);
+  const [overCapacityConfirm, setOverCapacityConfirm] = useState<{
+    reservationId: string;
+    tableNumber: number;
+    groupName: string;
+    attendeeCount: number;
+    capacity: number;
   } | null>(null);
 
   const unassigned = useMemo(() => {
@@ -824,6 +833,8 @@ function SeatingView() {
                         setQuickEditError(null);
                         setQuickEditReservationId(id);
                       }}
+                      onDragStart={(id) => setDraggedReservationId(id)}
+                      onDragEnd={() => setDraggedReservationId(null)}
                     />
                   </li>
                 ))}
@@ -861,6 +872,8 @@ function SeatingView() {
                           setQuickEditError(null);
                           setQuickEditReservationId(id);
                         }}
+                        onDragStart={(id) => setDraggedReservationId(id)}
+                        onDragEnd={() => setDraggedReservationId(null)}
                       />
                     </li>
                   ))}
@@ -905,47 +918,75 @@ function SeatingView() {
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
-                {venueConfig.tables.map((t) => (
-                  <TableCard
-                    key={t.id}
-                    table={t}
-                    reservation={reservationByTableNumber.get(t.number) ?? null}
-                    clubThreshold={clubThreshold}
-                    pendingAssign={!!selectedReservationId}
-                    selectedReservation={selectedReservation}
-                    onTableClick={() => {
-                      if (!selectedReservationId || !selectedReservation) return;
-                      const occupant = reservationByTableNumber.get(t.number);
-                      if (occupant && occupant.id !== selectedReservationId) {
-                        return;
+                {venueConfig.tables.map((t) => {
+                  const draggedRes = draggedReservationId
+                    ? reservations.find((r) => r.id === draggedReservationId) ?? null
+                    : null;
+                  return (
+                    <TableCard
+                      key={t.id}
+                      table={t}
+                      reservation={reservationByTableNumber.get(t.number) ?? null}
+                      clubThreshold={clubThreshold}
+                      pendingAssign={!!selectedReservationId}
+                      selectedReservation={selectedReservation}
+                      onTableClick={() => {
+                        if (!selectedReservationId || !selectedReservation) return;
+                        const occupant = reservationByTableNumber.get(t.number);
+                        if (occupant && occupant.id !== selectedReservationId) {
+                          return;
+                        }
+                        if (t.is_reserved) {
+                          setAssignmentConfirm({
+                            reservationId: selectedReservationId,
+                            tableNumber: t.number,
+                            label: t.reserved_label ?? null,
+                            groupName: selectedReservation.group_name,
+                          });
+                          return;
+                        }
+                        if (!occupant && getAttendeeCount(selectedReservation) > t.capacity) {
+                          setOverCapacityConfirm({
+                            reservationId: selectedReservationId,
+                            tableNumber: t.number,
+                            groupName: selectedReservation.group_name,
+                            attendeeCount: getAttendeeCount(selectedReservation),
+                            capacity: t.capacity,
+                          });
+                          return;
+                        }
+                        assignReservation(selectedReservationId, t.number);
+                      }}
+                      onDropReservation={(id) => {
+                        const res = reservations.find((r) => r.id === id) ?? null;
+                        const currentOccupant = reservationByTableNumber.get(t.number);
+                        if (res && !currentOccupant && getAttendeeCount(res) > t.capacity) {
+                          setOverCapacityConfirm({
+                            reservationId: id,
+                            tableNumber: t.number,
+                            groupName: res.group_name,
+                            attendeeCount: getAttendeeCount(res),
+                            capacity: t.capacity,
+                          });
+                          return;
+                        }
+                        assignReservation(id, t.number);
+                      }}
+                      onUnassign={() => {
+                        const occupant = reservationByTableNumber.get(t.number);
+                        if (occupant) assignReservation(occupant.id, null);
+                      }}
+                      onRemoveTable={() => handleRemoveTable(t.id)}
+                      onUpdateCapacity={(c) => handleUpdateCapacity(t.id, c)}
+                      onToggleShape={() => handleToggleShape(t.id)}
+                      onToggleReserved={() => handleToggleReserved(t.id)}
+                      onUpdateReservedLabel={(l) =>
+                        handleUpdateReservedLabel(t.id, l)
                       }
-                      if (t.is_reserved) {
-                        setAssignmentConfirm({
-                          reservationId: selectedReservationId,
-                          tableNumber: t.number,
-                          label: t.reserved_label ?? null,
-                          groupName: selectedReservation.group_name,
-                        });
-                        return;
-                      }
-                      assignReservation(selectedReservationId, t.number);
-                    }}
-                    onDropReservation={(id) =>
-                      assignReservation(id, t.number)
-                    }
-                    onUnassign={() => {
-                      const occupant = reservationByTableNumber.get(t.number);
-                      if (occupant) assignReservation(occupant.id, null);
-                    }}
-                    onRemoveTable={() => handleRemoveTable(t.id)}
-                    onUpdateCapacity={(c) => handleUpdateCapacity(t.id, c)}
-                    onToggleShape={() => handleToggleShape(t.id)}
-                    onToggleReserved={() => handleToggleReserved(t.id)}
-                    onUpdateReservedLabel={(l) =>
-                      handleUpdateReservedLabel(t.id, l)
-                    }
-                  />
-                ))}
+                      draggedReservation={draggedRes}
+                    />
+                  );
+                })}
               </div>
             )}
           </section>
@@ -990,6 +1031,20 @@ function SeatingView() {
           onConfirm={() => {
             const { reservationId, tableNumber } = assignmentConfirm;
             setAssignmentConfirm(null);
+            void assignReservation(reservationId, tableNumber);
+          }}
+        />
+      )}
+      {overCapacityConfirm && (
+        <ConfirmOverCapacityModal
+          groupName={overCapacityConfirm.groupName}
+          tableNumber={overCapacityConfirm.tableNumber}
+          attendeeCount={overCapacityConfirm.attendeeCount}
+          capacity={overCapacityConfirm.capacity}
+          onClose={() => setOverCapacityConfirm(null)}
+          onConfirm={() => {
+            const { reservationId, tableNumber } = overCapacityConfirm;
+            setOverCapacityConfirm(null);
             void assignReservation(reservationId, tableNumber);
           }}
         />
@@ -1066,6 +1121,8 @@ function ReservationChip({
   onToggleSelect,
   onOpenAttendees,
   onOpenQuickEdit,
+  onDragStart,
+  onDragEnd,
 }: {
   reservation: ReservationWithAttendees;
   selected: boolean;
@@ -1074,6 +1131,8 @@ function ReservationChip({
   onToggleSelect: () => void;
   onOpenAttendees: () => void;
   onOpenQuickEdit: (reservationId: string) => void;
+  onDragStart: (reservationId: string) => void;
+  onDragEnd: () => void;
 }) {
   const count = getAttendeeCount(reservation);
   const anonymous = hasAnonymousAttendees(reservation);
@@ -1108,7 +1167,9 @@ function ReservationChip({
       onDragStart={(e) => {
         e.dataTransfer.setData(DND_MIME, reservation.id);
         e.dataTransfer.effectAllowed = "move";
+        onDragStart(reservation.id);
       }}
+      onDragEnd={() => onDragEnd()}
       onClick={onToggleSelect}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -1322,6 +1383,7 @@ function TableCard({
   onToggleShape,
   onToggleReserved,
   onUpdateReservedLabel,
+  draggedReservation,
 }: {
   table: VenueTable;
   reservation: ReservationWithAttendees | null;
@@ -1336,6 +1398,7 @@ function TableCard({
   onToggleShape: () => void;
   onToggleReserved: () => void;
   onUpdateReservedLabel: (label: string) => void;
+  draggedReservation: ReservationWithAttendees | null;
 }) {
   const [dragOver, setDragOver] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -1412,13 +1475,19 @@ function TableCard({
     !!reservation &&
     (!selectedReservation || reservation.id !== selectedReservation.id);
   const fitsSelected = selectedReservation
-    ? selectedReservation.pax_count <= table.capacity
+    ? getAttendeeCount(selectedReservation) <= table.capacity
     : false;
+  const dragWouldOverflow =
+    draggedReservation !== null &&
+    !reservation &&
+    getAttendeeCount(draggedReservation) > table.capacity;
   const assignDisabled = assignmentMode && occupiedByOther;
 
   let cardSurfaceClass: string;
   if (dragOver) {
-    cardSurfaceClass = "border-accent bg-accent/10";
+    cardSurfaceClass = dragWouldOverflow
+      ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-500/10"
+      : "border-accent bg-accent/10";
   } else if (assignmentMode) {
     if (occupiedByOther) {
       cardSurfaceClass = "border-border bg-surface opacity-50";
@@ -1451,7 +1520,11 @@ function TableCard({
         e.dataTransfer.dropEffect = "move";
         setDragOver(true);
       }}
-      onDragLeave={() => setDragOver(false)}
+      onDragLeave={(e) => {
+        if (!cardRef.current?.contains(e.relatedTarget as Node)) {
+          setDragOver(false);
+        }
+      }}
       onDrop={(e) => {
         e.preventDefault();
         setDragOver(false);
@@ -1853,6 +1926,99 @@ function ConfirmAssignReservedModal({
             style={{ backgroundColor: MAROON }}
           >
             Ναι, αντιστοίχισε
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmOverCapacityModal({
+  groupName,
+  tableNumber,
+  attendeeCount,
+  capacity,
+  onClose,
+  onConfirm,
+}: {
+  groupName: string;
+  tableNumber: number;
+  attendeeCount: number;
+  capacity: number;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const AMBER = "#d97706";
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      role="alertdialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-surface"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="flex items-center justify-between gap-3 border-b-2 px-5 py-3"
+          style={{ borderColor: AMBER, color: AMBER }}
+        >
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            <span aria-hidden>⚠️</span>
+            Υπέρβαση χωρητικότητας
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-muted transition hover:bg-black/5"
+            aria-label="Κλείσιμο"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-3 px-5 py-4 text-sm">
+          <p>
+            Η παρέα{" "}
+            <span className="font-semibold">«{groupName}»</span>{" "}
+            έχει{" "}
+            <span className="font-semibold">{attendeeCount} άτομα</span>{" "}
+            αλλά το{" "}
+            <span className="font-semibold">Τραπέζι Νο {tableNumber}</span>{" "}
+            χωράει μόνο{" "}
+            <span className="font-semibold">{capacity}</span>.
+          </p>
+          <p className="text-muted">Θέλεις να το αντιστοιχίσεις έτσι κι αλλιώς;</p>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border bg-white px-4 py-1.5 text-sm transition hover:bg-background dark:bg-transparent"
+          >
+            Άκυρο
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="inline-flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium text-white transition"
+            style={{ backgroundColor: AMBER }}
+          >
+            Αντιστοίχισε έτσι κι αλλιώς
           </button>
         </div>
       </div>
