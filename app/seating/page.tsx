@@ -952,6 +952,13 @@ function SeatingView() {
                 <div className="flex items-center gap-1.5">
                   <span
                     aria-hidden
+                    className="inline-block h-3 w-3 rounded-sm border border-red-700 bg-red-50"
+                  />
+                  <span>Πλήρες</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    aria-hidden
                     className="inline-block h-3 w-3 rounded-full border-2 border-slate-400 bg-slate-100 dark:border-slate-500 dark:bg-slate-700"
                   />
                   <span>Πιασμένο</span>
@@ -1490,6 +1497,7 @@ function TableCard({
   const isReserved = !!table.is_reserved;
   const isOccupied = !!reservation;
   const lockDisabled = isOccupied;
+  const isFull = !!reservation && getAttendeeCount(reservation) >= table.capacity;
 
   const status = paymentStatus(reservation ? [reservation] : []);
   const paidBorderClass =
@@ -1536,7 +1544,11 @@ function TableCard({
     cardSurfaceClass =
       "border-yellow-400 bg-yellow-50 dark:bg-yellow-500/10";
   } else if (reservation) {
-    cardSurfaceClass = (paidBorderClass || "border-border") + " bg-background";
+    if (isFull) {
+      cardSurfaceClass = "border-red-700 bg-red-50";
+    } else {
+      cardSurfaceClass = (paidBorderClass || "border-border") + " bg-background";
+    }
   } else {
     cardSurfaceClass =
       "border-dashed border-border bg-surface hover:border-accent/60";
@@ -1713,7 +1725,9 @@ function TableCard({
         fallback={
           reservation
             ? freeSeats === 0
-              ? "Κατειλημμένο"
+              ? reservationCount > table.capacity
+                ? `Πλήρες · +${reservationCount - table.capacity}`
+                : "Πλήρες"
               : `Κατειλημμένο · ${reservationCount} ${
                   reservationCount === 1 ? "άτομο" : "άτομα"
                 }`
