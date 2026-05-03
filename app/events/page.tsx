@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -35,6 +36,10 @@ import type {
   SponsorInsert,
 } from "@/lib/supabase/types";
 import { AddReservationModal } from "@/components/AddReservationModal";
+import {
+  EventSummaryPanel,
+  type SummaryData,
+} from "@/components/EventSummaryPanel";
 
 type EventTab = "upcoming" | "past" | "all";
 
@@ -163,6 +168,18 @@ export default function EventsPage() {
     null
   );
   const [activeTab, setActiveTab] = useState<EventTab>("upcoming");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [summaryCache, setSummaryCache] = useState<Map<string, SummaryData>>(
+    () => new Map()
+  );
+
+  function toggleExpand(id: string) {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }
+
+  function handleSummaryLoad(id: string, data: SummaryData) {
+    setSummaryCache((m) => new Map(m).set(id, data));
+  }
 
   const loadEvents = useCallback(async () => {
     if (!clubId) return;
@@ -433,68 +450,99 @@ export default function EventsPage() {
                 </tr>
               ) : (
                 filtered.map((ev) => (
-                  <tr key={ev.id} className="hover:bg-background/40">
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{ev.event_name}</div>
-                      {(ev.location ||
-                        ev.entertainers_summary.length > 0) && (
-                        <div className="mt-0.5 text-xs text-muted">
-                          {[
-                            ev.location ? `📍 ${ev.location}` : null,
-                            ev.entertainers_summary.length > 0
-                              ? `🎵 ${entertainersBadge(ev.entertainers_summary)}`
-                              : null,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ")}
+                  <Fragment key={ev.id}>
+                    <tr className="hover:bg-background/40">
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{ev.event_name}</div>
+                        {(ev.location ||
+                          ev.entertainers_summary.length > 0) && (
+                          <div className="mt-0.5 text-xs text-muted">
+                            {[
+                              ev.location ? `📍 ${ev.location}` : null,
+                              ev.entertainers_summary.length > 0
+                                ? `🎵 ${entertainersBadge(ev.entertainers_summary)}`
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-muted">
+                        {new Date(ev.event_date).toLocaleDateString("el-GR")}
+                      </td>
+                      <td className="px-4 py-3 text-muted">{ev.table_count}</td>
+                      <td className="px-4 py-3 text-muted">
+                        {ev.reservation_count}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="inline-flex flex-wrap justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpand(ev.id)}
+                            aria-label={
+                              expandedId === ev.id
+                                ? "Κλείσιμο σύνοψης"
+                                : "Άνοιγμα σύνοψης"
+                            }
+                            aria-expanded={expandedId === ev.id}
+                            className="inline-flex items-center justify-center rounded-md border border-border bg-surface px-2 py-1 text-xs transition hover:bg-background"
+                          >
+                            {expandedId === ev.id ? "▴" : "▾"}
+                          </button>
+                          <Link
+                            href={`/events/summary/${ev.id}`}
+                            className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
+                          >
+                            Σύνοψη →
+                          </Link>
+                          <Link
+                            href={`/seating?event=${ev.id}`}
+                            className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
+                          >
+                            Πλάνο →
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => setAddReservationFor(ev.id)}
+                            className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
+                          >
+                            + Παρέα
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openEdit(ev)}
+                            className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
+                          >
+                            Επεξεργασία
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(ev)}
+                            className="rounded-md border border-danger/30 px-3 py-1 text-xs text-danger transition hover:bg-danger/10"
+                          >
+                            Διαγραφή
+                          </button>
                         </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-muted">
-                      {new Date(ev.event_date).toLocaleDateString("el-GR")}
-                    </td>
-                    <td className="px-4 py-3 text-muted">{ev.table_count}</td>
-                    <td className="px-4 py-3 text-muted">
-                      {ev.reservation_count}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="inline-flex flex-wrap justify-end gap-2">
-                        <Link
-                          href={`/events/summary/${ev.id}`}
-                          className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
+                      </td>
+                    </tr>
+                    {expandedId === ev.id && (
+                      <tr>
+                        <td
+                          colSpan={5}
+                          className="border-t border-border bg-background/30 px-4 py-4"
                         >
-                          Σύνοψη →
-                        </Link>
-                        <Link
-                          href={`/seating?event=${ev.id}`}
-                          className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
-                        >
-                          Πλάνο →
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => setAddReservationFor(ev.id)}
-                          className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
-                        >
-                          + Παρέα
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openEdit(ev)}
-                          className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
-                        >
-                          Επεξεργασία
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(ev)}
-                          className="rounded-md border border-danger/30 px-3 py-1 text-xs text-danger transition hover:bg-danger/10"
-                        >
-                          Διαγραφή
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                          <div className="overflow-x-auto">
+                            <EventSummaryPanel
+                              eventId={ev.id}
+                              cachedData={summaryCache.get(ev.id) ?? null}
+                              onLoad={handleSummaryLoad}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))
               )}
             </tbody>
