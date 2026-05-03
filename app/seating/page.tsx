@@ -30,6 +30,7 @@ import {
   type ReservationWithAttendees,
 } from "@/lib/utils/attendees";
 import { AttendeesEditor } from "@/components/AttendeesEditor";
+import { QuickEditReservationModal } from "@/components/QuickEditReservationModal";
 
 type TableShape = "round" | "square";
 
@@ -129,6 +130,10 @@ function SeatingView() {
   const [groupSearch, setGroupSearch] = useState("");
   const [attendeesEditorReservationId, setAttendeesEditorReservationId] =
     useState<string | null>(null);
+  const [quickEditReservationId, setQuickEditReservationId] =
+    useState<string | null>(null);
+  const [quickEditSaving, setQuickEditSaving] = useState(false);
+  const [quickEditError, setQuickEditError] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
 
   useEffect(() => {
@@ -533,6 +538,46 @@ function SeatingView() {
     [venueConfig.tables, saveVenueConfig]
   );
 
+  const handleQuickEdit = useCallback(
+    async (reservationId: string, newGroupName: string) => {
+      if (!clubId) return;
+      const reservation = reservations.find((r) => r.id === reservationId);
+      if (!reservation) return;
+
+      const previousState = reservation;
+      setQuickEditSaving(true);
+      setQuickEditError(null);
+      setReservations((prev) =>
+        prev.map((r) =>
+          r.id === reservationId ? { ...r, group_name: newGroupName } : r
+        )
+      );
+
+      try {
+        const supabase = getBrowserClient();
+        const { error: updateErr } = await supabase
+          .from("reservations")
+          .update({ group_name: newGroupName })
+          .eq("id", reservationId)
+          .eq("club_id", clubId);
+        if (updateErr) throw updateErr;
+
+        await refetchReservations(reservation.event_id);
+        setQuickEditReservationId(null);
+      } catch (err) {
+        setReservations((prev) =>
+          prev.map((r) => (r.id === reservationId ? previousState : r))
+        );
+        setQuickEditError(
+          err instanceof Error ? err.message : "Σφάλμα αποθήκευσης."
+        );
+      } finally {
+        setQuickEditSaving(false);
+      }
+    },
+    [reservations, clubId, refetchReservations]
+  );
+
   const handleRemoveTable = useCallback(
     async (tableId: string) => {
       const target = venueConfig.tables.find((x) => x.id === tableId);
@@ -775,6 +820,10 @@ function SeatingView() {
                       onOpenAttendees={() =>
                         setAttendeesEditorReservationId(r.id)
                       }
+                      onOpenQuickEdit={(id) => {
+                        setQuickEditError(null);
+                        setQuickEditReservationId(id);
+                      }}
                     />
                   </li>
                 ))}
@@ -808,6 +857,10 @@ function SeatingView() {
                         onOpenAttendees={() =>
                           setAttendeesEditorReservationId(r.id)
                         }
+                        onOpenQuickEdit={(id) => {
+                          setQuickEditError(null);
+                          setQuickEditReservationId(id);
+                        }}
                       />
                     </li>
                   ))}
@@ -960,6 +1013,21 @@ function SeatingView() {
             />
           );
         })()}
+      {quickEditReservationId &&
+        (() => {
+          const r = reservations.find((x) => x.id === quickEditReservationId);
+          if (!r) return null;
+          return (
+            <QuickEditReservationModal
+              isOpen
+              onClose={() => setQuickEditReservationId(null)}
+              onConfirm={(groupName) => handleQuickEdit(r.id, groupName)}
+              currentGroupName={r.group_name}
+              isSaving={quickEditSaving}
+              saveError={quickEditError}
+            />
+          );
+        })()}
     </div>
   );
 }
@@ -997,6 +1065,7 @@ function ReservationChip({
   tableNumber,
   onToggleSelect,
   onOpenAttendees,
+  onOpenQuickEdit,
 }: {
   reservation: ReservationWithAttendees;
   selected: boolean;
@@ -1004,6 +1073,7 @@ function ReservationChip({
   tableNumber?: number | null;
   onToggleSelect: () => void;
   onOpenAttendees: () => void;
+  onOpenQuickEdit: (reservationId: string) => void;
 }) {
   const count = getAttendeeCount(reservation);
   const anonymous = hasAnonymousAttendees(reservation);
@@ -1055,20 +1125,33 @@ function ReservationChip({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-medium">
-            {leadName ? (
-              <>
-                <span
-                  aria-hidden
-                  className="mr-1 text-amber-600 dark:text-amber-400"
-                >
-                  ⭐
-                </span>
-                {leadName}
-              </>
-            ) : (
-              reservation.group_name
+          <div className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+            {leadName && (
+              <span
+                aria-hidden
+                className="shrink-0 text-amber-600 dark:text-amber-400"
+              >
+                ⭐
+              </span>
             )}
+            <span className="truncate">
+              {leadName ?? reservation.group_name}
+            </span>
+            <button
+              type="button"
+              draggable={false}
+              onDragStart={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenQuickEdit(reservation.id);
+              }}
+              onKeyDown={(e) => e.stopPropagation()}
+              className="shrink-0 rounded p-1 text-xs leading-none text-stone-500 transition hover:bg-stone-100 hover:text-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-200"
+              title="Μετονομασία"
+              aria-label="Μετονομασία παρέας"
+            >
+              ✏️
+            </button>
           </div>
           <div className="mt-0.5 text-xs text-muted">
             {count} {count === 1 ? "άτομο" : "άτομα"}
