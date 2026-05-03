@@ -185,12 +185,6 @@ function SeatingView() {
     [selectedReservationId, reservations]
   );
 
-  const [assignmentConfirm, setAssignmentConfirm] = useState<{
-    reservationId: string;
-    tableNumber: number;
-    label: string | null;
-    groupName: string;
-  } | null>(null);
   const [overCapacityConfirm, setOverCapacityConfirm] = useState<{
     reservationId: string;
     tableNumber: number;
@@ -646,9 +640,23 @@ function SeatingView() {
       (s, r) => s + getAttendeeCount(r),
       0
     );
-    const paidGroups = reservations.filter((r) => r.is_paid).length;
-    const pendingGroups = reservations.length - paidGroups;
-    return { totalPax, paidGroups, pendingGroups };
+    const totalPresent = reservations.reduce(
+      (sum, r) =>
+        sum +
+        (r.attendees ?? []).filter(
+          (a) => a.presence_status === "present"
+        ).length,
+      0,
+    );
+    const totalExpected = reservations.reduce(
+      (sum, r) =>
+        sum +
+        (r.attendees ?? []).filter(
+          (a) => a.presence_status === "expected"
+        ).length,
+      0,
+    );
+    return { totalPax, totalPresent, totalExpected };
   }, [reservations]);
 
   if (role.loading) {
@@ -723,16 +731,16 @@ function SeatingView() {
             <span aria-hidden>·</span>
             <span>
               <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                {revenueStats.paidGroups}
+                {revenueStats.totalPresent}
               </span>{" "}
-              πληρωμένες
+              παρόντες
             </span>
             <span aria-hidden>·</span>
             <span>
               <span className="font-semibold text-amber-600 dark:text-amber-400">
-                {revenueStats.pendingGroups}
+                {revenueStats.totalExpected}
               </span>{" "}
-              εκκρεμείς
+              αναμένονται
             </span>
           </div>
         )}
@@ -909,6 +917,32 @@ function SeatingView() {
               </div>
             </div>
 
+            {venueConfig.tables.length > 0 && (
+              <div className="mb-4 flex flex-wrap items-center gap-4 text-xs text-muted">
+                <div className="flex items-center gap-1.5">
+                  <span
+                    aria-hidden
+                    className="inline-block h-3 w-3 rounded-full border-2 border-green-500 bg-green-50 dark:bg-green-500/10"
+                  />
+                  <span>Διαθέσιμο</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    aria-hidden
+                    className="inline-block h-3 w-3 rounded-full border-2 border-yellow-400 bg-yellow-50 dark:bg-yellow-500/10"
+                  />
+                  <span>Δεν χωράει η παρέα</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    aria-hidden
+                    className="inline-block h-3 w-3 rounded-full border-2 border-slate-400 bg-slate-100 dark:border-slate-500 dark:bg-slate-700"
+                  />
+                  <span>Πιασμένο</span>
+                </div>
+              </div>
+            )}
+
             {eventLoading ? (
               <div className="py-10 text-center text-muted">Φόρτωση…</div>
             ) : venueConfig.tables.length === 0 ? (
@@ -936,15 +970,7 @@ function SeatingView() {
                         if (occupant && occupant.id !== selectedReservationId) {
                           return;
                         }
-                        if (t.is_reserved) {
-                          setAssignmentConfirm({
-                            reservationId: selectedReservationId,
-                            tableNumber: t.number,
-                            label: t.reserved_label ?? null,
-                            groupName: selectedReservation.group_name,
-                          });
-                          return;
-                        }
+                        if (t.is_reserved) return;
                         if (!occupant && getAttendeeCount(selectedReservation) > t.capacity) {
                           setOverCapacityConfirm({
                             reservationId: selectedReservationId,
@@ -958,6 +984,7 @@ function SeatingView() {
                         assignReservation(selectedReservationId, t.number);
                       }}
                       onDropReservation={(id) => {
+                        if (t.is_reserved) return;
                         const res = reservations.find((r) => r.id === id) ?? null;
                         const currentOccupant = reservationByTableNumber.get(t.number);
                         if (res && !currentOccupant && getAttendeeCount(res) > t.capacity) {
@@ -1019,19 +1046,6 @@ function SeatingView() {
           onSubmit={async (input) => {
             await handleCreateEvent(input);
             setAddEventOpen(false);
-          }}
-        />
-      )}
-      {assignmentConfirm && (
-        <ConfirmAssignReservedModal
-          label={assignmentConfirm.label}
-          groupName={assignmentConfirm.groupName}
-          tableNumber={assignmentConfirm.tableNumber}
-          onClose={() => setAssignmentConfirm(null)}
-          onConfirm={() => {
-            const { reservationId, tableNumber } = assignmentConfirm;
-            setAssignmentConfirm(null);
-            void assignReservation(reservationId, tableNumber);
           }}
         />
       )}
@@ -1485,15 +1499,16 @@ function TableCard({
 
   let cardSurfaceClass: string;
   if (dragOver) {
-    cardSurfaceClass = dragWouldOverflow
-      ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-500/10"
-      : "border-accent bg-accent/10";
-  } else if (assignmentMode) {
-    if (occupiedByOther) {
+    if (isReserved) {
       cardSurfaceClass = "border-border bg-surface opacity-50";
-    } else if (isReserved) {
-      cardSurfaceClass =
-        "border-yellow-400 bg-yellow-50 dark:bg-yellow-500/10";
+    } else if (dragWouldOverflow) {
+      cardSurfaceClass = "border-yellow-400 bg-yellow-50 dark:bg-yellow-500/10";
+    } else {
+      cardSurfaceClass = "border-accent bg-accent/10";
+    }
+  } else if (assignmentMode) {
+    if (occupiedByOther || isReserved) {
+      cardSurfaceClass = "border-border bg-surface opacity-50";
     } else if (fitsSelected) {
       cardSurfaceClass =
         "border-green-500 bg-green-50 dark:bg-green-500/10";
@@ -1838,98 +1853,6 @@ function TableLabelEdit({
     >
       {displayText}
     </button>
-  );
-}
-
-function ConfirmAssignReservedModal({
-  label,
-  groupName,
-  tableNumber,
-  onClose,
-  onConfirm,
-}: {
-  label: string | null;
-  groupName: string;
-  tableNumber: number;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const MAROON = "#800000";
-
-  return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-      role="alertdialog"
-      aria-modal="true"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-md overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-surface"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div
-          className="flex items-center justify-between gap-3 border-b-2 px-5 py-3"
-          style={{ borderColor: MAROON, color: MAROON }}
-        >
-          <h2 className="flex items-center gap-2 text-base font-semibold">
-            <span aria-hidden>🔒</span>
-            Κρατημένο τραπέζι
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-muted transition hover:bg-black/5"
-            aria-label="Κλείσιμο"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div className="space-y-3 px-5 py-4 text-sm">
-          <p>
-            Το <span className="font-semibold">Τραπέζι Νο {tableNumber}</span>{" "}
-            είναι κρατημένο
-            {label ? (
-              <>
-                {" "}
-                για <span className="font-semibold">«{label}»</span>
-              </>
-            ) : null}
-            . Θες πραγματικά να βάλεις την παρέα{" "}
-            <span className="font-semibold">«{groupName}»</span> εδώ;
-          </p>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md border border-border bg-white px-4 py-1.5 text-sm transition hover:bg-background dark:bg-transparent"
-          >
-            Άκυρο
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="inline-flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium text-white transition"
-            style={{ backgroundColor: MAROON }}
-          >
-            Ναι, αντιστοίχισε
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 
