@@ -8,6 +8,7 @@ import { useRole } from "@/lib/hooks/useRole";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
 import { calculateAge, generateUuid } from "@/lib/utils/discounts";
+import { formatMemberName } from "@/lib/utils/attendees";
 import {
   BOARD_POSITIONS,
   DEPARTMENT_ROLE_LABELS,
@@ -93,9 +94,6 @@ function defaultFamilyRole(birthDate: string | null): FamilyRole {
 const inputClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
 
-function displayName(m: { first_name: string; last_name: string }): string {
-  return `${m.last_name} ${m.first_name}`.trim();
-}
 
 export default function MembersPage() {
   const role = useRole();
@@ -665,7 +663,7 @@ export default function MembersPage() {
 
   async function handleDelete(member: MemberWithDepartments) {
     const confirmed = window.confirm(
-      `Διαγραφή του μέλους "${displayName(member)}"; Η ενέργεια δεν αναιρείται.`
+      `Διαγραφή του μέλους "${formatMemberName(member)}"; Η ενέργεια δεν αναιρείται.`
     );
     if (!confirmed || !clubId) return;
     try {
@@ -930,7 +928,7 @@ export default function MembersPage() {
                                 : "bg-rose-500")
                             }
                           />
-                          <span>{displayName(m)}</span>
+                          <span>{formatMemberName(m)}</span>
                         </span>
                         {m.is_board_member && (
                           <span

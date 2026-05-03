@@ -28,6 +28,7 @@ import type {
   Reservation,
 } from "@/lib/supabase/types";
 import { calculateDiscount, generateUuid } from "@/lib/utils/discounts";
+import { formatMemberName } from "@/lib/utils/attendees";
 import SponsorsTab from "./SponsorsTab";
 
 type Tab = "payments" | "reservations" | "sponsors";
@@ -45,9 +46,6 @@ const eur = new Intl.NumberFormat("el-GR", {
   currency: "EUR",
 });
 
-function memberName(m: Pick<Member, "first_name" | "last_name">): string {
-  return `${m.last_name} ${m.first_name}`.trim();
-}
 
 function currentMonthPeriod(): string {
   const now = new Date();
@@ -929,7 +927,7 @@ function PaymentsTab() {
               <option value="">— Όλα —</option>
               {members.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {memberName(m)}
+                  {formatMemberName(m)}
                 </option>
               ))}
             </select>
@@ -2109,7 +2107,7 @@ function PaymentModal({
               <option value="">— Επιλέξτε —</option>
               {members.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {memberName(m)}
+                  {formatMemberName(m)}
                 </option>
               ))}
             </select>
