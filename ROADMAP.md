@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-03  
+> Last updated: 2026-05-03 (afternoon reconciliation)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -105,48 +105,32 @@ _(no active branches)_
   - Sidebar display: «Κράτηση από: ΧΡΟΝΑΚΗΣ ΓΙΩΡΓΟΣ»
   - Estimated: M-L
 
-- [ ] **🎩 Presence UX Revisions — 3-state model**
+- [ ] **🎩 Presence "Κλείδωμα Παρουσιών" — bulk lock action**
 
-  Stack: Πρωτίστως 🎩 Operational (manual lock είναι event-time action),
-  αλλά touches και 📊 Διαχειριστικό (AttendeesEditor counters).
+  Stack: 🎩 Operational
 
-  Strategic context: Παραδοσιακοί σύλλογοι ≠ formal events. Άνθρωποι
-  έρχονται σταδιακά (στις 21:00 μπορεί 3 από 11, στις 23:00 και τα 11).
-  Το current 2-state model (παρών/απών) είναι λάθος για αυτό το context.
+  Strategic context: Η 3-state spec (expected/present/no_show)
+  είναι ολοκληρωμένη σε schema (PR #7) και UI (PR #10).
+  Λείπει μόνο το manual lock action που μετατρέπει bulk όλους
+  τους "expected" σε "no_show" μετά grace period.
 
-  Schema migration: `is_present` boolean → `presence_status` enum
-  - `expected` (default — αναμένεται να έρθει)
-  - `present` (έχει check-in)
-  - `no_show` (manual mark μετά grace period)
+  Done μέχρι τώρα:
+  - presence_status enum schema (PR #7)
+  - 3-state UI counters + badges στο AttendeesEditor (PR #10)
+  - Entrance list 3-state buckets (PR #10)
+  - "Δεν ήρθε" → "Αναμένεται" rename (PR #10)
+  - Removal του "Καθάρισε ανώνυμους απόντες" (PR #11)
 
-  Backfill: existing data → "expected" (όχι "present" όπως το current
-  default), αφού το current optimistic default ήταν semantically λάθος.
+  What's left:
+  - Button "Κλείδωμα παρουσιών" στο /seating/entrance-list
+  - Confirmation dialog: "Όσοι αναμένονται θα μαρκαριστούν
+    ως no-show"
+  - Reserved tables που είναι άδεια: confirmation dialog
+    για unlock
+  - Manual revert per attendee (no_show → expected)
 
-  UI changes:
-  - "Δεν ήρθε" badge → "Αναμένεται" (soft gray, όχι red)
-  - Sidebar counter (📊): "11 άτομα · 8 παρόντες · 3 αναμένονται"
-  - Entrance list (🎩): 3 buckets αντί για 2
-
-  New: Manual "Κλείδωμα παρουσιών" action (🎩 operational)
-  - Button στο /seating/entrance-list page (πρωτεύον location)
-  - Confirmation dialog: "Όσοι αναμένονται θα μαρκαριστούν ως no-show"
-  - Reserved tables που είναι άδεια: confirmation dialog για unlock
-  - Reverse-able: ΟΧΙ auto-undo, αλλά manual revert per attendee
-    (no_show → expected χειροκίνητα)
-
-  Remove: existing "Καθάρισε ανώνυμους απόντες" feature
-  - Anti-pattern: σταδιακή άφιξη είναι κανονική σε παραδοσιακό context
-  - Replaced by: 3-state model + manual lock
-
-  Estimated: M (multi-commit, schema migration, UI overhaul σε 2 stacks)
-  Connects με: Vision Layer 2 (Presence Layer ολοκληρώνεται με αυτό)
-
-### Members domain
-
-- [ ] **Member delete flow** — `/members` modal δεν έχει delete button
-  - Considerations: cascade σε attendees, payment history retention
-  - Soft vs hard delete decision
-  - Estimated: M
+  Estimated: S-M (single button, modal, bulk update query)
+  Connects με: Vision Layer 2 (Presence Layer ολοκληρώνεται)
 
 ### Invitations & Check-in domain (future layers)
 
@@ -219,16 +203,6 @@ _(no active branches)_
   Replaces: cherry-pick του 29f5078 (abandoned event-financials-tab branch)
   Connects με: event_expenses + age_categorization + Cashier Interface
 
-### Sidebar & UX polish (chore branch)
-
-- [ ] **Events page tabs** — Επερχόμενες / Παλαιότερες / Όλες
-  - Default tab: "Επερχόμενες" (event_date >= today)
-  - Παλαιότερες: descending sort
-  - Counter στα tabs (3) (47)
-  - Σήμερα → Επερχόμενες bucket
-  - Δεν είναι hide/archive, μόνο διαχωρισμός
-  - Estimated: M
-
 ### 🎩 Operational interfaces
 
 - [ ] **💰 Cashier Interface (Φάση 2 — Είσοδος/Ταμείο)**
@@ -298,31 +272,19 @@ _(no active branches)_
 
 ### 📱 Mobile & Cross-cutting
 
-- [ ] **📱 Mobile UX Polish — orientation + header optimization**
+- [ ] **📱 Mobile Header Collapse — compact header <768px**
 
-  Stack: 📊 + 🎩 (επηρεάζει και τα δύο)
+  Stack: 📊 + 🎩
 
-  Field testing έδειξε 2 issues σε tablet + κινητό PWA installation:
+  Done: Orientation fix (PR #9 — manifest 'any')
 
-  **Issue 1: Orientation locked to portrait**
-  - manifest.json έχει `'orientation': 'portrait'` (ή parsed κάπως)
-  - Tablet ειδικά χρειάζεται landscape για:
-    - Πλάνο Τραπεζιών (wide layout)
-    - Events listing (πολλές στήλες)
-  - Plan:
-    - Change manifest → `'orientation': 'any'`
-    - Audit όλα τα pages σε landscape
-    - Adjust max-width containers
+  What's left:
+  - Logo collapse σε icon (mobile only)
+  - Hamburger menu για nav
+  - User card → dropdown από avatar
+  - Target: ~50-60px total header (από ~340px σήμερα)
 
-  **Issue 2: Header taking ~340px on mobile**
-  - Logo + club name + tab nav + user card = wasted space
-  - Plan για mobile (<768px):
-    - Collapse logo σε icon
-    - Hamburger menu για nav
-    - User card → dropdown από avatar
-    - Target: ~50-60px total header
-
-  Estimated: M (responsive design + manifest update + multi-page audit)
+  Estimated: M (responsive design, AppShell rework)
   Priority: High (UX blocker σε field use)
 
 ## 🟢 Nice to Have / Future
@@ -352,33 +314,6 @@ _(no active branches)_
 
   Estimated: S
   Connects με: 3-state presence model (lock attendance flow)
-
-- [ ] **🏛️ Max venue capacity ανά event**
-
-  Stack: 📊 Διαχειριστικό
-
-  Strategic context: Κάθε εκδήλωση έχει μέγιστο αριθμό καλεσμένων
-  βάσει του χώρου (εστιατόριο, αίθουσα, κλπ). Σήμερα δεν τηρείται
-  πουθενά, οπότε σύλλογος μπορεί να υπερβεί το όριο σε σχεδιασμό
-  χωρίς προειδοποίηση.
-
-  Schema:
-  - `events.venue_max_capacity` (smallint, nullable)
-  - Π.χ. 200 για κανονικό χορό, 350 για mega event
-
-  UI:
-  - Visible στο event header + settings tab
-  - Counter pattern: "31 άτομα / 200 max" στο /seating header
-  - Warning visual όταν φτάνεις 90% του max
-
-  Validation:
-  - Hard block; Soft warning; → TBD
-  - Πιθανώς: hard block σε νέες reservations, soft warning για
-    υπέρβαση μέσω AttendeesEditor (override capability)
-
-  Connects με: planning workflow, sponsorship sizing, event dashboard
-
-  Estimated: M-L (schema + UI + validation logic)
 
 ### Family & Genealogy
 
@@ -603,6 +538,46 @@ _(no active branches)_
 
 ## ✅ Recently Done
 
+### feat/venue-max-capacity (merged 2026-05-03) — PR #16
+
+- [x] `events.venue_max_capacity` smallint nullable column
+- [x] EventInsert / EventUpdate types στο hand-crafted types.ts
+- [x] Input field στο /events EventModal (DetailsTab)
+- [x] /seating header counter με color thresholds
+      (text-red-600 σε overflow)
+- [x] AddEventModal στο seating page συμπεριλαμβάνει το field
+
+### feat/presence-cleanup (merged 2026-05-02) — PR #11
+
+- [x] Αφαίρεση του "Καθάρισε ανώνυμους απόντες" feature
+      (~175 lines από entrance-list)
+- [x] Anti-pattern για παραδοσιακούς συλλόγους —
+      αντικαθίσταται από manual lock (μελλοντικά)
+
+### feat/presence-3state-ui (merged 2026-05-02) — PR #10
+
+Μεγάλο PR, 9 files, multi-feature:
+
+- [x] AttendeesEditor 3-state presence UI
+      (expected/present/no_show counters + badges)
+- [x] /events page tabs (Επερχόμενες/Παλαιότερες/Όλες) με
+      tabCounts
+- [x] AddReservationModal rewrite
+- [x] Seating sidebar cleanup
+- [x] "Δεν ήρθε" badge → "Αναμένεται" rename
+
+### fix/pwa-orientation (merged 2026-05-02) — PR #9
+
+- [x] manifest.ts orientation 'portrait' → 'any'
+- [x] Tablet landscape support για /seating wide layouts
+
+### feat/presence-3state-quickfix (merged 2026-05-02) — PR #7
+
+- [x] Schema: is_present boolean → presence_status enum
+      (expected | present | no_show)
+- [x] Backfill existing data → "expected"
+- [x] Type updates σε 5 files (hand-crafted types.ts)
+
 ### chore/cleanup-and-quick-edit (merged 2026-05-03) — PR #15
 
 7 commits, comprehensive cleanup + seating UX revamp:
@@ -704,6 +679,10 @@ Bonus fixes εντοπισμένα κατά τη διάρκεια:
 - [x] Sidebar button "📋 Λίστα Εισόδου & Check-in"
 - [x] Connection με is_present για live attendance tracking
 
+---
+
+## 📜 Older Releases
+
 ### chore/roadmap-vision-pr2 (merged 2026-05-01) — PR #4
 
 - [x] Vision & Architecture Compass section — end-game narrative
@@ -722,7 +701,7 @@ Bonus fixes εντοπισμένα κατά τη διάρκεια:
 - Data preserved: 1 reservation, 11 anonymous attendees, no real customer data lost
 - 11 attendees, 3 FKs, 6 indexes, 1 RLS policy, 1 trigger restored
 
-### feat/guest-list-attendees (this branch)
+### feat/guest-list-attendees (merged 2026-05-01) — PR #2
 
 - [x] Schema: `reservation_attendees` table + backfill (commit `a0b64b1`)
 - [x] Read-only display στο seating page (commit `4e5b5a0`)
