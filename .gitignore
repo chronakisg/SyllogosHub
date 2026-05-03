@@ -47,3 +47,6 @@ public/swe-worker-*.js
 
 # Claude Code local artifacts
 .claude/scheduled_tasks.lock
+
+.claude/settings.local.json
+supabase/.temp/
