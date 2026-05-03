@@ -6,6 +6,7 @@ import { useRole } from "@/lib/hooks/useRole";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
 import type { Payment, PaymentType } from "@/lib/supabase/types";
+import { formatMemberName } from "@/lib/utils/attendees";
 
 const PAYMENT_TYPE_LABEL: Record<PaymentType, string> = {
   monthly_fee: "Μηνιαία Συνδρομή",
@@ -179,7 +180,10 @@ export default function ApprovalsPage() {
       ) : (
         <ul className="space-y-3">
           {rows.map((p) => {
-            const memberName = `${p.member_last_name ?? ""} ${p.member_first_name ?? ""}`.trim();
+            const memberName = formatMemberName({
+              first_name: p.member_first_name,
+              last_name: p.member_last_name,
+            });
             const original = p.original_amount ?? p.amount;
             const finalAmt = p.amount;
             const diff = original - finalAmt;

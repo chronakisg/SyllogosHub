@@ -428,11 +428,6 @@ export type PaymentTemplateInsert = {
 
 export type PaymentTemplateUpdate = Partial<Omit<PaymentTemplate, "id">>;
 
-export type Guest = {
-  name: string;
-  member_id?: string;
-};
-
 export type Reservation = {
   id: string;
   club_id: string | null;
@@ -441,7 +436,6 @@ export type Reservation = {
   pax_count: number;
   table_number: number | null;
   is_paid: boolean;
-  guests: Guest[] | null;
   created_at: string;
 };
 
@@ -453,7 +447,6 @@ export type ReservationInsert = {
   pax_count: number;
   table_number?: number | null;
   is_paid?: boolean;
-  guests?: Guest[] | null;
   created_at?: string;
 };
 

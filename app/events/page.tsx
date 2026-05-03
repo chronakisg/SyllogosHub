@@ -976,7 +976,7 @@ function EventModal({
                 onCreated={(ent) => {
                   setEntertainers((s) => {
                     const next = [...s, ent];
-                    next.sort((a, b) => a.name.localeCompare(b.name, "el"));
+                    next.sort((a, b) => a.name.localeCompare(b.name, "el", { sensitivity: "base" }));
                     return next;
                   });
                   setEventEntertainers((s) => [
