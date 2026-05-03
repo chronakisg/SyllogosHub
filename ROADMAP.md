@@ -327,6 +327,59 @@ _(no active branches)_
 
 ## 🟢 Nice to Have / Future
 
+### Seating UX
+
+- [ ] **🔴 "Full" visual state για 100% γεμάτα τραπέζια**
+
+  Stack: 📊 Διαχειριστικό + 🎩 Operational
+
+  Strategic context: Όταν planning είναι complete (παρέα 8 ατόμων
+  σε τραπέζι 8 θέσεων), το τραπέζι είναι "πλήρες" σε σχεδιασμό —
+  default state μέχρι να ενεργοποιηθεί το Lock Attendance flow στις
+  23:00. Visual cue χρειάζεται για quick scan του πλάνου.
+
+  Spec:
+  - Trigger: `attendees.length >= capacity` (idle state)
+  - Color: μπορντό solid (brand color, signals "filled completion")
+  - Status text: "Πλήρες" αντί generic "Κατειλημμένο"
+  - Όταν Lock Attendance κάνει release (no-show), επιστρέφει σε
+    "Has space" state αυτόματα
+
+  UX considerations:
+  - Διαφορετικό από κίτρινο over-capacity warning (drag mode)
+  - Διαφορετικό από dimmed (occupied σε assignment mode)
+  - Συμπληρωματικό με upcoming 3-state presence model
+
+  Estimated: S
+  Connects με: 3-state presence model (lock attendance flow)
+
+- [ ] **🏛️ Max venue capacity ανά event**
+
+  Stack: 📊 Διαχειριστικό
+
+  Strategic context: Κάθε εκδήλωση έχει μέγιστο αριθμό καλεσμένων
+  βάσει του χώρου (εστιατόριο, αίθουσα, κλπ). Σήμερα δεν τηρείται
+  πουθενά, οπότε σύλλογος μπορεί να υπερβεί το όριο σε σχεδιασμό
+  χωρίς προειδοποίηση.
+
+  Schema:
+  - `events.venue_max_capacity` (smallint, nullable)
+  - Π.χ. 200 για κανονικό χορό, 350 για mega event
+
+  UI:
+  - Visible στο event header + settings tab
+  - Counter pattern: "31 άτομα / 200 max" στο /seating header
+  - Warning visual όταν φτάνεις 90% του max
+
+  Validation:
+  - Hard block; Soft warning; → TBD
+  - Πιθανώς: hard block σε νέες reservations, soft warning για
+    υπέρβαση μέσω AttendeesEditor (override capability)
+
+  Connects με: planning workflow, sponsorship sizing, event dashboard
+
+  Estimated: M-L (schema + UI + validation logic)
+
 ### Family & Genealogy
 
 - [ ] **Genealogy module** (Επίπεδο 3 — Genealogical tree)
@@ -501,21 +554,6 @@ _(no active branches)_
 
 ### Tech Debt & Cleanup
 
-- [ ] **Consolidate display name helpers** (post PR #12)
-  - 3 file-local helpers (`displayName` × 2 σε `members/page.tsx` +
-    `finances/page.tsx`, `memberName` σε `finances/SponsorsTab.tsx`)
-    πρέπει να γίνουν shared `formatMemberName`
-  - Already exists στο `lib/utils/attendees.ts` από PR #12
-  - Quiet day refactor — no behavioral change
-  - Estimated: S
-
-- [ ] **Greek collation sensitivity σε `localeCompare`** (post PR #12)
-  - Τα `localeCompare("el")` calls δεν έχουν `sensitivity: "base"`
-  - Edge case bug: "Ι" vs "ι", τονισμένα chars sort separately
-  - Risk: μπορεί να αλλάξει sort order σε existing data — needs careful
-    rollout
-  - Estimated: S
-
 - [ ] **TableLabelEdit `editInitialValue` prop** (post PR #13)
   - Goal: αν θέλουμε ποτέ να pre-fill το edit input με current label
     (custom ή party name)
@@ -531,8 +569,10 @@ _(no active branches)_
   - Estimated: S (cherry-pick + rebase resolution)
 
 - [ ] **xlsx → exceljs migration** (security concerns με xlsx package)
-- [ ] **Drop unused `reservations.guests` jsonb column**
-  - Confirmed empty in beta DB, never used in app code
+- [ ] **Drop `reservations.guests` jsonb column** (post PR #15 merge)
+  - Code-side cleanup έγινε στο PR #15 (GuestsPanel deprecated)
+  - Pending: `ALTER TABLE reservations DROP COLUMN guests;`
+  - Run μετά το merge στη Supabase SQL Editor
 - [ ] **Document hand-crafted types.ts decision**
   - `npx supabase gen types` workflow είναι BROKEN για αυτό το project
   - types.ts είναι hand-crafted — γράψε comment + README section
@@ -551,6 +591,37 @@ _(no active branches)_
   - Estimated: S (write doc + add to README)
 
 ## ✅ Recently Done
+
+### chore/cleanup-and-quick-edit (merged 2026-05-03) — PR #15
+
+7 commits, comprehensive cleanup + seating UX revamp:
+
+- [x] `.gitignore` — `.claude/scheduled_tasks.lock` (cd293c0)
+- [x] **Display name helpers consolidation** — 3 file-locals →
+  shared `formatMemberName` (aa7023a)
+- [x] **Greek collation sensitivity** — `{ sensitivity: "base" }`
+  σε 12 localeCompare calls (7 files) (7f0b93f)
+- [x] **GuestsPanel deprecation** — αφαίρεση legacy feature
+  (~291 lines), preparation για column drop (b28d0d6)
+- [x] **Quick-edit modal για μετονομασία παρέας** — pencil icon
+  inline στο ReservationChip, single-field rename (8e83cc0)
+- [x] **Capacity-aware drag feedback** — yellow border όταν
+  drag-over over-capacity table + ConfirmOverCapacityModal με
+  amber accent (4856119)
+- [x] **Reserved tables = hard block** — ConfirmAssignReservedModal
+  removed (~91 lines), 🔒/🔓 toggle είναι το override mechanism
+  (dd3fbe5)
+- [x] **Color legend strip** πάνω από tables grid — 3 entries
+  (Διαθέσιμο/Δεν χωράει/Πιασμένο) (dd3fbe5)
+- [x] **Header counters update** — `πληρωμένες/εκκρεμείς` →
+  `παρόντες/αναμένονται` — seating focus on presence/identity,
+  not payments (dd3fbe5)
+- [x] **4-state assignmentMode chain cleanup** — collapse
+  occupiedByOther + isReserved branches (dd3fbe5)
+
+Bonus fixes εντοπισμένα κατά τη διάρκεια:
+- presence semantic separation στο ReservationChip
+- onDragLeave child-element flicker fix (relatedTarget pattern)
 
 ### feat/seating-unified-list (merged 2026-05-03) — PR #13
 
