@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useSearchParams } from "next/navigation";
 import {
@@ -17,7 +17,6 @@ import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
 import type {
   Event as EventRow,
-  Guest,
   Member,
   Reservation,
 } from "@/lib/supabase/types";
@@ -128,9 +127,6 @@ function SeatingView() {
   const [batchTablesOpen, setBatchTablesOpen] = useState(false);
   const [addEventOpen, setAddEventOpen] = useState(false);
   const [groupSearch, setGroupSearch] = useState("");
-  const [guestPanelReservationId, setGuestPanelReservationId] = useState<
-    string | null
-  >(null);
   const [attendeesEditorReservationId, setAttendeesEditorReservationId] =
     useState<string | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -537,29 +533,6 @@ function SeatingView() {
     [venueConfig.tables, saveVenueConfig]
   );
 
-  const handleUpdateGuests = useCallback(
-    async (reservationId: string, guests: Guest[]) => {
-      if (!clubId) return;
-      const previous = reservations;
-      setReservations((prev) =>
-        prev.map((r) => (r.id === reservationId ? { ...r, guests } : r))
-      );
-      try {
-        const supabase = getBrowserClient();
-        const { error: uErr } = await supabase
-          .from("reservations")
-          .update({ guests })
-          .eq("id", reservationId)
-          .eq("club_id", clubId);
-        if (uErr) throw uErr;
-      } catch (err) {
-        setReservations(previous);
-        setError(errorMessage(err, "Σφάλμα αποθήκευσης καλεσμένων."));
-      }
-    },
-    [reservations, clubId]
-  );
-
   const handleRemoveTable = useCallback(
     async (tableId: string) => {
       const target = venueConfig.tables.find((x) => x.id === tableId);
@@ -918,9 +891,6 @@ function SeatingView() {
                     onUpdateReservedLabel={(l) =>
                       handleUpdateReservedLabel(t.id, l)
                     }
-                    onOpenGuests={(reservationId) =>
-                      setGuestPanelReservationId(reservationId)
-                    }
                   />
                 ))}
               </div>
@@ -971,28 +941,6 @@ function SeatingView() {
           }}
         />
       )}
-      {guestPanelReservationId &&
-        (() => {
-          const reservation = reservations.find(
-            (r) => r.id === guestPanelReservationId
-          );
-          if (!reservation) return null;
-          const table =
-            reservation.table_number != null
-              ? tablesByNumber.get(reservation.table_number) ?? null
-              : null;
-          return (
-            <GuestsPanel
-              reservation={reservation}
-              tableCapacity={table?.capacity ?? null}
-              members={members}
-              onClose={() => setGuestPanelReservationId(null)}
-              onChange={(guests) =>
-                handleUpdateGuests(reservation.id, guests)
-              }
-            />
-          );
-        })()}
       {attendeesEditorReservationId &&
         (() => {
           const reservation = reservations.find(
@@ -1291,7 +1239,6 @@ function TableCard({
   onToggleShape,
   onToggleReserved,
   onUpdateReservedLabel,
-  onOpenGuests,
 }: {
   table: VenueTable;
   reservation: ReservationWithAttendees | null;
@@ -1306,7 +1253,6 @@ function TableCard({
   onToggleShape: () => void;
   onToggleReserved: () => void;
   onUpdateReservedLabel: (label: string) => void;
-  onOpenGuests: (reservationId: string) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -1600,30 +1546,11 @@ function TableCard({
             e.dataTransfer.setData(DND_MIME, reservation.id);
             e.dataTransfer.effectAllowed = "move";
           }}
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenGuests(reservation.id);
-          }}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              onOpenGuests(reservation.id);
-            }
-          }}
           className={
-            "mt-1 inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-xs font-medium active:cursor-grabbing " +
+            "mt-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium active:cursor-grabbing " +
             (overCapacity
               ? "bg-danger/10 text-danger"
               : "bg-accent/10 text-accent")
-          }
-          title={
-            overCapacity
-              ? `Προσοχή: ${reservationCount} άτομα σε τραπέζι ${table.capacity} θέσεων`
-              : reservationAnonymous
-                ? "Διαχείριση καλεσμένων (έχει ανώνυμα μέλη)"
-                : "Διαχείριση καλεσμένων"
           }
         >
           {freeSeats > 0 ? (
@@ -2151,219 +2078,6 @@ function AddEventModal({
         />
       </form>
     </Modal>
-  );
-}
-
-function GuestsPanel({
-  reservation,
-  tableCapacity,
-  members,
-  onClose,
-  onChange,
-}: {
-  reservation: ReservationWithAttendees;
-  tableCapacity: number | null;
-  members: Member[];
-  onClose: () => void;
-  onChange: (guests: Guest[]) => void | Promise<void>;
-}) {
-  const guests = useMemo(
-    () => reservation.guests ?? [],
-    [reservation.guests]
-  );
-  const capacity = tableCapacity ?? reservation.pax_count;
-
-  const [search, setSearch] = useState("");
-  const [debounced, setDebounced] = useState("");
-  const [guestName, setGuestName] = useState("");
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(search.trim()), 300);
-    return () => clearTimeout(t);
-  }, [search]);
-
-  const takenMemberIds = useMemo(
-    () =>
-      new Set(
-        guests
-          .map((g) => g.member_id)
-          .filter((id): id is string => typeof id === "string")
-      ),
-    [guests]
-  );
-
-  const matches = useMemo(() => {
-    const q = debounced.toLowerCase();
-    if (!q) return [] as Member[];
-    return members
-      .filter((m) => !takenMemberIds.has(m.id))
-      .filter((m) =>
-        `${m.last_name} ${m.first_name}`.toLowerCase().includes(q) ||
-        `${m.first_name} ${m.last_name}`.toLowerCase().includes(q)
-      )
-      .slice(0, 8);
-  }, [members, takenMemberIds, debounced]);
-
-  function addMember(m: Member) {
-    const name = `${m.last_name} ${m.first_name}`.trim();
-    onChange([...guests, { name, member_id: m.id }]);
-    setSearch("");
-    setDebounced("");
-  }
-
-  function addGuest() {
-    const name = guestName.trim();
-    if (!name) return;
-    onChange([...guests, { name }]);
-    setGuestName("");
-  }
-
-  function removeAt(index: number) {
-    onChange(guests.filter((_, i) => i !== index));
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex justify-end bg-black/40"
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-    >
-      <aside
-        className="flex h-full w-full max-w-md flex-col border-l border-border bg-surface shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className="flex items-start justify-between gap-3 border-b border-border p-5">
-          <div>
-            <p className="text-xs uppercase tracking-wider text-muted">
-              Καλεσμένοι
-            </p>
-            <h2 className="mt-1 text-lg font-semibold">
-              {reservation.group_name}
-            </h2>
-            <p className="mt-1 text-xs text-muted">
-              {reservation.table_number != null
-                ? `Τραπέζι Νο ${reservation.table_number} · `
-                : ""}
-              {guests.length} / {capacity} θέσεις
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Κλείσιμο"
-            className="rounded-md border border-border px-2 py-1 text-xs transition hover:bg-background"
-          >
-            ✕
-          </button>
-        </header>
-
-        <div className="flex-1 overflow-y-auto p-5">
-          {guests.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted">
-              Δεν έχουν προστεθεί καλεσμένοι ακόμη.
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {guests.map((g, i) => (
-                <li
-                  key={`${g.member_id ?? "guest"}-${i}`}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                >
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="truncate font-medium">{g.name}</span>
-                    <span
-                      className={
-                        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium " +
-                        (g.member_id
-                          ? "bg-accent/10 text-accent"
-                          : "bg-amber-500/10 text-amber-600 dark:text-amber-400")
-                      }
-                    >
-                      {g.member_id ? "Μέλος" : "Επισκέπτης"}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeAt(i)}
-                    aria-label={`Αφαίρεση ${g.name}`}
-                    className="rounded-md border border-border px-2 py-1 text-xs text-muted transition hover:border-danger/50 hover:text-danger"
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="space-y-4 border-t border-border p-5">
-          <div className="relative">
-            <label className="mb-1 block text-xs font-medium text-muted">
-              Προσθήκη από Μητρώο
-            </label>
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Αναζήτηση μέλους…"
-              className={inputClass}
-            />
-            {debounced && matches.length > 0 && (
-              <ul className="absolute left-0 right-0 z-10 mt-1 max-h-60 overflow-y-auto rounded-lg border border-border bg-surface shadow-lg">
-                {matches.map((m) => (
-                  <li key={m.id}>
-                    <button
-                      type="button"
-                      onClick={() => addMember(m)}
-                      className="block w-full px-3 py-2 text-left text-sm transition hover:bg-background"
-                    >
-                      <span className="font-medium">
-                        {m.last_name} {m.first_name}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {debounced && matches.length === 0 && (
-              <p className="mt-1 text-xs text-muted">
-                Δεν βρέθηκαν μέλη.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-medium text-muted">
-              Όνομα επισκέπτη
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addGuest();
-                  }
-                }}
-                placeholder="π.χ. Νίκος Παπαδόπουλος"
-                className={inputClass}
-              />
-              <button
-                type="button"
-                onClick={addGuest}
-                disabled={!guestName.trim()}
-                className="shrink-0 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-              >
-                +
-              </button>
-            </div>
-          </div>
-        </div>
-      </aside>
-    </div>
   );
 }
 
