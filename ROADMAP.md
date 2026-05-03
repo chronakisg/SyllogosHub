@@ -264,57 +264,6 @@ _(no active branches)_
 
 ### Schema evolution
 
-- [ ] **👶 Age Categorization (Ενήλικας / Παιδί)**
-
-  Stack: Touches και τα δύο
-  - 📊 AttendeesEditor: per-attendee age category assignment
-  - 🎩 Maître interface: counts breakdown ανά τραπέζι
-  - 📊 Event Dashboard: revenue calculation ανά κατηγορία
-
-  Use case: σερβιτόρος θέλει να ξέρει πόσα παιδικά μενού να ετοιμάσει.
-  Κοινωνικά events έχουν διαφορετικές τιμές για ενήλικες vs παιδιά.
-
-  Schema (3-state nullable boolean approach — υπερισχύει του παλιού
-  `age_category text` design):
-  ```sql
-  alter table clubs
-    add column child_age_threshold smallint
-      not null default 15
-      check (child_age_threshold between 0 and 30);
-
-  alter table reservation_attendees
-    add column is_child_override boolean default null;
-  -- NULL  = auto-derive (member.birth_date vs club threshold)
-  -- TRUE  = explicit child override
-  -- FALSE = explicit adult override
-  ```
-
-  Per-club configurable threshold — διαφορετικοί σύλλογοι έχουν
-  διαφορετικά όρια "παιδιού" για catering planning.
-
-  Resolution logic: αν `is_child_override !== null` → υπερισχύει.
-  Αλλιώς αυτο-υπολογίζεται από `member.birth_date` σε σχέση με
-  `clubs.child_age_threshold`. Manual override πάντα διαθέσιμο
-  (για guests, anonymous, ή edge cases χωρίς birth_date).
-
-  Διαχωρισμός concerns:
-  - `clubs.child_age_threshold` = catering threshold (μενού)
-  - `discount_rules.age_max` = pricing threshold (εκπτώσεις)
-  Παράλληλα, διαφορετικά business domains.
-
-  UI:
-  - AttendeesEditor: per-row child toggle με auto-indicator
-    όταν source='auto'
-  - Maître TableCard: counts breakdown "🧑 X · 👶 Y" (μόνο όταν child>0)
-  - Settings/Club: configurable threshold input (1-30)
-
-  Phase 1: 2 categories (adult/child)
-  Phase 2 (future): expanded — έφηβος, βρέφος (free), member-of-board
-
-  Estimated: M (schema migration + UI σε 2 stacks, 5 commits)
-  Connects με: pricing logic (διαφορετικά prices per category — ξένο
-  domain), catering planning (maître — main domain)
-
 - [ ] **💵 Event Expenses Schema**
 
   Stack: 📊 Διαχειριστικό
@@ -503,7 +452,75 @@ _(no active branches)_
   Estimated: M (schema + migration script + UI overhaul)
   Connects με: event_expenses, Event Dashboard
 
+### Seating UX follow-ups (post PR #12 + #13)
+
+- [ ] **Multi-party seating support** (1:N reservations per table)
+  - Σήμερα: 1 παρέα ανά τραπέζι (current data model + UI silently
+    keep-last-wins σε `reservationByTableNumber` Map)
+  - Goal: 1:N — multiple parties σε ένα τραπέζι (π.χ. 2 ζευγάρια από
+    4 μοιράζονται 8-θέσιο)
+  - Required: refactor `reservationByTableNumber` →
+    `Map<number, Reservation[]>`
+  - TableCard "Κατειλημμένο · X άτομα" → sum across all parties
+  - TablePopover → list όλων των παρέων σε ένα τραπέζι
+  - Larger feature — needs planning session
+  - Estimated: L
+
+- [ ] **Drag-and-drop από Section 2 σε άλλο τραπέζι**
+  - Σήμερα: assigned παρέες δεν drag-able από sidebar Section 2
+    (Παρέες σε Τραπέζια)
+  - Goal: drag from Section 2 σε άλλο τραπέζι (re-assign) ή στο
+    Section 1 (unassign)
+  - Estimated: S-M
+
+- [ ] **Click παρέα Section 2 → scroll/highlight floor plan**
+  - Σήμερα: click → opens AttendeesEditor
+  - Bonus: visual feedback "πού είναι αυτή η παρέα στο floor plan"
+  - Animated scroll + temporary highlight του τραπεζιού
+  - Estimated: S
+
+- [ ] **TablePopover window resize re-measurement**
+  - Σήμερα: smart positioning measured once στο `showPopover`
+    transition
+  - Goal: re-measure σε resize event (rare edge case)
+  - Estimated: XS
+
+- [ ] **TablePopover horizontal edge handling**
+  - Σήμερα: `-translate-x-1/2` πάντα centers το popover
+  - Edge case: bottom-corner tables → popover μπορεί να clip
+    horizontally
+  - Goal: detect viewport edges + flip horizontally αν χρειαστεί
+  - Estimated: S
+
+- [ ] **TablePopover focus management (a11y)**
+  - Σήμερα: read-only display, no interactive elements (Esc handler
+    υπάρχει)
+  - Future: αν προστεθούν actions στο popover (π.χ. "scroll to in
+    floor plan"), focus trap + return focus on close
+  - Estimated: S (όταν χρειαστεί)
+
 ### Tech Debt & Cleanup
+
+- [ ] **Consolidate display name helpers** (post PR #12)
+  - 3 file-local helpers (`displayName` × 2 σε `members/page.tsx` +
+    `finances/page.tsx`, `memberName` σε `finances/SponsorsTab.tsx`)
+    πρέπει να γίνουν shared `formatMemberName`
+  - Already exists στο `lib/utils/attendees.ts` από PR #12
+  - Quiet day refactor — no behavioral change
+  - Estimated: S
+
+- [ ] **Greek collation sensitivity σε `localeCompare`** (post PR #12)
+  - Τα `localeCompare("el")` calls δεν έχουν `sensitivity: "base"`
+  - Edge case bug: "Ι" vs "ι", τονισμένα chars sort separately
+  - Risk: μπορεί να αλλάξει sort order σε existing data — needs careful
+    rollout
+  - Estimated: S
+
+- [ ] **TableLabelEdit `editInitialValue` prop** (post PR #13)
+  - Goal: αν θέλουμε ποτέ να pre-fill το edit input με current label
+    (custom ή party name)
+  - Σήμερα edit pre-fill είναι κενό αν δεν υπάρχει custom label
+  - Estimated: XS
 
 - [ ] **📊 Re-launch abandoned `feat/event-financials-tab` branch**
   - Branch deleted 2026-05-03, commit hash `29f5078` preserved για future cherry-pick
@@ -534,6 +551,45 @@ _(no active branches)_
   - Estimated: S (write doc + add to README)
 
 ## ✅ Recently Done
+
+### feat/seating-unified-list (merged 2026-05-03) — PR #13
+
+8 commits, /seating sidebar restructure + table popover:
+
+- [x] Sidebar split σε 2 sections — Παρέες χωρίς Τραπέζι +
+  Παρέες σε Τραπέζια (4883b35)
+- [x] Rounded "Νο N" badge στο ReservationChip (6c25e09)
+- [x] Reposition badge κάτω από avatar για compact card height
+  (8f56e46)
+- [x] TableCard middle text cleanup — generic "Κατειλημμένο"
+  αντί group_name (cf6ead9)
+- [x] TablePopover (desktop hover, occupied tables only) (04831f9)
+- [x] Touch fallback + click-outside-to-close (691f676)
+- [x] Smart positioning above/below + Esc to close (dc9806a)
+- [x] TableCard cleanup — free seats chip + remove catering line
+  (d9721fe)
+
+### feat/age-categorization (merged 2026-05-02) — PR #12
+
+12 commits, full age-categorization feature + bonus fixes:
+
+- [x] Schema migration: `clubs.child_age_threshold` +
+  `reservation_attendees.is_child_override` (425cfc3)
+- [x] `resolveIsChild` helper utility (7c045f1)
+- [x] AttendeesEditor child toggle (👶/🧑/⚪) + counter (5c99881)
+- [x] AddReservationModal με Ενήλικες + Παιδιά inputs (4b7c138)
+- [x] TableCard catering breakdown (c29752e)
+- [x] ReservationChip sidebar breakdown (901f7db)
+- [x] /settings/club child age threshold input (021be2b)
+- [x] fix: hydration race condition στο /settings/club —
+  useCurrentClub double-call coordination (538f637)
+- [x] AttendeesEditor bulk-add παιδιών checkbox (357ba3d)
+- [x] Cultural fit — ΕΠΩΝΥΜΟ Όνομα display fix σε 7 sites
+  (3c63bf8)
+- [x] Split inputs Ενήλικες/Παιδιά στο anonymous-add mode
+  (d7cc04d)
+- [x] fix: presence semantic split στο ReservationChip — pre-existing
+  bug όπου presentCount περιελάμβανε expected (fc7119e)
 
 ### feat/reserved-tables (merged 2026-05-01) — PR #5
 
