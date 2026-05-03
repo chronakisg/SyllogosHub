@@ -82,13 +82,13 @@ export function sortAttendees(
     if (bucketA === 0) {
       const lastA = a.member?.last_name ?? "";
       const lastB = b.member?.last_name ?? "";
-      const lastCmp = lastA.localeCompare(lastB, "el");
+      const lastCmp = lastA.localeCompare(lastB, "el", { sensitivity: "base" });
       if (lastCmp !== 0) return lastCmp;
       const firstA = a.member?.first_name ?? "";
       const firstB = b.member?.first_name ?? "";
-      return firstA.localeCompare(firstB, "el");
+      return firstA.localeCompare(firstB, "el", { sensitivity: "base" });
     } else if (bucketA === 1) {
-      return (a.guest_name ?? "").localeCompare(b.guest_name ?? "", "el");
+      return (a.guest_name ?? "").localeCompare(b.guest_name ?? "", "el", { sensitivity: "base" });
     } else {
       return (a.created_at ?? "").localeCompare(b.created_at ?? "");
     }

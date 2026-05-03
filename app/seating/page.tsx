@@ -194,7 +194,7 @@ function SeatingView() {
     return reservations
       .filter((r) => r.table_number == null)
       .filter((r) => !q || r.group_name.toLowerCase().includes(q))
-      .sort((a, b) => a.group_name.localeCompare(b.group_name, "el"));
+      .sort((a, b) => a.group_name.localeCompare(b.group_name, "el", { sensitivity: "base" }));
   }, [reservations, groupSearch]);
 
   const assigned = useMemo(() => {
@@ -206,7 +206,7 @@ function SeatingView() {
         const aT = a.table_number ?? Number.MAX_SAFE_INTEGER;
         const bT = b.table_number ?? Number.MAX_SAFE_INTEGER;
         if (aT !== bT) return aT - bT;
-        return a.group_name.localeCompare(b.group_name, "el");
+        return a.group_name.localeCompare(b.group_name, "el", { sensitivity: "base" });
       });
   }, [reservations, groupSearch]);
 

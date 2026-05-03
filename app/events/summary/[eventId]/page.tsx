@@ -182,7 +182,7 @@ export default function EventSummaryPage() {
     0
   );
   const sortedReservations = [...reservations].sort((a, b) =>
-    a.group_name.localeCompare(b.group_name, "el")
+    a.group_name.localeCompare(b.group_name, "el", { sensitivity: "base" })
   );
   const tables = venueTables(event.venue_map_config);
   const totalTables = tables.length;

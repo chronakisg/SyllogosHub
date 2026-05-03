@@ -758,7 +758,7 @@ function PaymentsTab() {
         } satisfies BulkPreviewRow;
       })
       .filter((x): x is BulkPreviewRow => !!x)
-      .sort((a, b) => a.member_name.localeCompare(b.member_name, "el"));
+      .sort((a, b) => a.member_name.localeCompare(b.member_name, "el", { sensitivity: "base" }));
   }
 
   function goToPreview() {

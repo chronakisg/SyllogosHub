@@ -440,6 +440,6 @@ function sortLines(lines: Line[]): Line[] {
     }
     const an = `${a.member?.last_name ?? ""} ${a.member?.first_name ?? ""}`;
     const bn = `${b.member?.last_name ?? ""} ${b.member?.first_name ?? ""}`;
-    return an.localeCompare(bn, "el");
+    return an.localeCompare(bn, "el", { sensitivity: "base" });
   });
 }

@@ -203,7 +203,7 @@ function EntranceListView() {
       const aT = a.table_number ?? Number.MAX_SAFE_INTEGER;
       const bT = b.table_number ?? Number.MAX_SAFE_INTEGER;
       if (aT !== bT) return aT - bT;
-      return a.group_name.localeCompare(b.group_name, "el");
+      return a.group_name.localeCompare(b.group_name, "el", { sensitivity: "base" });
     });
   }, [reservationsWithOptimistic]);
 

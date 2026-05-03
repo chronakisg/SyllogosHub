@@ -271,7 +271,7 @@ export default function MembersPage() {
       const merged: MemberWithDepartments[] = (mRes.data ?? []).map((m) => ({
         ...m,
         departments: (byMember.get(m.id) ?? []).sort((a, b) =>
-          a.name.localeCompare(b.name, "el")
+          a.name.localeCompare(b.name, "el", { sensitivity: "base" })
         ),
       }));
       setError(null);
@@ -294,7 +294,7 @@ export default function MembersPage() {
       [...departments].sort(
         (a, b) =>
           a.display_order - b.display_order ||
-          a.name.localeCompare(b.name, "el")
+          a.name.localeCompare(b.name, "el", { sensitivity: "base" })
       ),
     [departments]
   );
