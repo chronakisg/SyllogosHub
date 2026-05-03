@@ -261,6 +261,7 @@ export type Event = {
   event_date: string;
   venue_map_config: Record<string, unknown>;
   location: string | null;
+  venue_max_capacity: number | null;
   created_at: string;
 };
 
@@ -271,6 +272,7 @@ export type EventInsert = {
   event_date: string;
   venue_map_config?: Record<string, unknown>;
   location?: string | null;
+  venue_max_capacity?: number | null;
   created_at?: string;
 };
 
