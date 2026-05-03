@@ -59,6 +59,7 @@ type DetailsForm = {
   event_name: string;
   event_date: string;
   location: string;
+  venue_max_capacity: number | null;
 };
 
 type EntertainerRow = {
@@ -544,11 +545,13 @@ function EventModal({
           event_name: editing.event_name,
           event_date: editing.event_date.slice(0, 10),
           location: editing.location ?? "",
+          venue_max_capacity: editing.venue_max_capacity ?? null,
         }
       : {
           event_name: "",
           event_date: new Date().toISOString().slice(0, 10),
           location: "",
+          venue_max_capacity: null,
         }
   );
   const [tickets, setTickets] = useState<TicketRow[]>([]);
@@ -816,6 +819,7 @@ function EventModal({
         event_name,
         event_date,
         location: details.location.trim() || null,
+        venue_max_capacity: details.venue_max_capacity,
       };
 
       let eventId: string;
@@ -1116,6 +1120,22 @@ function DetailsTab({
           placeholder="π.χ. Αίθουσα Συλλόγου, Λάρισα"
           className={inputClass}
         />
+      </Field>
+      <Field label="Μέγιστος αριθμός καλεσμένων (προαιρετικό)">
+        <input
+          type="number"
+          min="1"
+          value={form.venue_max_capacity ?? ""}
+          onChange={(e) =>
+            setForm((s) => ({
+              ...s,
+              venue_max_capacity: e.target.value ? parseInt(e.target.value, 10) : null,
+            }))
+          }
+          placeholder="π.χ. 200"
+          className={inputClass}
+        />
+        <p className="mt-1 text-xs text-muted">Reference για quick-scan του πλάνου</p>
       </Field>
     </div>
   );

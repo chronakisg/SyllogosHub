@@ -568,6 +568,17 @@ _(no active branches)_
   - `git cherry-pick 29f5078` σε νέο branch όταν έρθει η ώρα
   - Estimated: S (cherry-pick + rebase resolution)
 
+- [ ] **🧹 Consolidate event editing surfaces**
+  - 3 διαφορετικά implementations:
+    - `app/seating/page.tsx` AddEventModal (create-only, minimal)
+    - `app/events/page.tsx` EventModal (full create + edit, multi-tab)
+    - `app/calendar/page.tsx` EventEditor (separate)
+  - Risk: drift μεταξύ τους όταν προστίθενται νέα fields
+    (παράδειγμα: venue_max_capacity μπήκε σε 2/3 αρχικά)
+  - Solution: shared `<EventForm>` component που χρησιμοποιείται
+    από όλα τα surfaces
+  - Estimated: M
+
 - [ ] **xlsx → exceljs migration** (security concerns με xlsx package)
 - [ ] **Drop `reservations.guests` jsonb column** (post PR #15 merge)
   - Code-side cleanup έγινε στο PR #15 (GuestsPanel deprecated)

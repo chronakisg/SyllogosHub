@@ -606,7 +606,11 @@ function SeatingView() {
   );
 
   const handleCreateEvent = useCallback(
-    async (input: { event_name: string; event_date: string }) => {
+    async (input: {
+      event_name: string;
+      event_date: string;
+      venue_max_capacity: number | null;
+    }) => {
       if (!clubId) return;
       try {
         const supabase = getBrowserClient();
@@ -617,6 +621,7 @@ function SeatingView() {
             event_name: input.event_name,
             event_date: input.event_date,
             venue_map_config: { tables: [] },
+            venue_max_capacity: input.venue_max_capacity,
           })
           .select()
           .single();
@@ -723,8 +728,19 @@ function SeatingView() {
         {activeEvent && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
             <span>
-              <span className="font-semibold text-foreground">
+              <span
+                className={
+                  "font-semibold " +
+                  (activeEvent.venue_max_capacity != null &&
+                  revenueStats.totalPax > activeEvent.venue_max_capacity
+                    ? "text-red-600 dark:text-red-400"
+                    : "text-foreground")
+                }
+              >
                 {revenueStats.totalPax}
+                {activeEvent.venue_max_capacity != null && (
+                  <> / {activeEvent.venue_max_capacity}</>
+                )}
               </span>{" "}
               άτομα
             </span>
@@ -2187,10 +2203,12 @@ function AddEventModal({
   onSubmit: (input: {
     event_name: string;
     event_date: string;
+    venue_max_capacity: number | null;
   }) => Promise<void>;
 }) {
   const [name, setName] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [venueMaxCapacity, setVenueMaxCapacity] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -2207,7 +2225,11 @@ function AddEventModal({
     setSaving(true);
     setErr(null);
     try {
-      await onSubmit({ event_name: name.trim(), event_date: date });
+      await onSubmit({
+        event_name: name.trim(),
+        event_date: date,
+        venue_max_capacity: venueMaxCapacity ? parseInt(venueMaxCapacity, 10) : null,
+      });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Σφάλμα αποθήκευσης.");
     } finally {
@@ -2237,6 +2259,17 @@ function AddEventModal({
             onChange={(e) => setDate(e.target.value)}
             className={inputClass}
           />
+        </Field>
+        <Field label="Μέγιστος αριθμός καλεσμένων (προαιρετικό)">
+          <input
+            type="number"
+            min="1"
+            value={venueMaxCapacity}
+            onChange={(e) => setVenueMaxCapacity(e.target.value)}
+            placeholder="π.χ. 200"
+            className={inputClass}
+          />
+          <p className="mt-1 text-xs text-muted">Reference για quick-scan του πλάνου</p>
         </Field>
         {err && (
           <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
