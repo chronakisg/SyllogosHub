@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-04 (role-based permissions + user management)  
+> Last updated: 2026-05-04 (role-based permissions + user management + roles UI)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -96,23 +96,6 @@ _(no active branches)_
 - [ ] **iOS Safari PWA test** — verify install + auto-update flow
 
 ## 🟡 High Priority (post-beta)
-
-- [ ] **🎭 Permissions UI Rebuild — Roles + Overrides tabs**
-
-  Stack: 📊 Διαχειριστικό
-
-  Strategic context: Foundation ολοκληρώθηκε (schema + API +
-  /settings/users admin UI). Μένει η επέκταση του /permissions
-  page:
-
-  - Tab "Ρόλοι": CRUD roles, permission matrix per role
-  - Tab "Άτομα": existing per-member overrides matrix
-  - 8 modules στο matrix (cashier προσθήκη — σήμερα 7)
-
-  Connects με: /settings/users (role assign χρησιμοποιεί ήδη
-  τα roles — αυτό το tab κάνει τους ίδιους τους ρόλους editable)
-
-  Estimated: M
 
 ### Reservations & Attendees domain
 
@@ -568,63 +551,68 @@ _(no active branches)_
 
 ### feat/role-based-permissions (merged 2026-05-04) — PR #?
 
-Major foundation work για role-based permissions + complete
-User Management Module σε ένα PR.
+Major foundation + complete UI για role-based permission
+system σε ένα PR.
 
 **Schema (migration 0005, idempotent):**
 - [x] 3 new tables: member_roles, member_role_permissions,
-  member_role_assignments
-- [x] cashier module added στο member_permissions CHECK
-  constraint (+ types.ts + ALL_PERMISSIONS + MODULE_TO_PERMISSION)
-- [x] 6 default roles seeded ανά club (Πρόεδρος ΔΣ,
-  Αντιπρόεδρος, Ταμίας, Γραμματέας, Μέλος ΔΣ, Απλό Μέλος)
-- [x] 73 permissions seeded across roles
-- [x] Auto-assignment: board_position → corresponding role;
-  rest → 'Απλό Μέλος' (every member has at least one role)
+  member_role_assignments (FKs, unique constraints, RLS off)
+- [x] cashier module added στο permission CHECK constraint
+  + types.ts + ALL_PERMISSIONS + MODULE_TO_PERMISSION
+- [x] 6 default roles seeded ανά club:
+  Πρόεδρος ΔΣ (32 perms), Αντιπρόεδρος (17), Ταμίας (9),
+  Γραμματέας (9), Μέλος ΔΣ (4), Απλό Μέλος (2)
+- [x] Auto-assignment: members με board_position →
+  corresponding role; rest → "Απλό Μέλος"
+- [x] Snapshot: members_predates_roles_20260504
 
-**useRole refactor:**
+**useRole hook refactor:**
 - [x] legacyBoardPositionPermissions removed (-28 lines)
-- [x] computePermissions rewritten: priority 1 admin/president
-  → ALL, priority 2 union(rolePermissions, customPermissions),
+- [x] computePermissions: priority 1 admin/president → ALL,
+  priority 2 union(rolePermissions, customPermissions),
   priority 3 default ['calendar']
-- [x] 4 queries instead of 3 (added member_role_assignments +
-  nested member_roles + member_role_permissions)
+- [x] 4 queries instead of 3 (added joined role+permissions fetch)
 - [x] State includes assignedRoles + rolePermissions
 
-**Admin server foundation:**
+**Server foundation:**
 - [x] lib/supabase/admin.ts — service role client (cached)
-- [x] lib/auth/requireAdmin.ts — server-side guard με
-  AdminContext return
-- [x] 7 API routes:
-  * GET /api/admin/users/[memberId]/login — auth status
-  * POST /api/admin/users/[memberId]/login — create login
-  * PATCH /api/admin/users/[memberId]/login — reset password
-  * DELETE /api/admin/users/[memberId]/login — disable (ban)
-  * POST /api/admin/users/[memberId]/login/enable — re-enable
-  * POST /api/admin/users/[memberId]/roles — assign role
-  * DELETE /api/admin/users/[memberId]/roles/[roleId] — remove role
+- [x] lib/auth/requireAdmin.ts — server guard με AdminContext
+- [x] SUPABASE_SERVICE_ROLE_KEY documented στο .env.local.example
 
-**User Management UI:**
-- [x] /settings/users page (~470 lines) με 2-column layout
-- [x] Settings card "Διαχείριση Χρηστών" στο /settings dashboard
-- [x] Login section: create/reset/disable με auto-generated
-  password modal
-- [x] Roles section: chips + add/remove
-- [x] Live integration με APIs
+**API routes — Users (login + roles per member):**
+- [x] POST/GET/PATCH/DELETE /api/admin/users/[id]/login
+- [x] POST /api/admin/users/[id]/login/enable
+- [x] POST /api/admin/users/[id]/roles
+- [x] DELETE /api/admin/users/[id]/roles/[roleId]
+
+**API routes — Roles (CRUD):**
+- [x] GET /api/admin/roles (list + member counts)
+- [x] POST /api/admin/roles (create custom)
+- [x] PATCH /api/admin/roles/[id] (rename — system blocked)
+- [x] DELETE /api/admin/roles/[id] (custom only, no assigned)
+- [x] GET /api/admin/roles/[id]/permissions
+- [x] PATCH /api/admin/roles/[id]/permissions (full replace)
+
+**UI surfaces:**
+- [x] /settings/users — Διαχείριση Χρηστών (logins, passwords,
+  role assignments per member)
+- [x] /permissions — Ρόλοι & Δικαιώματα (rebuild με 2 tabs):
+  * Tab "Ομάδες": role list + matrix per role + create custom
+  * Tab "Άτομα": per-member overrides matrix (existing behavior)
+- [x] Reusable component: PermissionMatrix.tsx (8 modules × 4 actions)
+- [x] /settings dashboard: card "Διαχείριση Χρηστών" (νέο)
 
 **Live verification (smoke tests passed):**
-- [x] Auth gate: anonymous request → 401
-- [x] Role assign: ΝΙΚΟΣ Ταμίας chip προστέθηκε via API
-- [x] Role remove: chip αφαιρέθηκε via API
-- [x] Login create: kostas-test@party4u.gr auth user created
-  + member.email updated (then cleaned up)
-- [x] Auth status fetch: Network tab verified GET endpoint
-- [x] tsc clean σε όλα τα steps
-- [x] Cleanup: test auth user deleted, member.email reset
+- [x] Auth gate: anonymous → 401
+- [x] Role assign/remove via API
+- [x] Login create: real auth user (cleaned up after)
+- [x] Roles tab: list, create, delete, edit permissions, save
+- [x] Members tab: existing behavior preserved
+- [x] tsc clean throughout
 
-**⚠️ Critical for production deployment:**
+**Critical for production deployment:**
 - [ ] Add SUPABASE_SERVICE_ROLE_KEY στο Vercel env vars
-  ΠΡΙΝ το merge — αλλιώς API routes σπάνε σε production
+  ΠΡΙΝ το merge — αλλιώς admin API routes σπάνε σε production
 
 ### feat/venue-max-capacity (merged 2026-05-03) — PR #16
 
