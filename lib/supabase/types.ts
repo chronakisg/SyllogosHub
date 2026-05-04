@@ -342,8 +342,7 @@ export type EventTicketPrice = {
   id: string;
   club_id: string | null;
   event_id: string;
-  category_id: string | null;
-  label: string;
+  category_id: string;
   price: number;
   display_order: number;
   created_at: string;
@@ -353,8 +352,7 @@ export type EventTicketPriceInsert = {
   id?: string;
   club_id?: string | null;
   event_id: string;
-  category_id?: string | null;
-  label: string;
+  category_id: string;
   price: number;
   display_order?: number;
   created_at?: string;

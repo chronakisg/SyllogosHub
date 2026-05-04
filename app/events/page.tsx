@@ -84,7 +84,6 @@ type EntertainerRow = {
 type TicketRow = {
   id?: string;
   category_id: string | null;
-  label: string;
   price: string;
 };
 
@@ -717,7 +716,6 @@ function EventModal({
           ticketRows.map((t) => ({
             id: t.id,
             category_id: t.category_id ?? null,
-            label: t.label,
             price: String(t.price),
           }))
         );
@@ -776,7 +774,7 @@ function EventModal({
   }, [editing, clubId]);
 
   function addTicket() {
-    setTickets((s) => [...s, { category_id: null, label: "", price: "" }]);
+    setTickets((s) => [...s, { category_id: null, price: "" }]);
   }
   function removeTicket(i: number) {
     setTickets((s) => s.filter((_, idx) => idx !== i));
@@ -849,7 +847,6 @@ function EventModal({
       cleanTickets.push({
         event_id: "",
         category_id: t.category_id,
-        label: t.label,
         price: priceNum,
         display_order: i,
       });
@@ -1154,7 +1151,6 @@ function EventModal({
             if (createCatForRow !== null) {
               updateTicket(createCatForRow, {
                 category_id: newCat.id,
-                label: newCat.name,
                 price:
                   newCat.default_price != null
                     ? String(newCat.default_price)
@@ -1679,7 +1675,6 @@ function TicketsTab({
                           if (!cat) return;
                           onUpdate(i, {
                             category_id: cat.id,
-                            label: cat.name,
                             price:
                               cat.default_price != null
                                 ? String(cat.default_price)
