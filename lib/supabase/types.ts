@@ -342,6 +342,7 @@ export type EventTicketPrice = {
   id: string;
   club_id: string | null;
   event_id: string;
+  category_id: string | null;
   label: string;
   price: number;
   display_order: number;
@@ -352,6 +353,7 @@ export type EventTicketPriceInsert = {
   id?: string;
   club_id?: string | null;
   event_id: string;
+  category_id?: string | null;
   label: string;
   price: number;
   display_order?: number;
@@ -1021,6 +1023,13 @@ export type Database = {
             columns: ["event_id"];
             isOneToOne: false;
             referencedRelation: "events";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "event_ticket_prices_category_id_fkey";
+            columns: ["category_id"];
+            isOneToOne: false;
+            referencedRelation: "ticket_categories";
             referencedColumns: ["id"];
           },
         ];
