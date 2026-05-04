@@ -2,6 +2,7 @@
 
 import {
   Fragment,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -10,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
@@ -31,7 +33,14 @@ import { calculateDiscount, generateUuid } from "@/lib/utils/discounts";
 import { formatMemberName } from "@/lib/utils/attendees";
 import SponsorsTab from "./SponsorsTab";
 
-type Tab = "payments" | "reservations" | "sponsors";
+type Tab = "payments" | "dashboard" | "sponsors";
+
+function resolveTab(raw: string | null): Tab {
+  if (raw === "reservations") return "dashboard"; // backwards compat for old bookmarks
+  if (raw === "dashboard") return "dashboard";
+  if (raw === "sponsors") return "sponsors";
+  return "payments";
+}
 
 const inputClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
@@ -58,9 +67,17 @@ function currentYearPeriod(): string {
   return String(new Date().getFullYear());
 }
 
-export default function FinancesPage() {
-  const [tab, setTab] = useState<Tab>("payments");
+function FinancesContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const tab = resolveTab(searchParams.get("tab"));
   const role = useRole();
+
+  function handleTabChange(next: Tab) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", next);
+    router.replace(`/finances?${params.toString()}`, { scroll: false });
+  }
 
   if (role.loading) {
     return (
@@ -103,25 +120,39 @@ export default function FinancesPage() {
       </header>
 
       <div className="mb-6 inline-flex rounded-lg border border-border bg-surface p-1 text-sm">
-        <TabButton current={tab} value="payments" onSelect={setTab}>
+        <TabButton current={tab} value="payments" onSelect={handleTabChange}>
           Πληρωμές Μελών
         </TabButton>
-        <TabButton current={tab} value="reservations" onSelect={setTab}>
+        <TabButton current={tab} value="dashboard" onSelect={handleTabChange}>
           Κρατήσεις Εκδηλώσεων
         </TabButton>
-        <TabButton current={tab} value="sponsors" onSelect={setTab}>
+        <TabButton current={tab} value="sponsors" onSelect={handleTabChange}>
           Χορηγοί
         </TabButton>
       </div>
 
       {tab === "payments" ? (
         <PaymentsTab />
-      ) : tab === "reservations" ? (
+      ) : tab === "dashboard" ? (
         <ReservationsTab />
       ) : (
         <SponsorsTab />
       )}
     </div>
+  );
+}
+
+export default function FinancesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto w-full max-w-6xl p-10 text-center text-muted">
+          Φόρτωση…
+        </div>
+      }
+    >
+      <FinancesContent />
+    </Suspense>
   );
 }
 
