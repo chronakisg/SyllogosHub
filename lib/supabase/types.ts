@@ -362,6 +362,38 @@ export type EventTicketPriceUpdate = Partial<
   Omit<EventTicketPrice, "id" | "created_at">
 >;
 
+export type TicketCategoryKind = "adult" | "child" | "other";
+
+export type TicketCategory = {
+  id: string;
+  club_id: string;
+  name: string;
+  short_label: string | null;
+  default_price: number | null;
+  display_order: number;
+  is_archived: boolean;
+  category_kind: TicketCategoryKind;
+  notes: string | null;
+  created_at: string;
+};
+
+export type TicketCategoryInsert = {
+  id?: string;
+  club_id: string;
+  name: string;
+  short_label?: string | null;
+  default_price?: number | null;
+  display_order?: number;
+  is_archived?: boolean;
+  category_kind?: TicketCategoryKind;
+  notes?: string | null;
+  created_at?: string;
+};
+
+export type TicketCategoryUpdate = Partial<
+  Omit<TicketCategory, "id" | "created_at">
+>;
+
 export type Sponsor = {
   id: string;
   club_id: string | null;
@@ -1122,6 +1154,20 @@ export type Database = {
           },
         ];
       };
+      ticket_categories: {
+        Row: TicketCategory;
+        Insert: TicketCategoryInsert;
+        Update: TicketCategoryUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "ticket_categories_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -1149,3 +1195,15 @@ export const BOARD_POSITIONS = [
   "Γραμματέας",
   "Μέλος",
 ] as const;
+
+export const TICKET_CATEGORY_KINDS: readonly TicketCategoryKind[] = [
+  "adult",
+  "child",
+  "other",
+] as const;
+
+export const TICKET_CATEGORY_KIND_LABELS: Record<TicketCategoryKind, string> = {
+  adult: "Ενήλικας",
+  child: "Παιδί",
+  other: "Άλλο",
+};
