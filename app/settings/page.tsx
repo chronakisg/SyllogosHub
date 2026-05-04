@@ -38,6 +38,12 @@ const CARDS: Card[] = [
     description: "DJ, Μπάντα, Ορχήστρα και άλλοι τύποι συνεργατών.",
   },
   {
+    href: "/settings/club/ticket-categories",
+    icon: "🎟️",
+    title: "Κατηγορίες Προσκλήσεων",
+    description: "Ορίστε κατηγορίες (Ενήλικας, Παιδί κλπ.) για τιμολόγηση εκδηλώσεων.",
+  },
+  {
     href: "/discounts",
     icon: "💰",
     title: "Εκπτώσεις",

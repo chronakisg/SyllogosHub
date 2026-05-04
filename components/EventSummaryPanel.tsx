@@ -37,10 +37,14 @@ export type SponsorSummary = {
   contribution_description: string | null;
 };
 
+type TicketPriceWithCategory = EventTicketPrice & {
+  category: { name: string } | null;
+};
+
 export type SummaryData = {
   event: EventRow;
   reservations: Reservation[];
-  ticketPrices: EventTicketPrice[];
+  ticketPrices: TicketPriceWithCategory[];
   sponsors: SponsorSummary[];
   entertainers: EventEntertainerWithDetails[];
 };
@@ -104,7 +108,7 @@ export function EventSummaryPanel({ eventId, cachedData, onLoad }: Props) {
             .order("group_name", { ascending: true }),
           supabase
             .from("event_ticket_prices")
-            .select("*")
+            .select("*, category:ticket_categories(name)")
             .eq("event_id", eventId)
             .order("display_order", { ascending: true }),
           supabase
@@ -146,7 +150,7 @@ export function EventSummaryPanel({ eventId, cachedData, onLoad }: Props) {
         const result: SummaryData = {
           event: eRes.data as EventRow,
           reservations: (rRes.data ?? []) as Reservation[],
-          ticketPrices: (tRes.data ?? []) as EventTicketPrice[],
+          ticketPrices: (tRes.data ?? []) as TicketPriceWithCategory[],
           sponsors: sponsorRows,
           entertainers: entList,
         };
@@ -264,7 +268,7 @@ export function EventSummaryPanel({ eventId, cachedData, onLoad }: Props) {
             <tbody className="divide-y divide-border">
               {ticketPrices.map((t) => (
                 <tr key={t.id}>
-                  <td className="py-2 font-medium">{t.label}</td>
+                  <td className="py-2 font-medium">{t.category?.name ?? "—"}</td>
                   <td className="py-2 text-right">{eur.format(t.price)}</td>
                 </tr>
               ))}

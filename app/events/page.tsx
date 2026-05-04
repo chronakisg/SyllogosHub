@@ -34,6 +34,13 @@ import type {
   Member,
   Sponsor,
   SponsorInsert,
+  TicketCategory,
+  TicketCategoryInsert,
+  TicketCategoryKind,
+} from "@/lib/supabase/types";
+import {
+  TICKET_CATEGORY_KINDS,
+  TICKET_CATEGORY_KIND_LABELS,
 } from "@/lib/supabase/types";
 import { AddReservationModal } from "@/components/AddReservationModal";
 import {
@@ -76,7 +83,7 @@ type EntertainerRow = {
 
 type TicketRow = {
   id?: string;
-  label: string;
+  category_id: string | null;
   price: string;
 };
 
@@ -603,6 +610,11 @@ function EventModal({
         }
   );
   const [tickets, setTickets] = useState<TicketRow[]>([]);
+  const [catalog, setCatalog] = useState<TicketCategory[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [createCatOpen, setCreateCatOpen] = useState(false);
+  const [createCatForRow, setCreateCatForRow] = useState<number | null>(null);
   const [sponsorships, setSponsorships] = useState<SponsorshipRow[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [entertainmentTypes, setEntertainmentTypes] = useState<
@@ -644,7 +656,15 @@ function EventModal({
         const eventEntPromise = editing
           ? getEventEntertainers(editing.id)
           : Promise.resolve([]);
-        const [mRes, tRes, spRes, etRes, entList, eventEntList] =
+        const catalogQuery = clubId
+          ? supabase
+              .from("ticket_categories")
+              .select("*")
+              .eq("club_id", clubId)
+              .eq("is_archived", false)
+              .order("display_order", { ascending: true })
+          : Promise.resolve({ data: [], error: null } as const);
+        const [mRes, tRes, spRes, etRes, entList, eventEntList, catRes] =
           await Promise.all([
             supabase
               .from("members")
@@ -667,12 +687,14 @@ function EventModal({
             etQuery,
             entListPromise,
             eventEntPromise,
+            catalogQuery,
           ]);
         if (cancelled) return;
         if (mRes.error) throw mRes.error;
         if (tRes.error) throw tRes.error;
         if (spRes.error) throw spRes.error;
         if (etRes.error) throw etRes.error;
+        if (catRes.error) throw catRes.error;
 
         const memberRows = (mRes.data ?? []) as Member[];
         setMembers(memberRows);
@@ -693,10 +715,12 @@ function EventModal({
         setTickets(
           ticketRows.map((t) => ({
             id: t.id,
-            label: t.label,
+            category_id: t.category_id ?? null,
             price: String(t.price),
           }))
         );
+        setCatalog((catRes.data ?? []) as TicketCategory[]);
+        setCatalogLoading(false);
 
         const lookup = new Map<string, Member>();
         for (const x of memberRows) lookup.set(x.id, x);
@@ -733,10 +757,15 @@ function EventModal({
           })
         );
       } catch (err) {
-        if (!cancelled)
+        if (!cancelled) {
           setFormError(errorMessage(err, "Σφάλμα φόρτωσης δεδομένων."));
+          setCatalogError(errorMessage(err, "Σφάλμα φόρτωσης κατηγοριών."));
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setCatalogLoading(false);
+        }
       }
     })();
     return () => {
@@ -745,7 +774,7 @@ function EventModal({
   }, [editing, clubId]);
 
   function addTicket() {
-    setTickets((s) => [...s, { label: "", price: "" }]);
+    setTickets((s) => [...s, { category_id: null, price: "" }]);
   }
   function removeTicket(i: number) {
     setTickets((s) => s.filter((_, idx) => idx !== i));
@@ -793,15 +822,23 @@ function EventModal({
     }
 
     const cleanTickets: Array<EventTicketPriceInsert> = [];
+    const seenCategoryIds = new Set<string>();
     for (let i = 0; i < tickets.length; i++) {
       const t = tickets[i];
-      const cat = t.label.trim();
       const priceNum = Number(t.price.replace(",", "."));
-      if (!cat) {
+      if (!t.category_id) {
         setTab("tickets");
-        setFormError(`Η κατηγορία στη γραμμή ${i + 1} είναι υποχρεωτική.`);
+        setFormError(`Επιλέξτε κατηγορία στη γραμμή ${i + 1}.`);
         return;
       }
+      if (seenCategoryIds.has(t.category_id)) {
+        const dupName =
+          catalog.find((c) => c.id === t.category_id)?.name ?? t.category_id;
+        setTab("tickets");
+        setFormError(`Η κατηγορία "${dupName}" έχει επιλεγεί 2 φορές.`);
+        return;
+      }
+      seenCategoryIds.add(t.category_id);
       if (!Number.isFinite(priceNum) || priceNum < 0) {
         setTab("tickets");
         setFormError(`Η τιμή στη γραμμή ${i + 1} δεν είναι έγκυρη.`);
@@ -809,7 +846,7 @@ function EventModal({
       }
       cleanTickets.push({
         event_id: "",
-        label: cat,
+        category_id: t.category_id,
         price: priceNum,
         display_order: i,
       });
@@ -1013,10 +1050,17 @@ function EventModal({
             ) : tab === "tickets" ? (
               <TicketsTab
                 tickets={tickets}
+                catalog={catalog}
+                catalogLoading={catalogLoading}
+                catalogError={catalogError}
                 onAdd={addTicket}
                 onRemove={removeTicket}
                 onMove={moveTicket}
                 onUpdate={updateTicket}
+                onOpenCreateCat={(rowIndex) => {
+                  setCreateCatForRow(rowIndex);
+                  setCreateCatOpen(true);
+                }}
               />
             ) : tab === "entertainment" ? (
               <EntertainmentTab
@@ -1090,6 +1134,31 @@ function EventModal({
           onPick={(row) => {
             addSponsorship(row);
             setPickerOpen(false);
+          }}
+        />
+      )}
+
+      {createCatOpen && clubId && (
+        <CreateCategoryModal
+          clubId={clubId}
+          existingCount={catalog.length}
+          onClose={() => {
+            setCreateCatOpen(false);
+            setCreateCatForRow(null);
+          }}
+          onCreated={(newCat) => {
+            setCatalog((s) => [...s, newCat]);
+            if (createCatForRow !== null) {
+              updateTicket(createCatForRow, {
+                category_id: newCat.id,
+                price:
+                  newCat.default_price != null
+                    ? String(newCat.default_price)
+                    : "",
+              });
+            }
+            setCreateCatOpen(false);
+            setCreateCatForRow(null);
           }}
         />
       )}
@@ -1514,22 +1583,62 @@ function NewEntertainerDialog({
 
 function TicketsTab({
   tickets,
+  catalog,
+  catalogLoading,
+  catalogError,
   onAdd,
   onRemove,
   onMove,
   onUpdate,
+  onOpenCreateCat,
 }: {
   tickets: TicketRow[];
+  catalog: TicketCategory[];
+  catalogLoading: boolean;
+  catalogError: string | null;
   onAdd: () => void;
   onRemove: (i: number) => void;
   onMove: (i: number, dir: -1 | 1) => void;
   onUpdate: (i: number, patch: Partial<TicketRow>) => void;
+  onOpenCreateCat: (rowIndex: number) => void;
 }) {
+  const selectedIds = new Set(tickets.map((t) => t.category_id).filter(Boolean));
+  const allSelected =
+    catalog.length > 0 && catalog.every((c) => selectedIds.has(c.id));
+
+  if (catalogLoading) {
+    return (
+      <p className="py-10 text-center text-sm text-muted">
+        Φόρτωση κατηγοριών…
+      </p>
+    );
+  }
+
+  if (catalogError) {
+    return (
+      <p className="py-10 text-center text-sm text-danger">{catalogError}</p>
+    );
+  }
+
+  if (catalog.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted">
+        <p>Δεν έχουν οριστεί κατηγορίες στον σύλλογο.</p>
+        <Link
+          href="/settings/club/ticket-categories"
+          className="mt-1 inline-block text-accent underline"
+        >
+          Κάντε κλικ εδώ για να δημιουργήσετε →
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted">
-        Πολλαπλές κατηγορίες (π.χ. Ενήλικας, Παιδί &lt;15, Μέλος Δ.Σ.). Η σειρά
-        χρησιμοποιείται στη Σύνοψη Εκδήλωσης.
+        Πολλαπλές κατηγορίες (π.χ. Ενήλικας, Παιδί &lt;15, Μέλος Δ.Σ.). Η
+        σειρά χρησιμοποιείται στη Σύνοψη Εκδήλωσης.
       </p>
       {tickets.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted">
@@ -1547,75 +1656,112 @@ function TicketsTab({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {tickets.map((t, i) => (
-                <tr key={i} className="bg-background">
-                  <td className="px-3 py-2">
-                    <input
-                      type="text"
-                      value={t.label}
-                      onChange={(e) =>
-                        onUpdate(i, { label: e.target.value })
-                      }
-                      placeholder="π.χ. Ενήλικας"
-                      className={inputClass}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      step="0.01"
-                      inputMode="decimal"
-                      value={t.price}
-                      onChange={(e) => onUpdate(i, { price: e.target.value })}
-                      placeholder="0.00"
-                      className={inputClass + " text-right"}
-                    />
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    <div className="inline-flex flex-col gap-0.5">
+              {tickets.map((t, i) => {
+                const available = catalog.filter(
+                  (c) => !selectedIds.has(c.id) || c.id === t.category_id
+                );
+                return (
+                  <tr key={i} className="bg-background">
+                    <td className="px-3 py-2">
+                      <select
+                        value={t.category_id ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "__create__") {
+                            onOpenCreateCat(i);
+                            return;
+                          }
+                          const cat = catalog.find((c) => c.id === val);
+                          if (!cat) return;
+                          onUpdate(i, {
+                            category_id: cat.id,
+                            price:
+                              cat.default_price != null
+                                ? String(cat.default_price)
+                                : "",
+                          });
+                        }}
+                        className={inputClass}
+                      >
+                        <option value="" disabled>
+                          Επιλέξτε κατηγορία…
+                        </option>
+                        {available.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                        <option disabled>──────────────</option>
+                        <option value="__create__">
+                          + Νέα κατηγορία στον κατάλογο
+                        </option>
+                      </select>
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        inputMode="decimal"
+                        value={t.price}
+                        onChange={(e) =>
+                          onUpdate(i, { price: e.target.value })
+                        }
+                        placeholder="0.00"
+                        className={inputClass + " text-right"}
+                      />
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <div className="inline-flex flex-col gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => onMove(i, -1)}
+                          disabled={i === 0}
+                          aria-label="Πάνω"
+                          className="rounded border border-border px-1.5 text-[10px] disabled:opacity-30"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onMove(i, 1)}
+                          disabled={i === tickets.length - 1}
+                          aria-label="Κάτω"
+                          className="rounded border border-border px-1.5 text-[10px] disabled:opacity-30"
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-right">
                       <button
                         type="button"
-                        onClick={() => onMove(i, -1)}
-                        disabled={i === 0}
-                        aria-label="Πάνω"
-                        className="rounded border border-border px-1.5 text-[10px] disabled:opacity-30"
+                        onClick={() => onRemove(i)}
+                        aria-label="Διαγραφή"
+                        className="rounded-md border border-danger/30 px-2 py-1 text-[12px] text-danger transition hover:bg-danger/10"
                       >
-                        ↑
+                        🗑
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => onMove(i, 1)}
-                        disabled={i === tickets.length - 1}
-                        aria-label="Κάτω"
-                        className="rounded border border-border px-1.5 text-[10px] disabled:opacity-30"
-                      >
-                        ↓
-                      </button>
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onRemove(i)}
-                      aria-label="Διαγραφή"
-                      className="rounded-md border border-danger/30 px-2 py-1 text-[12px] text-danger transition hover:bg-danger/10"
-                    >
-                      🗑
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
-      <button
-        type="button"
-        onClick={onAdd}
-        className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-foreground/5"
-      >
-        + Προσθήκη Κατηγορίας
-      </button>
+      {allSelected ? (
+        <p className="text-xs text-muted">
+          Όλες οι διαθέσιμες κατηγορίες έχουν προστεθεί.
+        </p>
+      ) : (
+        <button
+          type="button"
+          onClick={onAdd}
+          className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-foreground/5"
+        >
+          + Προσθήκη Κατηγορίας
+        </button>
+      )}
     </div>
   );
 }
@@ -2096,5 +2242,180 @@ function Field({
       </span>
       {children}
     </label>
+  );
+}
+
+type CreateCatForm = {
+  name: string;
+  category_kind: TicketCategoryKind;
+  default_price: string;
+};
+
+function CreateCategoryModal({
+  clubId,
+  existingCount,
+  onClose,
+  onCreated,
+}: {
+  clubId: string;
+  existingCount: number;
+  onClose: () => void;
+  onCreated: (cat: TicketCategory) => void;
+}) {
+  const [form, setForm] = useState<CreateCatForm>({
+    name: "",
+    category_kind: "other",
+    default_price: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setFormError(null);
+    const name = form.name.trim();
+    if (!name) {
+      setFormError("Το όνομα είναι υποχρεωτικό.");
+      return;
+    }
+    const defaultPrice =
+      form.default_price.trim() !== ""
+        ? Number(form.default_price.replace(",", "."))
+        : null;
+    if (defaultPrice !== null && (!Number.isFinite(defaultPrice) || defaultPrice < 0)) {
+      setFormError("Η τιμή δεν είναι έγκυρη.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const supabase = getBrowserClient();
+      const insert: TicketCategoryInsert = {
+        club_id: clubId,
+        name,
+        category_kind: form.category_kind,
+        default_price: defaultPrice,
+        display_order: existingCount,
+      };
+      const { data, error } = await supabase
+        .from("ticket_categories")
+        .insert(insert)
+        .select("*")
+        .single();
+      if (error) {
+        if (error.code === "23505") {
+          setFormError("Υπάρχει ήδη κατηγορία με αυτό το όνομα. Επιλέξτε διαφορετικό.");
+        } else {
+          throw error;
+        }
+        return;
+      }
+      onCreated(data as TicketCategory);
+    } catch (err) {
+      setFormError(errorMessage(err, "Σφάλμα αποθήκευσης."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="mb-4 text-lg font-semibold">Νέα Κατηγορία</h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Field label="Όνομα" required>
+            <input
+              type="text"
+              required
+              autoFocus
+              value={form.name}
+              onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
+              placeholder="π.χ. Ενήλικας, Παιδί"
+              className={inputClass}
+            />
+          </Field>
+
+          <div>
+            <span className="mb-1.5 block text-xs font-medium text-muted">
+              Τύπος
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {TICKET_CATEGORY_KINDS.map((kind) => (
+                <label
+                  key={kind}
+                  className={
+                    "flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition " +
+                    (form.category_kind === kind
+                      ? "border-accent bg-accent/10 font-medium text-accent"
+                      : "border-border hover:bg-foreground/5")
+                  }
+                >
+                  <input
+                    type="radio"
+                    name="create_cat_kind"
+                    value={kind}
+                    checked={form.category_kind === kind}
+                    onChange={() =>
+                      setForm((s) => ({ ...s, category_kind: kind }))
+                    }
+                    className="sr-only"
+                  />
+                  {TICKET_CATEGORY_KIND_LABELS[kind]}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <Field label="Προτεινόμενη Τιμή">
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="0.01"
+                value={form.default_price}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, default_price: e.target.value }))
+                }
+                placeholder="0.00"
+                className={inputClass + " text-right"}
+              />
+              <span className="text-sm text-muted">€</span>
+            </div>
+          </Field>
+
+          {formError && (
+            <p className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+              {formError}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background disabled:opacity-50"
+            >
+              Ακύρωση
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {saving ? "Αποθήκευση…" : "Δημιουργία"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
