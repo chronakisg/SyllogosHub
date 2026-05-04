@@ -3,6 +3,7 @@ import type {
   EventSponsor,
   EventTicketPrice,
   Reservation,
+  TicketCategoryKind,
 } from "@/lib/supabase/types";
 import {
   type AttendeeWithMember,
@@ -10,6 +11,14 @@ import {
 } from "@/lib/utils/attendees";
 
 export type AttendeeCategory = "adult" | "child";
+
+export type TicketPriceWithCategory = EventTicketPrice & {
+  category: {
+    id: string;
+    name: string;
+    category_kind: TicketCategoryKind;
+  } | null;
+};
 
 export type ReservationRevenue = {
   adultsCount: number;
@@ -61,22 +70,26 @@ export function resolveAttendeeCategory(
 
 export function matchTicketPrice(
   category: AttendeeCategory,
-  ticketPrices: EventTicketPrice[]
-): EventTicketPrice | null {
+  ticketPrices: TicketPriceWithCategory[]
+): TicketPriceWithCategory | null {
   if (ticketPrices.length === 0) return null;
   const sorted = [...ticketPrices].sort((a, b) => a.display_order - b.display_order);
 
-  if (category === "child") {
-    return sorted.find((p) => /παιδ|child/i.test(p.label)) ?? sorted[0];
+  const exactMatch = sorted.find((p) => p.category?.category_kind === category);
+  if (exactMatch) return exactMatch;
+
+  if (category === "adult") {
+    const otherKind = sorted.find((p) => p.category?.category_kind === "other");
+    if (otherKind) return otherKind;
   }
 
-  return sorted.find((p) => /ενήλικ|adult/i.test(p.label)) ?? sorted[0];
+  return sorted[0];
 }
 
 export function calculateReservationRevenue(
   reservation: Reservation,
   attendees: AttendeeWithMember[],
-  ticketPrices: EventTicketPrice[],
+  ticketPrices: TicketPriceWithCategory[],
   club: Pick<Club, "child_age_threshold">
 ): ReservationRevenue {
   const empty: ReservationRevenue = {
@@ -136,7 +149,7 @@ export function calculateReservationRevenue(
 export function calculateEventRevenue(
   reservations: Reservation[],
   attendeesByReservation: Map<string, AttendeeWithMember[]>,
-  ticketPrices: EventTicketPrice[],
+  ticketPrices: TicketPriceWithCategory[],
   sponsors: EventSponsor[],
   club: Pick<Club, "child_age_threshold">
 ): EventRevenue {
@@ -175,7 +188,7 @@ export function calculateEventRevenue(
 
 export function formatRevenueBreakdown(
   rev: ReservationRevenue,
-  ticketPrices: EventTicketPrice[]
+  ticketPrices: TicketPriceWithCategory[]
 ): string {
   const totalCount = rev.adultsCount + rev.childrenCount + rev.anonymousAdultsCount;
   if (totalCount === 0) return "Καμία χρέωση";

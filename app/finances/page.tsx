@@ -32,6 +32,7 @@ import type {
 import { calculateDiscount, generateUuid } from "@/lib/utils/discounts";
 import { formatMemberName } from "@/lib/utils/attendees";
 import SponsorsTab from "./SponsorsTab";
+import EventDashboardTab from "./EventDashboardTab";
 
 type Tab = "payments" | "dashboard" | "sponsors";
 
@@ -124,7 +125,7 @@ function FinancesContent() {
           Πληρωμές Μελών
         </TabButton>
         <TabButton current={tab} value="dashboard" onSelect={handleTabChange}>
-          Κρατήσεις Εκδηλώσεων
+          Πίνακας Εκδηλώσεων
         </TabButton>
         <TabButton current={tab} value="sponsors" onSelect={handleTabChange}>
           Χορηγοί
@@ -134,7 +135,7 @@ function FinancesContent() {
       {tab === "payments" ? (
         <PaymentsTab />
       ) : tab === "dashboard" ? (
-        <ReservationsTab />
+        <EventDashboardTab />
       ) : (
         <SponsorsTab />
       )}
@@ -2232,226 +2233,6 @@ function PaymentModal({
             </button>
           </div>
         </form>
-      </div>
-    </div>
-  );
-}
-
-// ────────────────────────────────────────────────────────────
-// Tab 2 — Κρατήσεις Εκδηλώσεων (toggle is_paid)
-// ────────────────────────────────────────────────────────────
-
-function ReservationsTab() {
-  const { clubId, loading: clubLoading } = useCurrentClub();
-  const [events, setEvents] = useState<EventRow[]>([]);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [resLoading, setResLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (clubLoading || !clubId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const supabase = getBrowserClient();
-        const { data, error: qErr } = await supabase
-          .from("events")
-          .select("*")
-          .eq("club_id", clubId)
-          .order("event_date", { ascending: false });
-        if (cancelled) return;
-        if (qErr) throw qErr;
-        const list = data ?? [];
-        setEvents(list);
-        setSelectedEventId((prev) => prev ?? list[0]?.id ?? null);
-      } catch (err) {
-        if (!cancelled)
-          setError(errorMessage(err, "Σφάλμα φόρτωσης εκδηλώσεων."));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [clubId, clubLoading]);
-
-  useEffect(() => {
-    if (!selectedEventId) {
-      setReservations([]);
-      return;
-    }
-    let cancelled = false;
-    setResLoading(true);
-    (async () => {
-      try {
-        const supabase = getBrowserClient();
-        const { data, error: qErr } = await supabase
-          .from("reservations")
-          .select("*")
-          .eq("event_id", selectedEventId)
-          .order("group_name", { ascending: true });
-        if (cancelled) return;
-        if (qErr) throw qErr;
-        setReservations(data ?? []);
-      } catch (err) {
-        if (!cancelled)
-          setError(errorMessage(err, "Σφάλμα φόρτωσης κρατήσεων."));
-      } finally {
-        if (!cancelled) setResLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedEventId]);
-
-  async function togglePaid(r: Reservation) {
-    if (!clubId) return;
-    const next = !r.is_paid;
-    setUpdatingId(r.id);
-    setReservations((prev) =>
-      prev.map((x) => (x.id === r.id ? { ...x, is_paid: next } : x))
-    );
-    try {
-      const supabase = getBrowserClient();
-      const { error: uErr } = await supabase
-        .from("reservations")
-        .update({ is_paid: next })
-        .eq("id", r.id)
-        .eq("club_id", clubId);
-      if (uErr) throw uErr;
-    } catch (err) {
-      setReservations((prev) =>
-        prev.map((x) => (x.id === r.id ? { ...x, is_paid: r.is_paid } : x))
-      );
-      setError(errorMessage(err, "Σφάλμα ενημέρωσης κατάστασης."));
-    } finally {
-      setUpdatingId(null);
-    }
-  }
-
-  const stats = useMemo(() => {
-    const paid = reservations.filter((r) => r.is_paid).length;
-    const total = reservations.length;
-    const pax = reservations.reduce((s, r) => s + r.pax_count, 0);
-    return { paid, total, pending: total - paid, pax };
-  }, [reservations]);
-
-  return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Field label="Εκδήλωση">
-          <select
-            value={selectedEventId ?? ""}
-            onChange={(e) => setSelectedEventId(e.target.value || null)}
-            disabled={loading || events.length === 0}
-            className={inputClass + " disabled:opacity-60"}
-          >
-            {events.length === 0 ? (
-              <option value="">— Καμία εκδήλωση —</option>
-            ) : (
-              events.map((ev) => (
-                <option key={ev.id} value={ev.id}>
-                  {ev.event_name} —{" "}
-                  {new Date(ev.event_date).toLocaleDateString("el-GR")}
-                </option>
-              ))
-            )}
-          </select>
-        </Field>
-      </div>
-
-      {error && (
-        <div className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
-          <span>{error}</span>
-          <button
-            type="button"
-            onClick={() => setError(null)}
-            className="shrink-0 rounded px-2 text-xs hover:opacity-70"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {selectedEventId && (
-        <div className="mb-4 grid gap-3 sm:grid-cols-4">
-          <StatPill label="Παρέες" value={stats.total} />
-          <StatPill label="Άτομα" value={stats.pax} />
-          <StatPill label="Πληρωμένες" value={stats.paid} tone="success" />
-          <StatPill label="Εκκρεμείς" value={stats.pending} tone="danger" />
-        </div>
-      )}
-
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-border bg-background/50 text-xs uppercase tracking-wider text-muted">
-              <tr>
-                <th className="px-4 py-3">Παρέα</th>
-                <th className="px-4 py-3">Άτομα</th>
-                <th className="px-4 py-3">Τραπέζι</th>
-                <th className="px-4 py-3 text-right">Πληρωμή</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {!selectedEventId ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted">
-                    Επιλέξτε εκδήλωση.
-                  </td>
-                </tr>
-              ) : resLoading ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted">
-                    Φόρτωση…
-                  </td>
-                </tr>
-              ) : reservations.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted">
-                    Δεν υπάρχουν κρατήσεις για αυτή την εκδήλωση.
-                  </td>
-                </tr>
-              ) : (
-                reservations.map((r) => (
-                  <tr key={r.id} className="hover:bg-background/40">
-                    <td className="px-4 py-3 font-medium">{r.group_name}</td>
-                    <td className="px-4 py-3 text-muted">{r.pax_count}</td>
-                    <td className="px-4 py-3 text-muted">
-                      {r.table_number != null ? `Νο ${r.table_number}` : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => togglePaid(r)}
-                        disabled={updatingId === r.id}
-                        className={
-                          "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition disabled:opacity-50 " +
-                          (r.is_paid
-                            ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
-                            : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400")
-                        }
-                      >
-                        <span
-                          className={
-                            "h-1.5 w-1.5 rounded-full " +
-                            (r.is_paid ? "bg-emerald-500" : "bg-amber-500")
-                          }
-                        />
-                        {r.is_paid ? "Πληρωμένη" : "Εκκρεμεί"}
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
       </div>
     </div>
   );
