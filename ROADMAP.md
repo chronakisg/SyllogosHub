@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-03 (afternoon reconciliation)  
+> Last updated: 2026-05-04 (role-based permissions + user management)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -96,6 +96,23 @@ _(no active branches)_
 - [ ] **iOS Safari PWA test** — verify install + auto-update flow
 
 ## 🟡 High Priority (post-beta)
+
+- [ ] **🎭 Permissions UI Rebuild — Roles + Overrides tabs**
+
+  Stack: 📊 Διαχειριστικό
+
+  Strategic context: Foundation ολοκληρώθηκε (schema + API +
+  /settings/users admin UI). Μένει η επέκταση του /permissions
+  page:
+
+  - Tab "Ρόλοι": CRUD roles, permission matrix per role
+  - Tab "Άτομα": existing per-member overrides matrix
+  - 8 modules στο matrix (cashier προσθήκη — σήμερα 7)
+
+  Connects με: /settings/users (role assign χρησιμοποιεί ήδη
+  τα roles — αυτό το tab κάνει τους ίδιους τους ρόλους editable)
+
+  Estimated: M
 
 ### Reservations & Attendees domain
 
@@ -234,7 +251,9 @@ _(no active branches)_
   Estimated: L (multi-commit, νέο page, search component, action card,
   payment integration)
   Connects με: 3-state presence (διαβάζει presence_status),
-  Event Dashboard (entry point button)
+  Event Dashboard (entry point button),
+  ✅ role-based permissions (foundation ready),
+  User Management Module (assign Ταμία dynamically)
 
 ### Schema evolution
 
@@ -526,6 +545,15 @@ _(no active branches)_
   - `reservations_backup_20260430`
   - `members_backup_20260430`
   - Παραμένουν ως safety net για το beta — drop όταν συγχωνευθεί feature
+- [ ] **Drop `user_roles` table (dead code)**
+  - Defined σε `lib/supabase/types.ts` αλλά δεν χρησιμοποιείται
+  - `useRole` διαβάζει αλλά δεν επηρεάζει permission computation
+  - Replaced από proper role-based system (PR pending)
+  - Drop μετά το merge: `drop table public.user_roles;`
+  - Καθάρισμα: `getCurrentUserRole()` σε `lib/supabase/server.ts`
+    + state field στο `useRole`
+  - Estimated: XS (single SQL + 2 small code edits)
+
 - [ ] **Migration safety conventions** (process, όχι code)
   - Snapshot pattern με `create table as select` αντιγράφει ΜΟΝΟ data, όχι FKs/constraints
   - Για schema rollback: χρησιμοποίησε authentic migration files, όχι rename backup
@@ -537,6 +565,66 @@ _(no active branches)_
   - Estimated: S (write doc + add to README)
 
 ## ✅ Recently Done
+
+### feat/role-based-permissions (merged 2026-05-04) — PR #?
+
+Major foundation work για role-based permissions + complete
+User Management Module σε ένα PR.
+
+**Schema (migration 0005, idempotent):**
+- [x] 3 new tables: member_roles, member_role_permissions,
+  member_role_assignments
+- [x] cashier module added στο member_permissions CHECK
+  constraint (+ types.ts + ALL_PERMISSIONS + MODULE_TO_PERMISSION)
+- [x] 6 default roles seeded ανά club (Πρόεδρος ΔΣ,
+  Αντιπρόεδρος, Ταμίας, Γραμματέας, Μέλος ΔΣ, Απλό Μέλος)
+- [x] 73 permissions seeded across roles
+- [x] Auto-assignment: board_position → corresponding role;
+  rest → 'Απλό Μέλος' (every member has at least one role)
+
+**useRole refactor:**
+- [x] legacyBoardPositionPermissions removed (-28 lines)
+- [x] computePermissions rewritten: priority 1 admin/president
+  → ALL, priority 2 union(rolePermissions, customPermissions),
+  priority 3 default ['calendar']
+- [x] 4 queries instead of 3 (added member_role_assignments +
+  nested member_roles + member_role_permissions)
+- [x] State includes assignedRoles + rolePermissions
+
+**Admin server foundation:**
+- [x] lib/supabase/admin.ts — service role client (cached)
+- [x] lib/auth/requireAdmin.ts — server-side guard με
+  AdminContext return
+- [x] 7 API routes:
+  * GET /api/admin/users/[memberId]/login — auth status
+  * POST /api/admin/users/[memberId]/login — create login
+  * PATCH /api/admin/users/[memberId]/login — reset password
+  * DELETE /api/admin/users/[memberId]/login — disable (ban)
+  * POST /api/admin/users/[memberId]/login/enable — re-enable
+  * POST /api/admin/users/[memberId]/roles — assign role
+  * DELETE /api/admin/users/[memberId]/roles/[roleId] — remove role
+
+**User Management UI:**
+- [x] /settings/users page (~470 lines) με 2-column layout
+- [x] Settings card "Διαχείριση Χρηστών" στο /settings dashboard
+- [x] Login section: create/reset/disable με auto-generated
+  password modal
+- [x] Roles section: chips + add/remove
+- [x] Live integration με APIs
+
+**Live verification (smoke tests passed):**
+- [x] Auth gate: anonymous request → 401
+- [x] Role assign: ΝΙΚΟΣ Ταμίας chip προστέθηκε via API
+- [x] Role remove: chip αφαιρέθηκε via API
+- [x] Login create: kostas-test@party4u.gr auth user created
+  + member.email updated (then cleaned up)
+- [x] Auth status fetch: Network tab verified GET endpoint
+- [x] tsc clean σε όλα τα steps
+- [x] Cleanup: test auth user deleted, member.email reset
+
+**⚠️ Critical for production deployment:**
+- [ ] Add SUPABASE_SERVICE_ROLE_KEY στο Vercel env vars
+  ΠΡΙΝ το merge — αλλιώς API routes σπάνε σε production
 
 ### feat/venue-max-capacity (merged 2026-05-03) — PR #16
 

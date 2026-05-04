@@ -14,6 +14,12 @@ type Card = {
 
 const CARDS: Card[] = [
   {
+    href: "/settings/users",
+    icon: "👤",
+    title: "Διαχείριση Χρηστών",
+    description: "Λογαριασμοί σύνδεσης, ρόλοι και δικαιώματα πρόσβασης.",
+  },
+  {
     href: "/settings/club",
     icon: "🏛️",
     title: "Ταυτότητα Συλλόγου",

@@ -575,7 +575,8 @@ export type PermissionModule =
   | "seating"
   | "events"
   | "dashboard"
-  | "settings";
+  | "settings"
+  | "cashier";
 
 export type PermissionAction = "read" | "create" | "edit" | "delete";
 
@@ -606,6 +607,76 @@ export type MemberPermissionInsert = {
 export type MemberPermissionUpdate = Partial<
   Omit<MemberPermission, "id" | "created_at">
 >;
+
+// ============================================
+// Role-Based Permissions (migration 0005)
+// ============================================
+
+export type MemberRole = {
+  id: string;
+  club_id: string;
+  name: string;
+  description: string | null;
+  is_system: boolean;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MemberRoleInsert = {
+  id?: string;
+  club_id: string;
+  name: string;
+  description?: string | null;
+  is_system?: boolean;
+  display_order?: number;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type MemberRoleUpdate = Partial<Omit<MemberRole, "id" | "created_at">>;
+
+export type MemberRolePermission = {
+  id: string;
+  role_id: string;
+  module: PermissionModule;
+  action: PermissionAction;
+  scope: PermissionScope;
+  scope_value: string | null;
+  created_at: string;
+};
+
+export type MemberRolePermissionInsert = {
+  id?: string;
+  role_id: string;
+  module: PermissionModule;
+  action: PermissionAction;
+  scope?: PermissionScope;
+  scope_value?: string | null;
+  created_at?: string;
+};
+
+export type MemberRolePermissionUpdate = Partial<Omit<MemberRolePermission, "id" | "created_at">>;
+
+export type MemberRoleAssignment = {
+  id: string;
+  role_id: string;
+  member_id: string;
+  assigned_at: string;
+  assigned_by: string | null;
+  notes: string | null;
+};
+
+export type MemberRoleAssignmentInsert = {
+  id?: string;
+  role_id: string;
+  member_id: string;
+  assigned_at?: string;
+  assigned_by?: string | null;
+  notes?: string | null;
+};
+
+export type MemberRoleAssignmentUpdate = Partial<Omit<MemberRoleAssignment, "id">>;
 
 export type ThemePreset = "classic" | "cretan" | "nature" | "custom";
 
@@ -742,6 +813,62 @@ export type Database = {
           {
             foreignKeyName: "member_permissions_member_id_fkey";
             columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      member_roles: {
+        Row: MemberRole;
+        Insert: MemberRoleInsert;
+        Update: MemberRoleUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "member_roles_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      member_role_permissions: {
+        Row: MemberRolePermission;
+        Insert: MemberRolePermissionInsert;
+        Update: MemberRolePermissionUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "member_role_permissions_role_id_fkey";
+            columns: ["role_id"];
+            isOneToOne: false;
+            referencedRelation: "member_roles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      member_role_assignments: {
+        Row: MemberRoleAssignment;
+        Insert: MemberRoleAssignmentInsert;
+        Update: MemberRoleAssignmentUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "member_role_assignments_role_id_fkey";
+            columns: ["role_id"];
+            isOneToOne: false;
+            referencedRelation: "member_roles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "member_role_assignments_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "member_role_assignments_assigned_by_fkey";
+            columns: ["assigned_by"];
             isOneToOne: false;
             referencedRelation: "members";
             referencedColumns: ["id"];

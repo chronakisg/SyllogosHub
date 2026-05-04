@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getBrowserClient } from "@/lib/supabase/client";
 import type {
   MemberPermission,
+  MemberRolePermission,
   PermissionAction,
   PermissionModule,
   UserRoleName,
@@ -16,7 +17,8 @@ export type Permission =
   | "seating"
   | "calendar"
   | "settings"
-  | "dashboard";
+  | "dashboard"
+  | "cashier";
 
 export type RoleState = {
   loading: boolean;
@@ -32,6 +34,8 @@ export type RoleState = {
   boardPosition: string | null;
   permissions: Permission[];
   customPermissions: MemberPermission[];
+  assignedRoles: { id: string; name: string }[];
+  rolePermissions: MemberRolePermission[];
 };
 
 const INITIAL: RoleState = {
@@ -48,6 +52,8 @@ const INITIAL: RoleState = {
   boardPosition: null,
   permissions: [],
   customPermissions: [],
+  assignedRoles: [],
+  rolePermissions: [],
 };
 
 const SIGNED_OUT: RoleState = { ...INITIAL, loading: false };
@@ -60,6 +66,7 @@ const ALL_PERMISSIONS: Permission[] = [
   "calendar",
   "settings",
   "dashboard",
+  "cashier",
 ];
 
 const MODULE_TO_PERMISSION: Record<PermissionModule, Permission> = {
@@ -70,39 +77,27 @@ const MODULE_TO_PERMISSION: Record<PermissionModule, Permission> = {
   events: "events",
   dashboard: "dashboard",
   settings: "settings",
+  cashier: "cashier",
 };
-
-function legacyBoardPositionPermissions(input: {
-  isBoardMember: boolean;
-  boardPosition: string | null;
-}): Permission[] {
-  if (input.boardPosition === "Ταμίας") return ["finances", "dashboard"];
-  if (input.boardPosition === "Γραμματέας")
-    return ["members", "calendar", "dashboard"];
-  if (input.boardPosition === "Αντιπρόεδρος")
-    return ["members", "events", "seating", "calendar", "dashboard"];
-  if (input.isBoardMember) return ["members", "seating", "calendar"];
-  return ["calendar"];
-}
 
 function computePermissions(input: {
   isPresident: boolean;
   isSystemAdmin: boolean;
-  isBoardMember: boolean;
-  boardPosition: string | null;
+  rolePermissions: MemberRolePermission[];
   customPermissions: MemberPermission[];
 }): Permission[] {
   if (input.isSystemAdmin || input.isPresident) return [...ALL_PERMISSIONS];
-  if (input.customPermissions.length > 0) {
-    const set = new Set<Permission>();
-    for (const p of input.customPermissions) {
-      const perm = MODULE_TO_PERMISSION[p.module];
-      if (perm) set.add(perm);
-    }
-    set.add("calendar");
-    return Array.from(set);
+  const set = new Set<Permission>();
+  for (const p of input.rolePermissions) {
+    const perm = MODULE_TO_PERMISSION[p.module as PermissionModule];
+    if (perm) set.add(perm);
   }
-  return legacyBoardPositionPermissions(input);
+  for (const p of input.customPermissions) {
+    const perm = MODULE_TO_PERMISSION[p.module];
+    if (perm) set.add(perm);
+  }
+  set.add("calendar");
+  return Array.from(set);
 }
 
 export type CanDoOpts = {
@@ -187,13 +182,57 @@ export function useRole(): RoleState {
         const boardPosition = m?.board_position ?? null;
 
         let customPermissions: MemberPermission[] = [];
+        let assignedRoles: { id: string; name: string }[] = [];
+        let rolePermissions: MemberRolePermission[] = [];
+
         if (memberId) {
-          const permRes = await supabase
-            .from("member_permissions")
-            .select("*")
-            .eq("member_id", memberId);
-          if (!cancelled && !permRes.error) {
-            customPermissions = (permRes.data ?? []) as MemberPermission[];
+          const [permRes, assignmentRes] = await Promise.all([
+            supabase
+              .from("member_permissions")
+              .select("*")
+              .eq("member_id", memberId),
+            supabase
+              .from("member_role_assignments")
+              .select(`
+                role_id,
+                member_roles!inner (
+                  id,
+                  name,
+                  member_role_permissions (
+                    id,
+                    role_id,
+                    module,
+                    action,
+                    scope,
+                    scope_value,
+                    created_at
+                  )
+                )
+              `)
+              .eq("member_id", memberId),
+          ]);
+
+          if (!cancelled) {
+            if (!permRes.error) {
+              customPermissions = (permRes.data ?? []) as MemberPermission[];
+            }
+            if (!assignmentRes.error && assignmentRes.data) {
+              const data = assignmentRes.data as Array<{
+                role_id: string;
+                member_roles: {
+                  id: string;
+                  name: string;
+                  member_role_permissions: MemberRolePermission[];
+                };
+              }>;
+              assignedRoles = data.map((r) => ({
+                id: r.member_roles.id,
+                name: r.member_roles.name,
+              }));
+              rolePermissions = data.flatMap(
+                (r) => r.member_roles.member_role_permissions ?? []
+              );
+            }
           }
         }
         if (cancelled) return;
@@ -206,8 +245,7 @@ export function useRole(): RoleState {
         const permissions = computePermissions({
           isPresident,
           isSystemAdmin,
-          isBoardMember,
-          boardPosition,
+          rolePermissions,
           customPermissions,
         });
 
@@ -225,6 +263,8 @@ export function useRole(): RoleState {
           boardPosition,
           permissions,
           customPermissions,
+          assignedRoles,
+          rolePermissions,
         });
       } catch (err) {
         console.error("[useRole] error", err);
