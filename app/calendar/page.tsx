@@ -232,7 +232,10 @@ export default function CalendarPage() {
   }, [role.email]);
 
   const load = useCallback(async () => {
-    if (!clubId) return;
+    if (!clubId) {
+      setLoading(false);
+      return;
+    }
     try {
       const supabase = getBrowserClient();
       const [cRes, xRes, eRes, mRes] = await Promise.all([
@@ -461,7 +464,10 @@ export default function CalendarPage() {
     if (item.source !== "calendar" || !item.raw) return;
     if (!item.raw.is_recurring) {
       // For non-recurring, toggle the parent status field instead.
-      if (!clubId) return;
+      if (!clubId) {
+        setLoading(false);
+        return;
+      }
       try {
         const supabase = getBrowserClient();
         const next: CalendarEventStatus =
@@ -481,7 +487,10 @@ export default function CalendarPage() {
     }
 
     const dk = dayKey(item.occurrenceDate);
-    if (!clubId) return;
+    if (!clubId) {
+      setLoading(false);
+      return;
+    }
     try {
       const supabase = getBrowserClient();
       const existing = cancellations.find(

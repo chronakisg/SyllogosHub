@@ -15,9 +15,9 @@ type Card = {
 const CARDS: Card[] = [
   {
     href: "/settings/users",
-    icon: "👤",
-    title: "Διαχείριση Χρηστών",
-    description: "Λογαριασμοί σύνδεσης, ρόλοι και δικαιώματα πρόσβασης.",
+    icon: "👥",
+    title: "Χρήστες & Δικαιώματα",
+    description: "Logins, ρόλοι και δικαιώματα πρόσβασης ανά ομάδα.",
   },
   {
     href: "/settings/club",
@@ -42,12 +42,6 @@ const CARDS: Card[] = [
     icon: "💰",
     title: "Εκπτώσεις",
     description: "Αυτόματες εκπτώσεις βάσει ηλικίας ή σειράς παιδιών.",
-  },
-  {
-    href: "/permissions",
-    icon: "🔐",
-    title: "Δικαιώματα",
-    description: "Ρόλοι και πρόσβαση ανά module.",
   },
 ];
 

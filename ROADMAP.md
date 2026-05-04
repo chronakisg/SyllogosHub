@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-04 (role-based permissions + user management + roles UI)  
+> Last updated: 2026-05-04 (full role-based permissions + user management + unified UI)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -551,8 +551,8 @@ _(no active branches)_
 
 ### feat/role-based-permissions (merged 2026-05-04) — PR #?
 
-Major foundation + complete UI για role-based permission
-system σε ένα PR.
+Major foundation + complete UI για role-based permission system
+σε ένα PR. Η μεγαλύτερη single-PR δουλειά της session.
 
 **Schema (migration 0005, idempotent):**
 - [x] 3 new tables: member_roles, member_role_permissions,
@@ -571,7 +571,7 @@ system σε ένα PR.
 - [x] computePermissions: priority 1 admin/president → ALL,
   priority 2 union(rolePermissions, customPermissions),
   priority 3 default ['calendar']
-- [x] 4 queries instead of 3 (added joined role+permissions fetch)
+- [x] 4 queries instead of 3 (added joined role+permissions)
 - [x] State includes assignedRoles + rolePermissions
 
 **Server foundation:**
@@ -579,40 +579,46 @@ system σε ένα PR.
 - [x] lib/auth/requireAdmin.ts — server guard με AdminContext
 - [x] SUPABASE_SERVICE_ROLE_KEY documented στο .env.local.example
 
-**API routes — Users (login + roles per member):**
-- [x] POST/GET/PATCH/DELETE /api/admin/users/[id]/login
-- [x] POST /api/admin/users/[id]/login/enable
-- [x] POST /api/admin/users/[id]/roles
-- [x] DELETE /api/admin/users/[id]/roles/[roleId]
+**API routes — Users (12 endpoints total):**
+- [x] /api/admin/users/[id]/login — POST/GET/PATCH/DELETE
+- [x] /api/admin/users/[id]/login/enable — POST
+- [x] /api/admin/users/[id]/roles — POST
+- [x] /api/admin/users/[id]/roles/[roleId] — DELETE
 
-**API routes — Roles (CRUD):**
-- [x] GET /api/admin/roles (list + member counts)
-- [x] POST /api/admin/roles (create custom)
-- [x] PATCH /api/admin/roles/[id] (rename — system blocked)
-- [x] DELETE /api/admin/roles/[id] (custom only, no assigned)
-- [x] GET /api/admin/roles/[id]/permissions
-- [x] PATCH /api/admin/roles/[id]/permissions (full replace)
+**API routes — Roles CRUD:**
+- [x] /api/admin/roles — GET (list + counts), POST (create)
+- [x] /api/admin/roles/[id] — PATCH (rename), DELETE
+- [x] /api/admin/roles/[id]/permissions — GET, PATCH (replace)
 
-**UI surfaces:**
-- [x] /settings/users — Διαχείριση Χρηστών (logins, passwords,
-  role assignments per member)
-- [x] /permissions — Ρόλοι & Δικαιώματα (rebuild με 2 tabs):
+**UI — Unified single page:**
+- [x] /settings/users — "Χρήστες & Δικαιώματα" με 2 tabs:
+  * Tab "Άτομα": login mgmt + role chips per member
   * Tab "Ομάδες": role list + matrix per role + create custom
-  * Tab "Άτομα": per-member overrides matrix (existing behavior)
-- [x] Reusable component: PermissionMatrix.tsx (8 modules × 4 actions)
-- [x] /settings dashboard: card "Διαχείριση Χρηστών" (νέο)
+- [x] PermissionMatrix.tsx — reusable component (8 modules × 4)
+- [x] /settings dashboard: card "Χρήστες & Δικαιώματα"
+  (αφαιρέθηκε το παλιό card "Δικαιώματα")
+- [x] /permissions route → redirect σε /settings/users
+  (graceful for old bookmarks)
+- [x] AppShell sidebar activePaths updated
 
-**Live verification (smoke tests passed):**
+**Bug fixes:**
+- [x] /calendar infinite loading για anonymous/missing-clubId
+  users (3 unguarded early returns σε useCallback functions)
+
+**Live verification (πολλαπλά smoke tests):**
 - [x] Auth gate: anonymous → 401
-- [x] Role assign/remove via API
-- [x] Login create: real auth user (cleaned up after)
-- [x] Roles tab: list, create, delete, edit permissions, save
-- [x] Members tab: existing behavior preserved
+- [x] Role assign/remove via API + UI
+- [x] Login create: real auth user, verified στο Supabase Dashboard
+- [x] Custom role create/delete via UI
+- [x] Permission edit per role + save
+- [x] Tab switching (Άτομα ↔ Ομάδες)
+- [x] /permissions redirect verified
+- [x] Calendar loading recovered after fix
 - [x] tsc clean throughout
 
 **Critical for production deployment:**
-- [ ] Add SUPABASE_SERVICE_ROLE_KEY στο Vercel env vars
-  ΠΡΙΝ το merge — αλλιώς admin API routes σπάνε σε production
+- [ ] **Add SUPABASE_SERVICE_ROLE_KEY στο Vercel env vars
+  ΠΡΙΝ το merge** — αλλιώς admin API routes σπάνε σε production
 
 ### feat/venue-max-capacity (merged 2026-05-03) — PR #16
 

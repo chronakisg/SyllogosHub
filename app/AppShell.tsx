@@ -34,7 +34,7 @@ const NAV_ITEMS: NavItem[] = [
     permission: null,
     adminOnly: true,
     section: "config",
-    activePaths: ["/discounts", "/permissions"],
+    activePaths: ["/discounts", "/settings/users"],
   },
 ];
 
