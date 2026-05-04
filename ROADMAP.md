@@ -203,6 +203,14 @@ _(no active branches)_
   Replaces: cherry-pick του 29f5078 (abandoned event-financials-tab branch)
   Connects με: event_expenses + age_categorization + Cashier Interface
 
+  **Foundation status:** Ολοκληρώθηκε το ticket_categories catalog
+  (PR feat/ticket-categories). Όταν επιστρέψουμε σε αυτό το feature,
+  χρειάζονται updates:
+  - matchTicketPrice σε category_kind-based (αντί regex)
+  - EventTicketPrice queries με join σε ticket_categories
+    για να πάρουμε category names (το label column δεν υπάρχει πια)
+  - Verify formatRevenueBreakdown signature
+
 ### 🎩 Operational interfaces
 
 - [ ] **💰 Cashier Interface (Φάση 2 — Είσοδος/Ταμείο)**
@@ -491,6 +499,18 @@ _(no active branches)_
 
 ### Tech Debt & Cleanup
 
+- [ ] **Extract TicketCategoryModal σε shared component**
+  - Σήμερα υπάρχουν 2 modal implementations:
+    * Full CategoryModal στο
+      `app/settings/club/ticket-categories/page.tsx`
+      (name, short_label, kind, default_price, notes)
+    * Minimal CreateCategoryModal στο
+      `app/events/page.tsx`
+      (name, kind, default_price)
+  - DRY refactor: ένα `components/TicketCategoryModal.tsx`
+    με optional fields configuration
+  - Estimated: S
+
 - [ ] **TableLabelEdit `editInitialValue` prop** (post PR #13)
   - Goal: αν θέλουμε ποτέ να pre-fill το edit input με current label
     (custom ή party name)
@@ -548,6 +568,46 @@ _(no active branches)_
   - Estimated: S (write doc + add to README)
 
 ## ✅ Recently Done
+
+### feat/ticket-categories (merged 2026-05-04) — PR #?
+
+Per-club catalog για κατηγορίες προσκλήσεων. Source of truth για labels,
+αντικαθιστά το freeform input στο event modal. Foundation για consistent
+multi-tenant labels και kind-based matching σε downstream features.
+
+**Schema (3 migrations):**
+- [x] Migration 0006: ticket_categories table
+      (id, club_id, name, short_label, default_price,
+      display_order, is_archived, category_kind enum,
+      notes) + 2 default seeds ανά club
+      (Ενήλικας/adult, Παιδί/child)
+- [x] Migration 0007: event_ticket_prices.category_id
+      nullable FK + index
+- [x] Migration 0008: category_id NOT NULL + drop label
+      column
+
+**Code:**
+- [x] types.ts: TicketCategory + TicketCategoryKind
+      ('adult'|'child'|'other') + constants
+- [x] /settings/club/ticket-categories CRUD page με
+      optimistic updates + reorderingId safeguard
+      κατά rapid clicks
+- [x] /settings dashboard: card "Κατηγορίες Προσκλήσεων"
+- [x] Event modal "Τιμές" tab: replace freeform label
+      input με dropdown από catalog
+- [x] Auto-fill price από category.default_price σε
+      κάθε category change (overwrite για consistency)
+- [x] Inline shortcut "+ Νέα κατηγορία στον κατάλογο"
+      → minimal modal με 3 fields (name, kind,
+      default_price)
+- [x] Filter των already-selected categories per event
+- [x] Empty catalog state με link στο settings
+- [x] EventSummaryPanel display via category join
+      (replaces removed label column)
+- [x] Friendly error για 23505 unique constraint
+      violation στα names
+- [x] Permission gate: settings (consistent με
+      departments pattern)
 
 ### feat/role-based-permissions (merged 2026-05-04) — PR #?
 
