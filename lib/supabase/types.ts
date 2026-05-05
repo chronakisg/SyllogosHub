@@ -426,6 +426,7 @@ export type EventSponsor = {
   contribution_type: ContributionType;
   contribution_value: number | null;
   contribution_description: string | null;
+  received_at: string | null;
   created_at: string;
 };
 
@@ -437,6 +438,7 @@ export type EventSponsorInsert = {
   contribution_type: ContributionType;
   contribution_value?: number | null;
   contribution_description?: string | null;
+  received_at?: string | null;
   created_at?: string;
 };
 
