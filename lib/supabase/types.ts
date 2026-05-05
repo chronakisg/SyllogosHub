@@ -394,16 +394,6 @@ export type TicketCategoryUpdate = Partial<
   Omit<TicketCategory, "id" | "created_at">
 >;
 
-export type ExpenseCategory =
-  | "entertainment"
-  | "photography"
-  | "venue"
-  | "catering"
-  | "decoration"
-  | "transportation"
-  | "utilities"
-  | "other";
-
 export type Sponsor = {
   id: string;
   club_id: string | null;
@@ -1082,7 +1072,7 @@ export type Database = {
           id: string;
           club_id: string;
           event_id: string;
-          category: ExpenseCategory;
+          category: string;
           amount: number;
           vendor_name: string | null;
           description: string | null;
@@ -1096,7 +1086,7 @@ export type Database = {
           id?: string;
           club_id: string;
           event_id: string;
-          category: ExpenseCategory;
+          category: string;
           amount: number;
           vendor_name?: string | null;
           description?: string | null;
@@ -1110,7 +1100,7 @@ export type Database = {
           id?: string;
           club_id?: string;
           event_id?: string;
-          category?: ExpenseCategory;
+          category?: string;
           amount?: number;
           vendor_name?: string | null;
           description?: string | null;
@@ -1245,6 +1235,53 @@ export type Database = {
           },
         ];
       };
+      expense_categories: {
+        Row: {
+          id: string;
+          club_id: string;
+          name: string;
+          short_label: string | null;
+          default_price: number | null;
+          display_order: number;
+          is_archived: boolean;
+          icon: string | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          club_id: string;
+          name: string;
+          short_label?: string | null;
+          default_price?: number | null;
+          display_order?: number;
+          is_archived?: boolean;
+          icon?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          club_id?: string;
+          name?: string;
+          short_label?: string | null;
+          default_price?: number | null;
+          display_order?: number;
+          is_archived?: boolean;
+          icon?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "expense_categories_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -1292,35 +1329,9 @@ export type EventExpenseInsert =
 export type EventExpenseUpdate =
   Database["public"]["Tables"]["event_expenses"]["Update"];
 
-export const EXPENSE_CATEGORIES: readonly ExpenseCategory[] = [
-  "entertainment",
-  "photography",
-  "venue",
-  "catering",
-  "decoration",
-  "transportation",
-  "utilities",
-  "other",
-] as const;
-
-export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
-  entertainment: "Διασκέδαση",
-  photography: "Φωτογραφία/Βίντεο",
-  venue: "Ενοίκιο χώρου",
-  catering: "Catering / Φαγητό",
-  decoration: "Διακόσμηση",
-  transportation: "Μεταφορικά",
-  utilities: "ΔΕΗ / Νερό",
-  other: "Άλλο",
-};
-
-export const EXPENSE_CATEGORY_ICONS: Record<ExpenseCategory, string> = {
-  entertainment: "🎵",
-  photography: "📸",
-  venue: "🏠",
-  catering: "🍽️",
-  decoration: "🎨",
-  transportation: "🚗",
-  utilities: "⚡",
-  other: "📋",
-};
+export type ExpenseCategory =
+  Database["public"]["Tables"]["expense_categories"]["Row"];
+export type ExpenseCategoryInsert =
+  Database["public"]["Tables"]["expense_categories"]["Insert"];
+export type ExpenseCategoryUpdate =
+  Database["public"]["Tables"]["expense_categories"]["Update"];
