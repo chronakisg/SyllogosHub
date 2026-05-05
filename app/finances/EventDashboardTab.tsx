@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import type {
+  ContributionType,
   Event as EventRow,
   EventExpense,
   EventSponsor,
@@ -22,6 +23,7 @@ import {
   formatEuro,
   formatRevenueBreakdown,
 } from "@/lib/utils/eventRevenue";
+import ExpensesPanel from "./ExpensesPanel";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -40,6 +42,14 @@ type SubTab = "income" | "expenses";
 
 const inputClass =
   "rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
+
+const CONTRIBUTION_TYPE_LABELS: Record<ContributionType, string> = {
+  money: "Χρήματα",
+  product: "Προϊόν",
+  service: "Υπηρεσία",
+  venue: "Χώρος",
+  other: "Άλλο",
+};
 
 function sponsorDisplayName(s: EventSponsorWithSponsor): string {
   if (s.sponsor?.member) {
@@ -201,10 +211,9 @@ export default function EventDashboardTab() {
       reservations,
       attendeesByReservation,
       ticketPrices,
-      eventSponsors,
       club
     );
-  }, [reservations, attendeesByReservation, ticketPrices, eventSponsors, club]);
+  }, [reservations, attendeesByReservation, ticketPrices, club]);
 
   const reservationRevenues = useMemo(() => {
     const map = new Map<string, ReturnType<typeof calculateReservationRevenue>>();
@@ -235,12 +244,28 @@ export default function EventDashboardTab() {
     return { totalAdults, totalChildren };
   }, [reservationRevenues]);
 
-  const moneySponsorsSorted = useMemo(
-    () => eventSponsors.filter(
-      (s) => s.contribution_type === "money" && s.contribution_value != null
-    ),
-    [eventSponsors]
-  );
+  const allSponsorsSorted = useMemo(() => {
+    return [...eventSponsors].sort((a, b) => {
+      const aIsMoney = a.contribution_type === "money";
+      const bIsMoney = b.contribution_type === "money";
+      if (aIsMoney && !bIsMoney) return -1;
+      if (!aIsMoney && bIsMoney) return 1;
+      if (a.contribution_type !== b.contribution_type) {
+        return a.contribution_type.localeCompare(b.contribution_type);
+      }
+      return sponsorDisplayName(a).localeCompare(
+        sponsorDisplayName(b),
+        "el",
+        { sensitivity: "base" }
+      );
+    });
+  }, [eventSponsors]);
+
+  const sponsorsMoneyPledged = useMemo(() => {
+    return eventSponsors
+      .filter((s) => s.contribution_type === "money" && s.contribution_value != null)
+      .reduce((sum, s) => sum + (s.contribution_value ?? 0), 0);
+  }, [eventSponsors]);
 
   const expensesSummary = useMemo(
     () => calculateEventExpenses(eventExpenses),
@@ -491,48 +516,73 @@ export default function EventDashboardTab() {
               {sponsorsError && (
                 <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-300">
                   <span>⚠️</span>
-                  <span>Δεν φορτώθηκαν οι χορηγίες — τα έσοδα ίσως είναι ελλιπή.</span>
+                  <span>Δεν φορτώθηκαν οι χορηγίες.</span>
                 </div>
               )}
 
-              {/* ── ΧΟΡΗΓΟΙ (money only) ──────────────────── */}
-              {!dataLoading && moneySponsorsSorted.length > 0 && (
+              {/* ── ΧΟΡΗΓΟΙ ──────────────────────────────── */}
+              {!dataLoading && allSponsorsSorted.length > 0 && (
                 <section>
                   <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">
                     🤝 Χορηγοί
                   </h2>
                   <div className="overflow-hidden rounded-xl border border-border bg-surface">
                     <ul className="divide-y divide-border text-sm">
-                      {moneySponsorsSorted.map((s) => (
-                        <li
-                          key={s.id}
-                          className="flex items-center justify-between px-4 py-3"
-                        >
-                          <span className="font-medium">{sponsorDisplayName(s)}</span>
-                          <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
-                            {formatEuro(s.contribution_value!)}
-                          </span>
-                        </li>
-                      ))}
-                      {moneySponsorsSorted.length >= 1 && (
+                      {allSponsorsSorted.map((s) => {
+                        const isMoney = s.contribution_type === "money";
+                        return (
+                          <li
+                            key={s.id}
+                            className="flex items-center justify-between gap-3 px-4 py-3"
+                          >
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="truncate font-medium">
+                                {sponsorDisplayName(s)}
+                              </span>
+                              <span className="whitespace-nowrap rounded-full bg-foreground/10 px-2 py-0.5 text-xs text-foreground/70">
+                                {CONTRIBUTION_TYPE_LABELS[s.contribution_type]}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              {isMoney && s.contribution_value != null ? (
+                                <span className="font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
+                                  {formatEuro(s.contribution_value)}
+                                </span>
+                              ) : (
+                                <span className="text-sm italic text-muted">
+                                  {s.contribution_description ?? "—"}
+                                </span>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                      {sponsorsMoneyPledged > 0 && (
                         <li className="flex items-center justify-between bg-background/40 px-4 py-2.5 text-sm font-semibold">
-                          <span>Σύνολο χορηγιών</span>
+                          <span>Δεσμευμένες χορηγίες</span>
                           <span className="tabular-nums">
-                            {formatEuro(eventRevenue?.sponsorsRevenue ?? 0)}
+                            {formatEuro(sponsorsMoneyPledged)}
                           </span>
                         </li>
                       )}
                     </ul>
+                    <p className="border-t border-border px-4 py-2 text-xs italic text-muted">
+                      Οι χορηγίες δεν περιλαμβάνονται στα Έσοδα μέχρι να εισπραχθούν.
+                    </p>
                   </div>
                 </section>
               )}
             </>
           )}
 
-          {subTab === "expenses" && (
-            <div className="rounded-lg border border-dashed border-border bg-background/50 p-6 text-center text-sm text-muted">
-              Έξοδα tab — coming soon (D2 commit)
-            </div>
+          {subTab === "expenses" && clubId && (
+            <ExpensesPanel
+              eventId={selectedEventId}
+              clubId={clubId}
+              onExpensesChange={(newExpenses) => {
+                setEventExpenses(newExpenses);
+              }}
+            />
           )}
         </>
       )}

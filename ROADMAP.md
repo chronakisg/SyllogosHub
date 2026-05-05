@@ -438,6 +438,15 @@ _(no active branches)_
 
 ### Tech Debt & Cleanup
 
+- [ ] **Sponsor payment state** (`received_at` field)
+  - Schema: add `received_at timestamptz` σε `event_sponsors`
+  - Mirror του `event_expenses.paid_at` pattern
+  - UI: toggle "Εισπράχθηκε/Παραλήφθηκε" στο event modal Χορηγοί tab
+  - Distinction: promised (δεσμευμένο) vs received (εισπραγμένο)
+  - Όταν received, sponsors join σε revenue calculations
+  - ΕΣΟΔΑ card θα δείξει received sponsors
+  - Estimated: M
+
 - [ ] **Audit /discounts location** (architectural inconsistency)
   - Currently lives at `app/discounts/`, εκτός `app/settings/` tree
   - Should be co-located με τα άλλα settings sub-pages

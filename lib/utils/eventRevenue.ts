@@ -1,7 +1,6 @@
 import type {
   Club,
   EventExpense,
-  EventSponsor,
   EventTicketPrice,
   Reservation,
   TicketCategoryKind,
@@ -33,7 +32,6 @@ export type ReservationRevenue = {
 
 export type EventRevenue = {
   reservationsRevenue: number;
-  sponsorsRevenue: number;
   totalRevenue: number;
   paidRevenue: number;
   pendingRevenue: number;
@@ -151,7 +149,6 @@ export function calculateEventRevenue(
   reservations: Reservation[],
   attendeesByReservation: Map<string, AttendeeWithMember[]>,
   ticketPrices: TicketPriceWithCategory[],
-  sponsors: EventSponsor[],
   club: Pick<Club, "child_age_threshold">
 ): EventRevenue {
   let reservationsRevenue = 0;
@@ -168,17 +165,10 @@ export function calculateEventRevenue(
     }
   }
 
-  const sponsorsRevenue = sponsors.reduce((sum, s) => {
-    if (s.contribution_type !== "money") return sum;
-    if (s.contribution_value == null) return sum;
-    return sum + s.contribution_value;
-  }, 0);
-
-  const totalRevenue = reservationsRevenue + sponsorsRevenue;
+  const totalRevenue = reservationsRevenue;
 
   return {
     reservationsRevenue,
-    sponsorsRevenue,
     totalRevenue,
     paidRevenue,
     pendingRevenue: reservationsRevenue - paidRevenue,
