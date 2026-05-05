@@ -25,15 +25,12 @@ import type {
   ContributionType,
   EntertainmentType,
   Event as EventRow,
-  EventExpense,
-  EventExpenseInsert,
   EventInsert,
   EventSponsor,
   EventSponsorInsert,
   EventTicketPrice,
   EventTicketPriceInsert,
   EventUpdate,
-  ExpenseCategory,
   Member,
   Sponsor,
   SponsorInsert,
@@ -42,8 +39,6 @@ import type {
   TicketCategoryKind,
 } from "@/lib/supabase/types";
 import {
-  EXPENSE_CATEGORIES,
-  EXPENSE_CATEGORY_LABELS,
   TICKET_CATEGORY_KINDS,
   TICKET_CATEGORY_KIND_LABELS,
 } from "@/lib/supabase/types";
@@ -100,17 +95,6 @@ type SponsorshipRow = {
   contribution_type: ContributionType;
   contribution_value: string;
   contribution_description: string;
-};
-
-type ExpenseRow = {
-  id?: string;
-  category: ExpenseCategory;
-  amount: string;
-  vendor_name: string;
-  description: string;
-  paid_at: string;
-  payment_method: string;
-  notes: string;
 };
 
 const CONTRIBUTION_OPTIONS: Array<{ value: ContributionType; label: string }> = [
@@ -596,7 +580,7 @@ export default function EventsPage() {
   );
 }
 
-type Tab = "details" | "tickets" | "entertainment" | "sponsors" | "expenses";
+type Tab = "details" | "tickets" | "entertainment" | "sponsors";
 
 function EventModal({
   editing,
@@ -647,7 +631,6 @@ function EventModal({
     return m;
   }, [members]);
 
-  const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -681,7 +664,7 @@ function EventModal({
               .eq("is_archived", false)
               .order("display_order", { ascending: true })
           : Promise.resolve({ data: [], error: null } as const);
-        const [mRes, tRes, spRes, etRes, entList, eventEntList, catRes, expRes] =
+        const [mRes, tRes, spRes, etRes, entList, eventEntList, catRes] =
           await Promise.all([
             supabase
               .from("members")
@@ -705,13 +688,6 @@ function EventModal({
             entListPromise,
             eventEntPromise,
             catalogQuery,
-            editing
-              ? supabase
-                  .from("event_expenses")
-                  .select("*")
-                  .eq("event_id", editing.id)
-                  .order("created_at", { ascending: true })
-              : Promise.resolve({ data: [], error: null } as const),
           ]);
         if (cancelled) return;
         if (mRes.error) throw mRes.error;
@@ -719,7 +695,6 @@ function EventModal({
         if (spRes.error) throw spRes.error;
         if (etRes.error) throw etRes.error;
         if (catRes.error) throw catRes.error;
-        if (expRes.error) throw expRes.error;
 
         const memberRows = (mRes.data ?? []) as Member[];
         setMembers(memberRows);
@@ -782,19 +757,6 @@ function EventModal({
           })
         );
 
-        const expenseRows = (expRes.data ?? []) as EventExpense[];
-        setExpenses(
-          expenseRows.map((e) => ({
-            id: e.id,
-            category: e.category,
-            amount: String(e.amount),
-            vendor_name: e.vendor_name ?? "",
-            description: e.description ?? "",
-            paid_at: e.paid_at ? e.paid_at.slice(0, 10) : "",
-            payment_method: e.payment_method ?? "",
-            notes: e.notes ?? "",
-          }))
-        );
       } catch (err) {
         if (!cancelled) {
           setFormError(errorMessage(err, "Σφάλμα φόρτωσης δεδομένων."));
@@ -841,27 +803,6 @@ function EventModal({
   }
   function removeSponsorship(i: number) {
     setSponsorships((s) => s.filter((_, idx) => idx !== i));
-  }
-
-  function addExpense() {
-    setExpenses((s) => [
-      ...s,
-      {
-        category: "other" as ExpenseCategory,
-        amount: "",
-        vendor_name: "",
-        description: "",
-        paid_at: "",
-        payment_method: "",
-        notes: "",
-      },
-    ]);
-  }
-  function removeExpense(i: number) {
-    setExpenses((s) => s.filter((_, idx) => idx !== i));
-  }
-  function updateExpense(i: number, patch: Partial<ExpenseRow>) {
-    setExpenses((s) => s.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -957,26 +898,6 @@ function EventModal({
       });
     }
 
-    const cleanExpenses: Array<Omit<EventExpenseInsert, "event_id" | "club_id">> = [];
-    for (let i = 0; i < expenses.length; i++) {
-      const e = expenses[i];
-      const amountNum = Number(e.amount.replace(",", "."));
-      if (!Number.isFinite(amountNum) || amountNum < 0) {
-        setTab("expenses");
-        setFormError(`Το ποσό στη γραμμή ${i + 1} δεν είναι έγκυρο.`);
-        return;
-      }
-      cleanExpenses.push({
-        category: e.category,
-        amount: amountNum,
-        vendor_name: e.vendor_name.trim() || null,
-        description: e.description.trim() || null,
-        paid_at: e.paid_at || null,
-        payment_method: e.payment_method.trim() || null,
-        notes: e.notes.trim() || null,
-      });
-    }
-
     setSaving(true);
     try {
       const supabase = getBrowserClient();
@@ -1056,24 +977,6 @@ function EventModal({
       // Sync event_entertainers: replace-all
       await saveEventEntertainers(eventId, clubId, cleanEntertainers);
 
-      // Sync event_expenses: replace-all
-      const { error: deErr } = await supabase
-        .from("event_expenses")
-        .delete()
-        .eq("event_id", eventId);
-      if (deErr) throw deErr;
-      if (cleanExpenses.length > 0) {
-        const expRows: EventExpenseInsert[] = cleanExpenses.map((e) => ({
-          ...e,
-          event_id: eventId,
-          club_id: clubId,
-        }));
-        const { error: ieErr } = await supabase
-          .from("event_expenses")
-          .insert(expRows);
-        if (ieErr) throw ieErr;
-      }
-
       await onSaved();
     } catch (err) {
       setFormError(errorMessage(err, "Σφάλμα αποθήκευσης."));
@@ -1135,9 +1038,6 @@ function EventModal({
               <TabBtn current={tab} value="sponsors" onSelect={setTab}>
                 Χορηγοί
               </TabBtn>
-              <TabBtn current={tab} value="expenses" onSelect={setTab}>
-                Έξοδα
-              </TabBtn>
             </div>
           </div>
         </div>
@@ -1183,13 +1083,6 @@ function EventModal({
                 }}
                 creating={creatingEntertainer}
                 setCreating={setCreatingEntertainer}
-              />
-            ) : tab === "expenses" ? (
-              <ExpensesTab
-                expenses={expenses}
-                onAdd={addExpense}
-                onRemove={removeExpense}
-                onUpdate={updateExpense}
               />
             ) : (
               <SponsorsTab
@@ -2015,163 +1908,6 @@ function SponsorsTab({
             );
           })}
         </ul>
-      )}
-    </div>
-  );
-}
-
-function ExpensesTab({
-  expenses,
-  onAdd,
-  onRemove,
-  onUpdate,
-}: {
-  expenses: ExpenseRow[];
-  onAdd: () => void;
-  onRemove: (i: number) => void;
-  onUpdate: (i: number, patch: Partial<ExpenseRow>) => void;
-}) {
-  const paidTotal = expenses.reduce((sum, e) => {
-    if (!e.paid_at) return sum;
-    return sum + (Number(e.amount.replace(",", ".")) || 0);
-  }, 0);
-  const pendingTotal = expenses.reduce((sum, e) => {
-    if (e.paid_at) return sum;
-    return sum + (Number(e.amount.replace(",", ".")) || 0);
-  }, 0);
-  const grandTotal = paidTotal + pendingTotal;
-
-  return (
-    <div className="space-y-3">
-      <p className="text-xs text-muted">
-        Καταγράψτε τα έξοδα της εκδήλωσης. Σημειώστε ημερομηνία πληρωμής για τα πληρωμένα.
-      </p>
-      {expenses.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted">
-          Δεν έχουν καταχωρηθεί έξοδα. Προσθέστε το πρώτο.
-        </p>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-border">
-          <table className="w-full text-sm">
-            <thead className="border-b border-border bg-background/50 text-xs uppercase tracking-wider text-muted">
-              <tr>
-                <th className="px-3 py-2 text-left">Κατηγορία</th>
-                <th className="px-3 py-2 text-left">Περιγραφή</th>
-                <th className="px-3 py-2 text-right">Ποσό €</th>
-                <th className="px-3 py-2 text-center">Πληρωμή</th>
-                <th className="w-12 px-3 py-2"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {expenses.map((e, i) => (
-                <tr key={i} className="bg-background">
-                  <td className="px-3 py-2">
-                    <select
-                      value={e.category}
-                      onChange={(ev) =>
-                        onUpdate(i, { category: ev.target.value as ExpenseCategory })
-                      }
-                      className={inputClass}
-                    >
-                      {EXPENSE_CATEGORIES.map((c) => (
-                        <option key={c} value={c}>
-                          {EXPENSE_CATEGORY_LABELS[c]}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="text"
-                      value={e.description}
-                      onChange={(ev) =>
-                        onUpdate(i, { description: ev.target.value })
-                      }
-                      placeholder="Σύντομη περιγραφή…"
-                      className={inputClass}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      step="0.01"
-                      inputMode="decimal"
-                      value={e.amount}
-                      onChange={(ev) =>
-                        onUpdate(i, { amount: ev.target.value })
-                      }
-                      placeholder="0.00"
-                      className={inputClass + " text-right"}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="checkbox"
-                        checked={!!e.paid_at}
-                        onChange={(ev) =>
-                          onUpdate(i, {
-                            paid_at: ev.target.checked
-                              ? new Date().toISOString().slice(0, 10)
-                              : "",
-                          })
-                        }
-                        className="accent-accent"
-                      />
-                      {e.paid_at && (
-                        <input
-                          type="date"
-                          value={e.paid_at}
-                          onChange={(ev) =>
-                            onUpdate(i, { paid_at: ev.target.value })
-                          }
-                          className={inputClass + " w-36"}
-                        />
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onRemove(i)}
-                      aria-label="Διαγραφή"
-                      className="rounded-md border border-danger/30 px-2 py-1 text-[12px] text-danger transition hover:bg-danger/10"
-                    >
-                      🗑
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={onAdd}
-        className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-foreground/5"
-      >
-        + Προσθήκη Εξόδου
-      </button>
-      {expenses.length > 0 && (
-        <div className="rounded-lg border border-border bg-background/50 px-4 py-3 text-xs">
-          <div className="flex justify-between">
-            <span className="text-muted">Πληρωμένα</span>
-            <span className="font-medium text-emerald-600">
-              {eur.format(paidTotal)}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted">Εκκρεμή</span>
-            <span className="font-medium text-amber-600">
-              {eur.format(pendingTotal)}
-            </span>
-          </div>
-          <div className="mt-1.5 flex justify-between border-t border-border pt-1.5">
-            <span className="font-medium">Σύνολο Εξόδων</span>
-            <span className="font-semibold">{eur.format(grandTotal)}</span>
-          </div>
-        </div>
       )}
     </div>
   );
