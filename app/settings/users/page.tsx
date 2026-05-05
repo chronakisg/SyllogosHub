@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
 import { useRole } from "@/lib/hooks/useRole";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
@@ -39,9 +40,13 @@ export default function UsersPage() {
   return (
     <div className="mx-auto w-full max-w-6xl">
       <header className="mb-4">
-        <h1 className="text-xl font-semibold tracking-tight">
+        <Link
+          href="/settings"
+          className="inline-flex items-baseline gap-2 text-xl font-semibold tracking-tight text-foreground transition hover:text-foreground/70"
+        >
+          <span aria-hidden="true">←</span>
           Χρήστες &amp; Δικαιώματα
-        </h1>
+        </Link>
         <p className="mt-0.5 text-sm text-muted">
           Διαχείριση πρόσβασης (logins, ρόλοι) και δικαιωμάτων ανά ομάδα
         </p>

@@ -8,6 +8,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import Link from "next/link";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
@@ -239,9 +240,13 @@ export default function DiscountsPage() {
   return (
     <div className="mx-auto w-full max-w-6xl">
       <header className="mb-3">
-        <h1 className="text-xl font-semibold tracking-tight">
+        <Link
+          href="/settings"
+          className="inline-flex items-baseline gap-2 text-xl font-semibold tracking-tight text-foreground transition hover:text-foreground/70"
+        >
+          <span aria-hidden="true">←</span>
           Κανόνες Εκπτώσεων
-        </h1>
+        </Link>
       </header>
 
       {error && (

@@ -255,19 +255,14 @@ export default function DepartmentsPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl">
-      <Link
-        href="/settings"
-        className="mb-2 inline-flex items-center gap-1 text-sm text-muted transition hover:text-foreground"
-      >
-        ← Ρυθμίσεις
-      </Link>
       <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-sm text-muted">Ρυθμίσεις › Τμήματα</p>
-          <h1 className="mt-0.5 text-xl font-semibold tracking-tight">
-            Τμήματα
-          </h1>
-        </div>
+        <Link
+          href="/settings"
+          className="inline-flex items-baseline gap-2 text-xl font-semibold tracking-tight text-foreground transition hover:text-foreground/70"
+        >
+          <span aria-hidden="true">←</span>
+          Τμήματα
+        </Link>
         <button
           type="button"
           onClick={openCreate}
