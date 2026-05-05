@@ -95,6 +95,8 @@ type SponsorshipRow = {
   contribution_type: ContributionType;
   contribution_value: string;
   contribution_description: string;
+  is_received: boolean;
+  received_at: string;
 };
 
 const CONTRIBUTION_OPTIONS: Array<{ value: ContributionType; label: string }> = [
@@ -753,6 +755,8 @@ function EventModal({
                   ? String(row.contribution_value)
                   : "",
               contribution_description: row.contribution_description ?? "",
+              is_received: row.received_at !== null,
+              received_at: row.received_at ? row.received_at.slice(0, 10) : "",
             };
           })
         );
@@ -967,6 +971,7 @@ function EventModal({
             ? Number(s.contribution_value.replace(",", "."))
             : null,
           contribution_description: s.contribution_description.trim() || null,
+          received_at: s.is_received && s.received_at ? s.received_at : null,
         }));
         const { error: isErr } = await supabase
           .from("event_sponsors")
@@ -1829,8 +1834,6 @@ function SponsorsTab({
                     </div>
                     <p className="mt-0.5 text-xs text-muted">
                       {CONTRIBUTION_LABEL[s.contribution_type]}
-                      {s.contribution_value &&
-                        ` · ${eur.format(Number(s.contribution_value.replace(",", ".")))}`}
                       {s.contribution_description && (
                         <span className="ml-1 truncate">
                           · {s.contribution_description}
@@ -1857,7 +1860,7 @@ function SponsorsTab({
                 </div>
 
                 {isEditing && (
-                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     <Field label="Είδος">
                       <select
                         value={s.contribution_type}
@@ -1875,19 +1878,6 @@ function SponsorsTab({
                           </option>
                         ))}
                       </select>
-                    </Field>
-                    <Field label="Αξία (€)">
-                      <input
-                        type="number"
-                        step="0.01"
-                        inputMode="decimal"
-                        value={s.contribution_value}
-                        onChange={(e) =>
-                          onUpdate(i, { contribution_value: e.target.value })
-                        }
-                        placeholder="0.00"
-                        className={inputClass}
-                      />
                     </Field>
                     <Field label="Περιγραφή">
                       <input
@@ -2032,6 +2022,8 @@ function SponsorPicker({
         contribution_type: contribType,
         contribution_value: contribValue,
         contribution_description: contribDesc,
+        is_received: false,
+        received_at: "",
       });
     } catch (e) {
       setErr(errorMessage(e, "Σφάλμα δημιουργίας χορηγού."));
