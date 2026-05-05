@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-04 (full role-based permissions + user management + unified UI)  
+> Last updated: 2026-05-05 (Event Dashboard Phase 1 + Phase 2 + sponsor financial architecture)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -521,61 +521,66 @@ _(no active branches)_
 
 ## ✅ Recently Done
 
-### feat/event-dashboard-phase1 (merged 2026-05-05) — PR #?
+### feat/event-dashboard-phase1 (merged 2026-05-05) — PR #22
 
-Event Dashboard phases 1 + 2. Replaces "Κρατήσεις Εκδηλώσεων"
-tab με true financial dashboard ανά event με έσοδα, έξοδα
-και net result.
+Major PR με 31 commits — Event Dashboard ολόκληρο
+με Έσοδα/Έξοδα/Χορηγοί sub-tabs + sponsor financial
+architecture.
 
-**Phase 1 — Revenue dashboard:**
-- [x] lib/utils/eventRevenue.ts — pure functions για revenue
-  calculations (resolveAttendeeCategory, matchTicketPrice
-  με category_kind-based matching, calculateReservationRevenue,
-  calculateEventRevenue, formatRevenueBreakdown,
-  formatEuro/formatEuroCompact)
-- [x] TicketPriceWithCategory extended type για Supabase joins
-- [x] /finances tab routing με query param (?tab=...)
-- [x] Tab rename: "Κρατήσεις Εκδηλώσεων" → "Πίνακας Εκδηλώσεων"
-- [x] Component split: inline → app/finances/EventDashboardTab.tsx
-- [x] Layout: ΣΥΜΜΕΤΟΧΗ pills → ΟΙΚΟΝΟΜΙΚΑ 3-card grid →
-      Λεπτομέρειες ανά παρέα → Χορηγοί
-- [x] Στήλες "Ανάλυση" + "Σύνολο" στον πίνακα παρέων
-- [x] Empty state για events χωρίς ticket_prices
+**Phase 1 — Έσοδα Dashboard:**
+- [x] lib/utils/eventRevenue.ts — pure functions για
+  revenue calculations με category_kind matching
+- [x] EventDashboardTab.tsx component split (628 lines)
+- [x] Layout: ΣΥΜΜΕΤΟΧΗ → ΟΙΚΟΝΟΜΙΚΑ (3 cards) →
+  ΛΕΠΤΟΜΕΡΕΙΕΣ → ΧΟΡΗΓΟΙ
+- [x] ΣΥΝΟΛΟ card real-time view (Τώρα / Εκκρεμή έσοδα /
+  Εκκρεμή έξοδα / Τελικό)
+- [x] /finances tab routing με query param
 
-**Phase 2 — Expenses catalog + /finances integration:**
-- [x] Migration 0009: event_expenses table (id, club_id,
-      event_id, category text CHECK enum ×8, amount,
-      vendor_name, description, paid_at nullable,
-      payment_method, notes)
-- [x] Migration 0010: expense_categories table (per-club catalog,
-      8 seeded rows ανά club: DJ/Ορχήστρα/Φωτογράφος/
-      Βιντεολήπτης/Ενοίκιο χώρου/Catering/Διακόσμηση/Άλλο)
-- [x] Migration 0011: refactor event_expenses.category text
-      → category_id NOT NULL FK → expense_categories
-      (drop legacy column + check constraint)
-- [x] types.ts: ExpenseCategory (table Row, ΟΧΙ union) +
-      ExpenseCategoryInsert/Update + EventExpense types
+**Phase 2 — Έξοδα Catalog + /finances integration:**
+- [x] Migration 0009: event_expenses table
+- [x] Migration 0010: expense_categories table
+  (per-club catalog, 8 default seeds)
+- [x] Migration 0011: event_expenses category_id FK refactor
 - [x] /settings/club/expense-categories CRUD page (699 lines)
-      Archive/Restore + reorder + icon support
-- [x] Card στο /settings dashboard
-- [x] calculateEventExpenses helper (pure function)
-- [x] /finances dashboard sub-tabs Έσοδα / Έξοδα
-- [x] ExpensesPanel.tsx — standalone CRUD component
-      (replace-all DELETE+INSERT, catalog dropdown, validation)
-- [x] Dashboard ΕΞΟΔΑ + ΣΥΝΟΛΟ cards: real data via
-      onExpensesChange callback (instant refresh, no re-fetch)
+- [x] ExpensesPanel.tsx με replace-all DELETE+INSERT save
+- [x] Dashboard sub-tabs Έσοδα / Έξοδα
+
+**Phase 3 — Sponsor Financial Architecture:**
+- [x] Migration 0012: event_sponsors.received_at column
+  (promised vs received distinction)
+- [x] types.ts: EventSponsor.received_at field
+- [x] Event modal Χορηγοί tab → info-only
+  (drop financial editing fields)
+- [x] SponsorsPanel.tsx — financial editing component
+  στο /finances με 3o sub-tab
+- [x] AddSponsorshipDialog: link existing sponsors
+  από master registry, filter already-linked
+- [x] Filter members ήδη χορηγοί από Νέος Χορηγός
+  modal (bug fix)
+- [x] Drop SponsorPicker από event modal (~314 lines)
+  για strict info-only alignment
 
 **Architectural decisions:**
-- Expense management ζει σε /finances (permission-gated),
-  ΟΧΙ στο event modal (info-focused)
-- Per-club catalog για consistency, ΟΧΙ hardcoded enum
-- ΟΧΙ utilities/ΔΕΗ category — αυτά είναι πάγια έξοδα
-  συλλόγου, ΟΧΙ event expenses
-- ΟΧΙ entertainers↔expenses auto-link (YAGNI για τώρα)
+- Events page = info-focused (δημόσιο info window)
+- /finances = financial editing (permission-gated)
+- Sponsors entity creation στο master Χορηγοί tab
+  (persists across events)
+- Per-event sponsorship linking στο SponsorsPanel
+- Sponsors money δεν μπαίνει στα Έσοδα μέχρι
+  received_at != null
+- Pending sponsors NOT στα Εκκρεμή Έσοδα
+  (uncertain receivable, διαφορετικό από pending
+  reservations)
 
 **Polish (μέρος του ίδιου PR):**
-- [x] Unified header pattern σε 7 settings sub-pages
-      Drop breadcrumb + back link, clickable title με ← arrow
+- [x] Settings header unification σε 7 sub-pages
+  (clickable title με ← arrow)
+- [x] ExpensesPanel layout fix (table-fixed +
+  column widths + w-full inputs)
+- [x] SponsorsPanel UI symmetry με ExpensesPanel
+  (trash button column, disabled-input για
+  non-money rows)
 
 ### feat/ticket-categories (merged 2026-05-04) — PR #?
 
