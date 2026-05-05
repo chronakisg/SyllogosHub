@@ -1072,7 +1072,7 @@ export type Database = {
           id: string;
           club_id: string;
           event_id: string;
-          category: string;
+          category_id: string;
           amount: number;
           vendor_name: string | null;
           description: string | null;
@@ -1086,7 +1086,7 @@ export type Database = {
           id?: string;
           club_id: string;
           event_id: string;
-          category: string;
+          category_id: string;
           amount: number;
           vendor_name?: string | null;
           description?: string | null;
@@ -1100,7 +1100,7 @@ export type Database = {
           id?: string;
           club_id?: string;
           event_id?: string;
-          category?: string;
+          category_id?: string;
           amount?: number;
           vendor_name?: string | null;
           description?: string | null;
@@ -1123,6 +1123,13 @@ export type Database = {
             columns: ["event_id"];
             isOneToOne: false;
             referencedRelation: "events";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "event_expenses_category_id_fkey";
+            columns: ["category_id"];
+            isOneToOne: false;
+            referencedRelation: "expense_categories";
             referencedColumns: ["id"];
           },
         ];
