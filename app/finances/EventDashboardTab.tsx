@@ -34,6 +34,8 @@ type EventSponsorWithSponsor = EventSponsor & {
   sponsor: SponsorWithMember | null;
 };
 
+type SubTab = "income" | "expenses";
+
 // ── Helpers ──────────────────────────────────────────────────
 
 const inputClass =
@@ -66,6 +68,7 @@ export default function EventDashboardTab() {
   const [dataError, setDataError] = useState<string | null>(null);
   const [sponsorsError, setSponsorsError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [subTab, setSubTab] = useState<SubTab>("income");
 
   // Load events list
   useEffect(() => {
@@ -105,6 +108,7 @@ export default function EventDashboardTab() {
       return;
     }
     let cancelled = false;
+    setSubTab("income");
     setDataLoading(true);
     setDataError(null);
     (async () => {
@@ -280,217 +284,255 @@ export default function EventDashboardTab() {
 
       {selectedEventId && (
         <>
-          {/* No ticket prices warning */}
-          {!dataLoading && !hasTicketPrices && (
-            <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-300">
-              <span>⚠️</span>
-              <span>
-                Δεν έχουν οριστεί τιμές προσκλήσεων για αυτή την εκδήλωση. Τα ποσά
-                δεν μπορούν να υπολογιστούν μέχρι να οριστούν τιμές στην εκδήλωση.
-              </span>
-            </div>
-          )}
+          {/* ── Sub-tab switcher ──────────────────────────── */}
+          <div className="inline-flex rounded-lg border border-border bg-surface p-1 text-sm">
+            <button
+              type="button"
+              onClick={() => setSubTab("income")}
+              className={
+                "rounded-md px-3 py-1.5 transition " +
+                (subTab === "income"
+                  ? "bg-foreground/10 font-semibold text-foreground"
+                  : "text-foreground/70 hover:bg-foreground/5")
+              }
+            >
+              📊 Έσοδα
+            </button>
+            <button
+              type="button"
+              onClick={() => setSubTab("expenses")}
+              className={
+                "rounded-md px-3 py-1.5 transition " +
+                (subTab === "expenses"
+                  ? "bg-foreground/10 font-semibold text-foreground"
+                  : "text-foreground/70 hover:bg-foreground/5")
+              }
+            >
+              💸 Έξοδα
+            </button>
+          </div>
 
-          {/* ── 👥 ΣΥΜΜΕΤΟΧΗ ──────────────────────────────── */}
-          {!dataLoading && (
-            <section>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">
-                👥 Συμμετοχή
-              </h2>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <StatPill
-                  label="Παρέες"
-                  value={String(eventRevenue?.reservationsCount ?? reservations.length)}
-                  subtext={eventRevenue ? `(${eventRevenue.paidReservationsCount} πληρ.)` : undefined}
-                />
-                <StatPill label="Άτομα" value={String(totalPax)} />
-                <StatPill
-                  label="Ενήλικες"
-                  value={hasTicketPrices ? String(attendeeTotals.totalAdults) : "—"}
-                />
-                <StatPill
-                  label="Παιδιά"
-                  value={hasTicketPrices ? String(attendeeTotals.totalChildren) : "—"}
-                />
-              </div>
-            </section>
-          )}
+          {subTab === "income" && (
+            <>
+              {/* No ticket prices warning */}
+              {!dataLoading && !hasTicketPrices && (
+                <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-300">
+                  <span>⚠️</span>
+                  <span>
+                    Δεν έχουν οριστεί τιμές προσκλήσεων για αυτή την εκδήλωση. Τα ποσά
+                    δεν μπορούν να υπολογιστούν μέχρι να οριστούν τιμές στην εκδήλωση.
+                  </span>
+                </div>
+              )}
 
-          {/* ── 💰 ΟΙΚΟΝΟΜΙΚΑ ─────────────────────────────── */}
-          <section>
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">
-              💰 Οικονομικά
-            </h2>
-            {dataLoading ? (
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="h-32 animate-pulse rounded-xl border border-border bg-surface" />
-                <div className="h-32 animate-pulse rounded-xl border border-border bg-surface" />
-                <div className="h-32 animate-pulse rounded-xl border border-border bg-surface" />
-              </div>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-3">
-                <MoneyCard
-                  icon="💰"
-                  title="Έσοδα"
-                  total={eventRevenue?.totalRevenue ?? 0}
-                  paid={eventRevenue?.paidRevenue ?? 0}
-                  pending={eventRevenue?.pendingRevenue ?? 0}
-                  paidLabel="Εισπράχθηκαν"
-                  pendingLabel="Εκκρεμή"
-                  paidPercent={
-                    eventRevenue && eventRevenue.totalRevenue > 0
-                      ? Math.round((eventRevenue.paidRevenue / eventRevenue.totalRevenue) * 100)
-                      : null
-                  }
-                />
-                <MoneyCard
-                  icon="💸"
-                  title="Έξοδα"
-                  total={expensesSummary.totalExpenses}
-                  paid={expensesSummary.paidExpenses}
-                  pending={expensesSummary.pendingExpenses}
-                  paidLabel="Πληρώθηκαν"
-                  pendingLabel="Εκκρεμή"
-                  paidPercent={
-                    expensesSummary.totalExpenses > 0
-                      ? Math.round(
-                          (expensesSummary.paidExpenses / expensesSummary.totalExpenses) * 100
-                        )
-                      : null
-                  }
-                />
-                <SummaryCard
-                  paidRevenue={eventRevenue?.paidRevenue ?? 0}
-                  pendingRevenue={eventRevenue?.pendingRevenue ?? 0}
-                  totalRevenue={eventRevenue?.totalRevenue ?? 0}
-                  expensesPaid={expensesSummary.paidExpenses}
-                  expensesPending={expensesSummary.pendingExpenses}
-                />
-              </div>
-            )}
-          </section>
+              {/* ── 👥 ΣΥΜΜΕΤΟΧΗ ──────────────────────────── */}
+              {!dataLoading && (
+                <section>
+                  <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">
+                    👥 Συμμετοχή
+                  </h2>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <StatPill
+                      label="Παρέες"
+                      value={String(eventRevenue?.reservationsCount ?? reservations.length)}
+                      subtext={eventRevenue ? `(${eventRevenue.paidReservationsCount} πληρ.)` : undefined}
+                    />
+                    <StatPill label="Άτομα" value={String(totalPax)} />
+                    <StatPill
+                      label="Ενήλικες"
+                      value={hasTicketPrices ? String(attendeeTotals.totalAdults) : "—"}
+                    />
+                    <StatPill
+                      label="Παιδιά"
+                      value={hasTicketPrices ? String(attendeeTotals.totalChildren) : "—"}
+                    />
+                  </div>
+                </section>
+              )}
 
-          {/* ── ΛΕΠΤΟΜΕΡΕΙΕΣ ΑΝΑ ΠΑΡΕΑ ───────────────────── */}
-          <section>
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">
-              📋 Λεπτομέρειες ανά Παρέα
-            </h2>
-            <div className="overflow-hidden rounded-xl border border-border bg-surface">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b border-border bg-background/50 text-xs uppercase tracking-wider text-muted">
-                    <tr>
-                      <th className="px-4 py-3">Παρέα</th>
-                      <th className="px-4 py-3">Άτομα</th>
-                      <th className="px-4 py-3">Τραπέζι</th>
-                      <th className="px-4 py-3">Ανάλυση</th>
-                      <th className="px-4 py-3 text-right">Σύνολο</th>
-                      <th className="px-4 py-3 text-right">Πληρωμή</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {dataLoading ? (
-                      <tr>
-                        <td colSpan={6} className="px-4 py-8 text-center text-muted">
-                          Φόρτωση…
-                        </td>
-                      </tr>
-                    ) : reservations.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-4 py-12 text-center">
-                          <p className="text-2xl">📋</p>
-                          <p className="mt-2 text-sm text-muted">
-                            Δεν υπάρχουν κρατήσεις για αυτή την εκδήλωση.
-                          </p>
-                        </td>
-                      </tr>
-                    ) : (
-                      reservations.map((r) => {
-                        const rev = reservationRevenues.get(r.id);
-                        return (
-                          <tr key={r.id} className="hover:bg-background/40">
-                            <td className="px-4 py-3 font-medium">{r.group_name}</td>
-                            <td className="px-4 py-3 text-muted">{r.pax_count}</td>
-                            <td className="px-4 py-3 text-muted">
-                              {r.table_number != null ? `Νο ${r.table_number}` : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-xs text-muted">
-                              {rev && hasTicketPrices
-                                ? formatRevenueBreakdown(rev, ticketPrices)
-                                : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-right font-medium tabular-nums">
-                              {rev && hasTicketPrices ? formatEuro(rev.grandTotal) : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <button
-                                type="button"
-                                onClick={() => togglePaid(r)}
-                                disabled={updatingId === r.id}
-                                className={
-                                  "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition disabled:opacity-50 " +
-                                  (r.is_paid
-                                    ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
-                                    : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400")
-                                }
-                              >
-                                <span
-                                  className={
-                                    "h-1.5 w-1.5 rounded-full " +
-                                    (r.is_paid ? "bg-emerald-500" : "bg-amber-500")
-                                  }
-                                />
-                                {r.is_paid ? "Πληρωμένη" : "Εκκρεμεί"}
-                              </button>
+              {/* ── 💰 ΟΙΚΟΝΟΜΙΚΑ ───────────────────────────── */}
+              <section>
+                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">
+                  💰 Οικονομικά
+                </h2>
+                {dataLoading ? (
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="h-32 animate-pulse rounded-xl border border-border bg-surface" />
+                    <div className="h-32 animate-pulse rounded-xl border border-border bg-surface" />
+                    <div className="h-32 animate-pulse rounded-xl border border-border bg-surface" />
+                  </div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <MoneyCard
+                      icon="💰"
+                      title="Έσοδα"
+                      total={eventRevenue?.totalRevenue ?? 0}
+                      paid={eventRevenue?.paidRevenue ?? 0}
+                      pending={eventRevenue?.pendingRevenue ?? 0}
+                      paidLabel="Εισπράχθηκαν"
+                      pendingLabel="Εκκρεμή"
+                      paidPercent={
+                        eventRevenue && eventRevenue.totalRevenue > 0
+                          ? Math.round((eventRevenue.paidRevenue / eventRevenue.totalRevenue) * 100)
+                          : null
+                      }
+                    />
+                    <MoneyCard
+                      icon="💸"
+                      title="Έξοδα"
+                      total={expensesSummary.totalExpenses}
+                      paid={expensesSummary.paidExpenses}
+                      pending={expensesSummary.pendingExpenses}
+                      paidLabel="Πληρώθηκαν"
+                      pendingLabel="Εκκρεμή"
+                      paidPercent={
+                        expensesSummary.totalExpenses > 0
+                          ? Math.round(
+                              (expensesSummary.paidExpenses / expensesSummary.totalExpenses) * 100
+                            )
+                          : null
+                      }
+                    />
+                    <SummaryCard
+                      paidRevenue={eventRevenue?.paidRevenue ?? 0}
+                      pendingRevenue={eventRevenue?.pendingRevenue ?? 0}
+                      totalRevenue={eventRevenue?.totalRevenue ?? 0}
+                      expensesPaid={expensesSummary.paidExpenses}
+                      expensesPending={expensesSummary.pendingExpenses}
+                    />
+                  </div>
+                )}
+              </section>
+
+              {/* ── ΛΕΠΤΟΜΕΡΕΙΕΣ ΑΝΑ ΠΑΡΕΑ ─────────────────── */}
+              <section>
+                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">
+                  📋 Λεπτομέρειες ανά Παρέα
+                </h2>
+                <div className="overflow-hidden rounded-xl border border-border bg-surface">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="border-b border-border bg-background/50 text-xs uppercase tracking-wider text-muted">
+                        <tr>
+                          <th className="px-4 py-3">Παρέα</th>
+                          <th className="px-4 py-3">Άτομα</th>
+                          <th className="px-4 py-3">Τραπέζι</th>
+                          <th className="px-4 py-3">Ανάλυση</th>
+                          <th className="px-4 py-3 text-right">Σύνολο</th>
+                          <th className="px-4 py-3 text-right">Πληρωμή</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {dataLoading ? (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-8 text-center text-muted">
+                              Φόρτωση…
                             </td>
                           </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </section>
+                        ) : reservations.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-12 text-center">
+                              <p className="text-2xl">📋</p>
+                              <p className="mt-2 text-sm text-muted">
+                                Δεν υπάρχουν κρατήσεις για αυτή την εκδήλωση.
+                              </p>
+                            </td>
+                          </tr>
+                        ) : (
+                          reservations.map((r) => {
+                            const rev = reservationRevenues.get(r.id);
+                            return (
+                              <tr key={r.id} className="hover:bg-background/40">
+                                <td className="px-4 py-3 font-medium">{r.group_name}</td>
+                                <td className="px-4 py-3 text-muted">{r.pax_count}</td>
+                                <td className="px-4 py-3 text-muted">
+                                  {r.table_number != null ? `Νο ${r.table_number}` : "—"}
+                                </td>
+                                <td className="px-4 py-3 text-xs text-muted">
+                                  {rev && hasTicketPrices
+                                    ? formatRevenueBreakdown(rev, ticketPrices)
+                                    : "—"}
+                                </td>
+                                <td className="px-4 py-3 text-right font-medium tabular-nums">
+                                  {rev && hasTicketPrices ? formatEuro(rev.grandTotal) : "—"}
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => togglePaid(r)}
+                                    disabled={updatingId === r.id}
+                                    className={
+                                      "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition disabled:opacity-50 " +
+                                      (r.is_paid
+                                        ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
+                                        : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400")
+                                    }
+                                  >
+                                    <span
+                                      className={
+                                        "h-1.5 w-1.5 rounded-full " +
+                                        (r.is_paid ? "bg-emerald-500" : "bg-amber-500")
+                                      }
+                                    />
+                                    {r.is_paid ? "Πληρωμένη" : "Εκκρεμεί"}
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </section>
 
-          {/* Sponsors load error */}
-          {sponsorsError && (
-            <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-300">
-              <span>⚠️</span>
-              <span>Δεν φορτώθηκαν οι χορηγίες — τα έσοδα ίσως είναι ελλιπή.</span>
-            </div>
+              {/* Sponsors load error */}
+              {sponsorsError && (
+                <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-700 dark:text-amber-300">
+                  <span>⚠️</span>
+                  <span>Δεν φορτώθηκαν οι χορηγίες — τα έσοδα ίσως είναι ελλιπή.</span>
+                </div>
+              )}
+
+              {/* ── ΧΟΡΗΓΟΙ (money only) ──────────────────── */}
+              {!dataLoading && moneySponsorsSorted.length > 0 && (
+                <section>
+                  <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">
+                    🤝 Χορηγοί
+                  </h2>
+                  <div className="overflow-hidden rounded-xl border border-border bg-surface">
+                    <ul className="divide-y divide-border text-sm">
+                      {moneySponsorsSorted.map((s) => (
+                        <li
+                          key={s.id}
+                          className="flex items-center justify-between px-4 py-3"
+                        >
+                          <span className="font-medium">{sponsorDisplayName(s)}</span>
+                          <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
+                            {formatEuro(s.contribution_value!)}
+                          </span>
+                        </li>
+                      ))}
+                      {moneySponsorsSorted.length >= 1 && (
+                        <li className="flex items-center justify-between bg-background/40 px-4 py-2.5 text-sm font-semibold">
+                          <span>Σύνολο χορηγιών</span>
+                          <span className="tabular-nums">
+                            {formatEuro(eventRevenue?.sponsorsRevenue ?? 0)}
+                          </span>
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                </section>
+              )}
+            </>
           )}
 
-          {/* ── ΧΟΡΗΓΟΙ (money only) ──────────────────────── */}
-          {!dataLoading && moneySponsorsSorted.length > 0 && (
-            <section>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">
-                🤝 Χορηγοί
-              </h2>
-              <div className="overflow-hidden rounded-xl border border-border bg-surface">
-                <ul className="divide-y divide-border text-sm">
-                  {moneySponsorsSorted.map((s) => (
-                    <li
-                      key={s.id}
-                      className="flex items-center justify-between px-4 py-3"
-                    >
-                      <span className="font-medium">{sponsorDisplayName(s)}</span>
-                      <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
-                        {formatEuro(s.contribution_value!)}
-                      </span>
-                    </li>
-                  ))}
-                  {moneySponsorsSorted.length >= 1 && (
-                    <li className="flex items-center justify-between bg-background/40 px-4 py-2.5 text-sm font-semibold">
-                      <span>Σύνολο χορηγιών</span>
-                      <span className="tabular-nums">
-                        {formatEuro(eventRevenue?.sponsorsRevenue ?? 0)}
-                      </span>
-                    </li>
-                  )}
-                </ul>
-              </div>
-            </section>
+          {subTab === "expenses" && (
+            <div className="rounded-lg border border-dashed border-border bg-background/50 p-6 text-center text-sm text-muted">
+              Έξοδα tab — coming soon (D2 commit)
+            </div>
           )}
         </>
       )}
