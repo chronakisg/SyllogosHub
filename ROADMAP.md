@@ -438,6 +438,21 @@ _(no active branches)_
 
 ### Tech Debt & Cleanup
 
+- [ ] **Audit /discounts location** (architectural inconsistency)
+  - Currently lives at `app/discounts/`, εκτός `app/settings/` tree
+  - Should be co-located με τα άλλα settings sub-pages
+  - Proposed location: `app/settings/club/discount-rules/page.tsx`
+  - Requires URL migration + redirect from old route
+  - Estimated: S
+
+- [ ] **Entertainers + fee field** (auto-link με expenses)
+  - Σήμερα entertainment partners είναι free-form text στο
+    event modal "Συνεργάτες" tab
+  - Future: structured data με fee column ώστε να συνδέονται
+    με event_expenses (DJ name + DJ fee → auto-create expense)
+  - Connects με: Event Dashboard
+  - Estimated: M
+
 - [ ] **Expanded expense fields UI** (vendor_name + payment_method + notes)
   - Schema έχει ήδη columns, save logic τα στέλνει null
   - UI δεν εμφανίζει — μόνο category/description/amount/paid
@@ -527,17 +542,40 @@ tab με true financial dashboard ανά event με έσοδα, έξοδα
 - [x] Στήλες "Ανάλυση" + "Σύνολο" στον πίνακα παρέων
 - [x] Empty state για events χωρίς ticket_prices
 
-**Phase 2 — Expenses + net result:**
+**Phase 2 — Expenses catalog + /finances integration:**
 - [x] Migration 0009: event_expenses table (id, club_id,
-      event_id, category CHECK enum ×8, amount, vendor_name,
-      description, paid_at nullable, payment_method, notes)
-- [x] types.ts: ExpenseCategory union + EventExpense types +
-      EXPENSE_CATEGORIES / EXPENSE_CATEGORY_LABELS / ICONS
-- [x] Event modal "Έξοδα" tab — CRUD με κατηγορία dropdown,
-      περιγραφή, ποσό, paid checkbox + ημερομηνία
+      event_id, category text CHECK enum ×8, amount,
+      vendor_name, description, paid_at nullable,
+      payment_method, notes)
+- [x] Migration 0010: expense_categories table (per-club catalog,
+      8 seeded rows ανά club: DJ/Ορχήστρα/Φωτογράφος/
+      Βιντεολήπτης/Ενοίκιο χώρου/Catering/Διακόσμηση/Άλλο)
+- [x] Migration 0011: refactor event_expenses.category text
+      → category_id NOT NULL FK → expense_categories
+      (drop legacy column + check constraint)
+- [x] types.ts: ExpenseCategory (table Row, ΟΧΙ union) +
+      ExpenseCategoryInsert/Update + EventExpense types
+- [x] /settings/club/expense-categories CRUD page (699 lines)
+      Archive/Restore + reorder + icon support
+- [x] Card στο /settings dashboard
 - [x] calculateEventExpenses helper (pure function)
-- [x] Dashboard: ΕΞΟΔΑ card με live data (πληρωμένα/εκκρεμή)
-- [x] ΣΥΝΟΛΟ card: real net result (έσοδα − έξοδα)
+- [x] /finances dashboard sub-tabs Έσοδα / Έξοδα
+- [x] ExpensesPanel.tsx — standalone CRUD component
+      (replace-all DELETE+INSERT, catalog dropdown, validation)
+- [x] Dashboard ΕΞΟΔΑ + ΣΥΝΟΛΟ cards: real data via
+      onExpensesChange callback (instant refresh, no re-fetch)
+
+**Architectural decisions:**
+- Expense management ζει σε /finances (permission-gated),
+  ΟΧΙ στο event modal (info-focused)
+- Per-club catalog για consistency, ΟΧΙ hardcoded enum
+- ΟΧΙ utilities/ΔΕΗ category — αυτά είναι πάγια έξοδα
+  συλλόγου, ΟΧΙ event expenses
+- ΟΧΙ entertainers↔expenses auto-link (YAGNI για τώρα)
+
+**Polish (μέρος του ίδιου PR):**
+- [x] Unified header pattern σε 7 settings sub-pages
+      Drop breadcrumb + back link, clickable title με ← arrow
 
 ### feat/ticket-categories (merged 2026-05-04) — PR #?
 
