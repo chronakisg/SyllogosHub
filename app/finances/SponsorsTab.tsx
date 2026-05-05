@@ -118,6 +118,14 @@ export default function SponsorsTab() {
     load();
   }, [load, clubLoading]);
 
+  const linkedMemberIds = useMemo(() => {
+    return new Set(
+      sponsors
+        .filter((s) => s.member_id !== null)
+        .map((s) => s.member_id as string)
+    );
+  }, [sponsors]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return sponsors;
@@ -337,6 +345,7 @@ export default function SponsorsTab() {
           form={form}
           setForm={setForm}
           members={members}
+          linkedMemberIds={linkedMemberIds}
           saving={saving}
           formError={formError}
           onClose={closeModal}
@@ -352,6 +361,7 @@ function SponsorModal({
   form,
   setForm,
   members,
+  linkedMemberIds,
   saving,
   formError,
   onClose,
@@ -361,6 +371,7 @@ function SponsorModal({
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   members: Member[];
+  linkedMemberIds: Set<string>;
   saving: boolean;
   formError: string | null;
   onClose: () => void;
@@ -392,11 +403,16 @@ function SponsorModal({
               className={inputClass}
             >
               <option value="">— Εξωτερικός χορηγός —</option>
-              {members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.last_name} {m.first_name}
-                </option>
-              ))}
+              {members
+                .filter(
+                  (m) =>
+                    !linkedMemberIds.has(m.id) || m.id === form.member_id
+                )
+                .map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.last_name} {m.first_name}
+                  </option>
+                ))}
             </select>
           </Field>
 
