@@ -275,14 +275,14 @@ export default function ExpensesPanel({
         </p>
       ) : (
         <div className="overflow-x-auto overflow-hidden rounded-lg border border-border">
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
             <thead className="border-b border-border bg-background/50 text-xs uppercase tracking-wider text-muted">
               <tr>
-                <th className="px-3 py-2 text-left">Κατηγορία</th>
-                <th className="px-3 py-2 text-left">Περιγραφή</th>
-                <th className="px-3 py-2 text-right">Ποσό €</th>
-                <th className="px-3 py-2 text-center">Πληρωμή</th>
-                <th className="w-12 px-3 py-2" />
+                <th className="w-[20%] px-3 py-2 text-left">Κατηγορία</th>
+                <th className="w-[35%] px-3 py-2 text-left">Περιγραφή</th>
+                <th className="w-[15%] px-3 py-2 text-right">Ποσό €</th>
+                <th className="w-[25%] px-3 py-2 text-left">Πληρωμή</th>
+                <th className="w-[5%] px-3 py-2" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -295,7 +295,7 @@ export default function ExpensesPanel({
                       onChange={(ev) =>
                         updateExpense(i, { category_id: ev.target.value })
                       }
-                      className={inputClass}
+                      className={inputClass + " w-full"}
                     >
                       {categories.map((c) => (
                         <option key={c.id} value={c.id}>
@@ -316,7 +316,7 @@ export default function ExpensesPanel({
                       }
                       placeholder="Σύντομη περιγραφή…"
                       maxLength={100}
-                      className={inputClass}
+                      className={inputClass + " w-full"}
                     />
                   </td>
 
@@ -332,7 +332,7 @@ export default function ExpensesPanel({
                         updateExpense(i, { amount: ev.target.value })
                       }
                       placeholder="0.00"
-                      className={inputClass + " text-right"}
+                      className={inputClass + " w-full text-right"}
                     />
                   </td>
 
@@ -357,7 +357,7 @@ export default function ExpensesPanel({
                           onChange={(ev) =>
                             updateExpense(i, { paid_at: ev.target.value })
                           }
-                          className={inputClass + " w-36"}
+                          className={inputClass + " w-full"}
                         />
                       )}
                     </div>
