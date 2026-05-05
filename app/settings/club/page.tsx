@@ -330,17 +330,14 @@ export default function ClubInfoPage() {
 
   return (
     <div className="mx-auto w-full max-w-4xl">
-      <Link
-        href="/settings"
-        className="mb-2 inline-flex items-center gap-1 text-sm text-muted transition hover:text-foreground"
-      >
-        ← Ρυθμίσεις
-      </Link>
       <header className="mb-3">
-        <p className="text-sm text-muted">Ρυθμίσεις › Ταυτότητα Συλλόγου</p>
-        <h1 className="mt-0.5 text-xl font-semibold tracking-tight">
+        <Link
+          href="/settings"
+          className="inline-flex items-baseline gap-2 text-xl font-semibold tracking-tight text-foreground transition hover:text-foreground/70"
+        >
+          <span aria-hidden="true">←</span>
           Ταυτότητα Συλλόγου
-        </h1>
+        </Link>
       </header>
 
       {error && (

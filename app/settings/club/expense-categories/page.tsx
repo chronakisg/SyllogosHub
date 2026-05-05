@@ -14,27 +14,17 @@ import { useRole } from "@/lib/hooks/useRole";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
 import {
-  TICKET_CATEGORY_KIND_LABELS,
-  TICKET_CATEGORY_KINDS,
-  type TicketCategory,
-  type TicketCategoryInsert,
-  type TicketCategoryKind,
+  type ExpenseCategory,
+  type ExpenseCategoryInsert,
 } from "@/lib/supabase/types";
+
 const inputClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
-
-const KIND_BADGE: Record<TicketCategoryKind, string> = {
-  adult:
-    "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-  child:
-    "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
-  other: "bg-foreground/10 text-muted",
-};
 
 type Form = {
   name: string;
   short_label: string;
-  category_kind: TicketCategoryKind;
+  icon: string;
   default_price: string;
   notes: string;
 };
@@ -43,17 +33,17 @@ function emptyForm(): Form {
   return {
     name: "",
     short_label: "",
-    category_kind: "adult",
+    icon: "",
     default_price: "",
     notes: "",
   };
 }
 
-function formFromCategory(c: TicketCategory): Form {
+function formFromCategory(c: ExpenseCategory): Form {
   return {
     name: c.name,
     short_label: c.short_label ?? "",
-    category_kind: c.category_kind,
+    icon: c.icon ?? "",
     default_price: c.default_price != null ? String(c.default_price) : "",
     notes: c.notes ?? "",
   };
@@ -75,17 +65,17 @@ function parsePrice(raw: string): number | null {
   return isNaN(n) ? NaN : n;
 }
 
-export default function TicketCategoriesPage() {
+export default function ExpenseCategoriesPage() {
   const role = useRole();
   const { clubId, loading: clubLoading } = useCurrentClub();
 
-  const [categories, setCategories] = useState<TicketCategory[]>([]);
+  const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<TicketCategory | null>(null);
+  const [editing, setEditing] = useState<ExpenseCategory | null>(null);
   const [form, setForm] = useState<Form>(emptyForm());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -97,13 +87,13 @@ export default function TicketCategoriesPage() {
     try {
       const supabase = getBrowserClient();
       const { data, error: err } = await supabase
-        .from("ticket_categories")
+        .from("expense_categories")
         .select("*")
         .eq("club_id", clubId)
         .order("is_archived", { ascending: true })
         .order("display_order", { ascending: true });
       if (err) throw err;
-      setCategories((data ?? []) as TicketCategory[]);
+      setCategories((data ?? []) as ExpenseCategory[]);
       setError(null);
     } catch (err) {
       setError(errorMessage(err, "Σφάλμα φόρτωσης κατηγοριών."));
@@ -145,7 +135,7 @@ export default function TicketCategoriesPage() {
     setModalOpen(true);
   }
 
-  function openEdit(c: TicketCategory) {
+  function openEdit(c: ExpenseCategory) {
     setEditing(c);
     setForm(formFromCategory(c));
     setFormError(null);
@@ -160,6 +150,12 @@ export default function TicketCategoriesPage() {
 
   function validateForm(): string | null {
     if (!form.name.trim()) return "Το όνομα είναι υποχρεωτικό.";
+    if (form.name.trim().length > 80)
+      return "Το όνομα δεν μπορεί να υπερβαίνει τους 80 χαρακτήρες.";
+    if (form.short_label.trim().length > 30)
+      return "Η σύντμηση δεν μπορεί να υπερβαίνει τους 30 χαρακτήρες.";
+    if (form.icon.trim().length > 8)
+      return "Το εικονίδιο δεν μπορεί να υπερβαίνει τους 8 χαρακτήρες.";
     if (form.default_price.trim()) {
       const p = parsePrice(form.default_price);
       if (p === null || isNaN(p) || p < 0)
@@ -186,7 +182,7 @@ export default function TicketCategoriesPage() {
     const patch = {
       name,
       short_label: form.short_label.trim() || null,
-      category_kind: form.category_kind,
+      icon: form.icon.trim() || null,
       default_price: price,
       notes: form.notes.trim() || null,
     };
@@ -196,7 +192,7 @@ export default function TicketCategoriesPage() {
 
     if (editing) {
       const snapshot = editing;
-      const optimistic: TicketCategory = { ...snapshot, ...patch };
+      const optimistic: ExpenseCategory = { ...snapshot, ...patch };
       setCategories((prev) =>
         prev.map((c) => (c.id === snapshot.id ? optimistic : c))
       );
@@ -205,7 +201,7 @@ export default function TicketCategoriesPage() {
       setSaving(false);
       try {
         const { error: uErr } = await supabase
-          .from("ticket_categories")
+          .from("expense_categories")
           .update(patch)
           .eq("id", snapshot.id)
           .eq("club_id", clubId);
@@ -218,18 +214,18 @@ export default function TicketCategoriesPage() {
       }
     } else {
       try {
-        const insert: TicketCategoryInsert = {
+        const insert: ExpenseCategoryInsert = {
           club_id: clubId,
           display_order: nextOrder,
           ...patch,
         };
         const { data: row, error: iErr } = await supabase
-          .from("ticket_categories")
+          .from("expense_categories")
           .insert(insert)
           .select()
           .single();
         if (iErr) throw iErr;
-        setCategories((prev) => [...prev, row as TicketCategory]);
+        setCategories((prev) => [...prev, row as ExpenseCategory]);
         setModalOpen(false);
         setEditing(null);
       } catch (err) {
@@ -245,7 +241,7 @@ export default function TicketCategoriesPage() {
     }
   }
 
-  async function handleArchive(c: TicketCategory) {
+  async function handleArchive(c: ExpenseCategory) {
     if (!clubId) return;
     const confirmed = window.confirm(
       `Αρχειοθέτηση κατηγορίας «${c.name}»;\nΔεν θα εμφανίζεται σε νέες εκδηλώσεις.`
@@ -257,7 +253,7 @@ export default function TicketCategoriesPage() {
     try {
       const supabase = getBrowserClient();
       const { error: uErr } = await supabase
-        .from("ticket_categories")
+        .from("expense_categories")
         .update({ is_archived: true })
         .eq("id", c.id)
         .eq("club_id", clubId);
@@ -270,7 +266,7 @@ export default function TicketCategoriesPage() {
     }
   }
 
-  async function handleRestore(c: TicketCategory) {
+  async function handleRestore(c: ExpenseCategory) {
     if (!clubId) return;
     const restoredOrder = nextOrder;
     setCategories((prev) =>
@@ -283,7 +279,7 @@ export default function TicketCategoriesPage() {
     try {
       const supabase = getBrowserClient();
       const { error: uErr } = await supabase
-        .from("ticket_categories")
+        .from("expense_categories")
         .update({ is_archived: false, display_order: restoredOrder })
         .eq("id", c.id)
         .eq("club_id", clubId);
@@ -294,7 +290,7 @@ export default function TicketCategoriesPage() {
     }
   }
 
-  async function handleReorder(c: TicketCategory, direction: -1 | 1) {
+  async function handleReorder(c: ExpenseCategory, direction: -1 | 1) {
     if (reorderingId !== null || !clubId) return;
     const idx = active.findIndex((x) => x.id === c.id);
     const swap = active[idx + direction];
@@ -313,12 +309,12 @@ export default function TicketCategoriesPage() {
       const supabase = getBrowserClient();
       const [r1, r2] = await Promise.all([
         supabase
-          .from("ticket_categories")
+          .from("expense_categories")
           .update({ display_order: swap.display_order })
           .eq("id", c.id)
           .eq("club_id", clubId),
         supabase
-          .from("ticket_categories")
+          .from("expense_categories")
           .update({ display_order: c.display_order })
           .eq("id", swap.id)
           .eq("club_id", clubId),
@@ -359,7 +355,7 @@ export default function TicketCategoriesPage() {
           className="inline-flex items-baseline gap-2 text-xl font-semibold tracking-tight text-foreground transition hover:text-foreground/70"
         >
           <span aria-hidden="true">←</span>
-          Κατηγορίες Προσκλήσεων
+          Κατηγορίες Εξόδων
         </Link>
         <button
           type="button"
@@ -371,8 +367,8 @@ export default function TicketCategoriesPage() {
       </header>
 
       <p className="mb-4 text-sm text-muted">
-        Καθορίστε τις κατηγορίες προσκλήσεων που χρησιμοποιεί ο σύλλογος.
-        Σε κάθε εκδήλωση επιλέγετε από αυτές και ορίζετε την τιμή.
+        Διαχείριση κατηγοριών εξόδων εκδηλώσεων του συλλόγου.
+        Χρησιμοποιούνται στο tab Έξοδα του πίνακα εκδηλώσεων.
       </p>
 
       {error && (
@@ -392,16 +388,17 @@ export default function TicketCategoriesPage() {
           <p className="p-6 text-center text-sm text-muted">Φόρτωση…</p>
         ) : active.length === 0 ? (
           <p className="p-6 text-center text-sm text-muted">
-            Δεν έχουν οριστεί κατηγορίες ακόμα. Πατήστε «+ Νέα Κατηγορία»
-            για να ξεκινήσετε.
+            Δεν υπάρχουν κατηγορίες. Πρόσθεσε την πρώτη με το κουμπί + Νέα
+            Κατηγορία.
           </p>
         ) : (
           <table className="w-full text-left text-sm">
             <thead className="border-b border-border bg-background/40 text-xs uppercase tracking-wider text-muted">
               <tr>
+                <th className="px-3 py-2">Σειρά</th>
+                <th className="px-3 py-2">Icon</th>
                 <th className="px-3 py-2">Όνομα</th>
                 <th className="px-3 py-2">Σύντμηση</th>
-                <th className="px-3 py-2">Τύπος</th>
                 <th className="px-3 py-2 text-right">Προτ. τιμή</th>
                 <th className="px-3 py-2 text-right">Ενέργειες</th>
               </tr>
@@ -409,25 +406,8 @@ export default function TicketCategoriesPage() {
             <tbody className="divide-y divide-border">
               {active.map((c, idx) => (
                 <tr key={c.id}>
-                  <td className="px-3 py-2 font-medium">{c.name}</td>
-                  <td className="px-3 py-2 text-muted">
-                    {c.short_label ?? "—"}
-                  </td>
                   <td className="px-3 py-2">
-                    <span
-                      className={
-                        "rounded-full px-2 py-0.5 text-xs font-medium " +
-                        KIND_BADGE[c.category_kind]
-                      }
-                    >
-                      {TICKET_CATEGORY_KIND_LABELS[c.category_kind]}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-right text-muted">
-                    {c.default_price != null ? formatEuro(c.default_price) : "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <div className="inline-flex justify-end gap-1">
+                    <div className="inline-flex gap-1">
                       <button
                         type="button"
                         onClick={() => handleReorder(c, -1)}
@@ -450,6 +430,20 @@ export default function TicketCategoriesPage() {
                       >
                         ↓
                       </button>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-base leading-none">
+                    {c.icon ?? ""}
+                  </td>
+                  <td className="px-3 py-2 font-medium">{c.name}</td>
+                  <td className="px-3 py-2 text-muted">
+                    {c.short_label ?? "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right text-muted">
+                    {c.default_price != null ? formatEuro(c.default_price) : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <div className="inline-flex justify-end gap-1">
                       <button
                         type="button"
                         onClick={() => openEdit(c)}
@@ -496,17 +490,10 @@ export default function TicketCategoriesPage() {
                 <tbody className="divide-y divide-border">
                   {archived.map((c) => (
                     <tr key={c.id} className="opacity-60">
-                      <td className="px-3 py-2 font-medium">{c.name}</td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={
-                            "rounded-full px-2 py-0.5 text-xs font-medium " +
-                            KIND_BADGE[c.category_kind]
-                          }
-                        >
-                          {TICKET_CATEGORY_KIND_LABELS[c.category_kind]}
-                        </span>
+                      <td className="px-3 py-2 text-base leading-none">
+                        {c.icon ?? ""}
                       </td>
+                      <td className="px-3 py-2 font-medium">{c.name}</td>
                       <td className="px-3 py-2 text-right text-muted">
                         {c.default_price != null
                           ? formatEuro(c.default_price)
@@ -556,7 +543,7 @@ function CategoryModal({
   onClose,
   onSubmit,
 }: {
-  editing: TicketCategory | null;
+  editing: ExpenseCategory | null;
   form: Form;
   setForm: React.Dispatch<React.SetStateAction<Form>>;
   saving: boolean;
@@ -588,7 +575,8 @@ function CategoryModal({
               onChange={(e) =>
                 setForm((s) => ({ ...s, name: e.target.value }))
               }
-              placeholder="π.χ. Ενήλικας, Παιδί"
+              placeholder="π.χ. DJ, Ορχήστρα, Φωτογράφος"
+              maxLength={80}
               className={inputClass}
             />
           </Field>
@@ -600,43 +588,25 @@ function CategoryModal({
               onChange={(e) =>
                 setForm((s) => ({ ...s, short_label: e.target.value }))
               }
-              placeholder="π.χ. Ενήλ."
-              maxLength={10}
+              placeholder="π.χ. DJ, Ορχ."
+              maxLength={30}
               className={inputClass}
             />
           </Field>
 
-          {/* Radio group — standalone div to avoid nested <label> */}
-          <div>
-            <span className="mb-1.5 block text-xs font-medium text-muted">
-              Τύπος
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {TICKET_CATEGORY_KINDS.map((kind) => (
-                <label
-                  key={kind}
-                  className={
-                    "flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition " +
-                    (form.category_kind === kind
-                      ? "border-accent bg-accent/10 font-medium text-accent"
-                      : "border-border hover:bg-foreground/5")
-                  }
-                >
-                  <input
-                    type="radio"
-                    name="category_kind"
-                    value={kind}
-                    checked={form.category_kind === kind}
-                    onChange={() =>
-                      setForm((s) => ({ ...s, category_kind: kind }))
-                    }
-                    className="sr-only"
-                  />
-                  {TICKET_CATEGORY_KIND_LABELS[kind]}
-                </label>
-              ))}
-            </div>
-          </div>
+          <Field label="Εικονίδιο (emoji)">
+            <input
+              type="text"
+              value={form.icon}
+              onChange={(e) =>
+                setForm((s) => ({ ...s, icon: e.target.value }))
+              }
+              placeholder="🎵"
+              maxLength={8}
+              className={inputClass}
+            />
+            <p className="mt-1 text-xs text-muted">π.χ. 🎵 για DJ</p>
+          </Field>
 
           <Field label="Προτεινόμενη Τιμή">
             <div className="flex items-center gap-2">
@@ -649,7 +619,7 @@ function CategoryModal({
                 onChange={(e) =>
                   setForm((s) => ({ ...s, default_price: e.target.value }))
                 }
-                placeholder="π.χ. 25.00"
+                placeholder="π.χ. 300.00"
                 className={inputClass}
               />
               <span className="shrink-0 text-sm text-muted">€</span>

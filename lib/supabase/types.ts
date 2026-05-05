@@ -426,6 +426,7 @@ export type EventSponsor = {
   contribution_type: ContributionType;
   contribution_value: number | null;
   contribution_description: string | null;
+  received_at: string | null;
   created_at: string;
 };
 
@@ -437,6 +438,7 @@ export type EventSponsorInsert = {
   contribution_type: ContributionType;
   contribution_value?: number | null;
   contribution_description?: string | null;
+  received_at?: string | null;
   created_at?: string;
 };
 
@@ -1067,6 +1069,73 @@ export type Database = {
           },
         ];
       };
+      event_expenses: {
+        Row: {
+          id: string;
+          club_id: string;
+          event_id: string;
+          category_id: string;
+          amount: number;
+          vendor_name: string | null;
+          description: string | null;
+          paid_at: string | null;
+          payment_method: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          club_id: string;
+          event_id: string;
+          category_id: string;
+          amount: number;
+          vendor_name?: string | null;
+          description?: string | null;
+          paid_at?: string | null;
+          payment_method?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          club_id?: string;
+          event_id?: string;
+          category_id?: string;
+          amount?: number;
+          vendor_name?: string | null;
+          description?: string | null;
+          paid_at?: string | null;
+          payment_method?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "event_expenses_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "event_expenses_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "events";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "event_expenses_category_id_fkey";
+            columns: ["category_id"];
+            isOneToOne: false;
+            referencedRelation: "expense_categories";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       payment_templates: {
         Row: PaymentTemplate;
         Insert: PaymentTemplateInsert;
@@ -1175,6 +1244,53 @@ export type Database = {
           },
         ];
       };
+      expense_categories: {
+        Row: {
+          id: string;
+          club_id: string;
+          name: string;
+          short_label: string | null;
+          default_price: number | null;
+          display_order: number;
+          is_archived: boolean;
+          icon: string | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          club_id: string;
+          name: string;
+          short_label?: string | null;
+          default_price?: number | null;
+          display_order?: number;
+          is_archived?: boolean;
+          icon?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          club_id?: string;
+          name?: string;
+          short_label?: string | null;
+          default_price?: number | null;
+          display_order?: number;
+          is_archived?: boolean;
+          icon?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "expense_categories_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -1214,3 +1330,17 @@ export const TICKET_CATEGORY_KIND_LABELS: Record<TicketCategoryKind, string> = {
   child: "Παιδί",
   other: "Άλλο",
 };
+
+export type EventExpense =
+  Database["public"]["Tables"]["event_expenses"]["Row"];
+export type EventExpenseInsert =
+  Database["public"]["Tables"]["event_expenses"]["Insert"];
+export type EventExpenseUpdate =
+  Database["public"]["Tables"]["event_expenses"]["Update"];
+
+export type ExpenseCategory =
+  Database["public"]["Tables"]["expense_categories"]["Row"];
+export type ExpenseCategoryInsert =
+  Database["public"]["Tables"]["expense_categories"]["Insert"];
+export type ExpenseCategoryUpdate =
+  Database["public"]["Tables"]["expense_categories"]["Update"];

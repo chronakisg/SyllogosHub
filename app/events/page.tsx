@@ -95,6 +95,8 @@ type SponsorshipRow = {
   contribution_type: ContributionType;
   contribution_value: string;
   contribution_description: string;
+  is_received: boolean;
+  received_at: string;
 };
 
 const CONTRIBUTION_OPTIONS: Array<{ value: ContributionType; label: string }> = [
@@ -150,16 +152,6 @@ function memberDisplayName(m: Member): string {
   return `${m.last_name} ${m.first_name}`.trim();
 }
 
-function sponsorDisplayName(
-  s: Sponsor,
-  memberLookup: Map<string, Member>
-): string {
-  if (s.member_id) {
-    const m = memberLookup.get(s.member_id);
-    if (m) return memberDisplayName(m);
-  }
-  return s.external_name ?? "—";
-}
 
 export default function EventsPage() {
   const role = useRole();
@@ -625,16 +617,9 @@ function EventModal({
     EntertainerRow[]
   >([]);
   const [creatingEntertainer, setCreatingEntertainer] = useState(false);
-  const memberLookup = useMemo(() => {
-    const m = new Map<string, Member>();
-    for (const x of members) m.set(x.id, x);
-    return m;
-  }, [members]);
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [editingSponsor, setEditingSponsor] = useState<number | null>(null);
 
   useEffect(() => {
@@ -753,9 +738,12 @@ function EventModal({
                   ? String(row.contribution_value)
                   : "",
               contribution_description: row.contribution_description ?? "",
+              is_received: row.received_at !== null,
+              received_at: row.received_at ? row.received_at.slice(0, 10) : "",
             };
           })
         );
+
       } catch (err) {
         if (!cancelled) {
           setFormError(errorMessage(err, "Σφάλμα φόρτωσης δεδομένων."));
@@ -792,9 +780,6 @@ function EventModal({
     setTickets((s) => s.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   }
 
-  function addSponsorship(row: SponsorshipRow) {
-    setSponsorships((s) => [...s, row]);
-  }
   function updateSponsorship(i: number, patch: Partial<SponsorshipRow>) {
     setSponsorships((s) =>
       s.map((row, idx) => (idx === i ? { ...row, ...patch } : row))
@@ -966,6 +951,7 @@ function EventModal({
             ? Number(s.contribution_value.replace(",", "."))
             : null,
           contribution_description: s.contribution_description.trim() || null,
+          received_at: s.is_received && s.received_at ? s.received_at : null,
         }));
         const { error: isErr } = await supabase
           .from("event_sponsors")
@@ -1088,7 +1074,6 @@ function EventModal({
                 sponsorships={sponsorships}
                 editingIndex={editingSponsor}
                 setEditingIndex={setEditingSponsor}
-                onAdd={() => setPickerOpen(true)}
                 onRemove={removeSponsorship}
                 onUpdate={updateSponsorship}
               />
@@ -1124,19 +1109,6 @@ function EventModal({
           </div>
         </form>
       </div>
-
-      {pickerOpen && (
-        <SponsorPicker
-          members={members}
-          memberLookup={memberLookup}
-          clubId={clubId}
-          onClose={() => setPickerOpen(false)}
-          onPick={(row) => {
-            addSponsorship(row);
-            setPickerOpen(false);
-          }}
-        />
-      )}
 
       {createCatOpen && clubId && (
         <CreateCategoryModal
@@ -1770,31 +1742,20 @@ function SponsorsTab({
   sponsorships,
   editingIndex,
   setEditingIndex,
-  onAdd,
   onRemove,
   onUpdate,
 }: {
   sponsorships: SponsorshipRow[];
   editingIndex: number | null;
   setEditingIndex: (i: number | null) => void;
-  onAdd: () => void;
   onRemove: (i: number) => void;
   onUpdate: (i: number, patch: Partial<SponsorshipRow>) => void;
 }) {
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted">
-          Μέλη ή εξωτερικοί υποστηρικτές. Η αξία αθροίζεται στη Σύνοψη.
-        </p>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-foreground/5"
-        >
-          + Προσθήκη Χορηγού
-        </button>
-      </div>
+      <p className="text-xs text-muted">
+        Μέλη ή εξωτερικοί υποστηρικτές. Διαχείριση χορηγιών στα Οικονομικά.
+      </p>
 
       {sponsorships.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted">
@@ -1828,8 +1789,6 @@ function SponsorsTab({
                     </div>
                     <p className="mt-0.5 text-xs text-muted">
                       {CONTRIBUTION_LABEL[s.contribution_type]}
-                      {s.contribution_value &&
-                        ` · ${eur.format(Number(s.contribution_value.replace(",", ".")))}`}
                       {s.contribution_description && (
                         <span className="ml-1 truncate">
                           · {s.contribution_description}
@@ -1856,7 +1815,7 @@ function SponsorsTab({
                 </div>
 
                 {isEditing && (
-                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     <Field label="Είδος">
                       <select
                         value={s.contribution_type}
@@ -1874,19 +1833,6 @@ function SponsorsTab({
                           </option>
                         ))}
                       </select>
-                    </Field>
-                    <Field label="Αξία (€)">
-                      <input
-                        type="number"
-                        step="0.01"
-                        inputMode="decimal"
-                        value={s.contribution_value}
-                        onChange={(e) =>
-                          onUpdate(i, { contribution_value: e.target.value })
-                        }
-                        placeholder="0.00"
-                        className={inputClass}
-                      />
                     </Field>
                     <Field label="Περιγραφή">
                       <input
@@ -1912,318 +1858,6 @@ function SponsorsTab({
   );
 }
 
-type PickerMode = "member" | "external";
-
-function SponsorPicker({
-  members,
-  memberLookup,
-  clubId,
-  onClose,
-  onPick,
-}: {
-  members: Member[];
-  memberLookup: Map<string, Member>;
-  clubId: string | null;
-  onClose: () => void;
-  onPick: (row: SponsorshipRow) => void;
-}) {
-  const [mode, setMode] = useState<PickerMode>("member");
-  const [memberId, setMemberId] = useState<string>("");
-  const [memberSearch, setMemberSearch] = useState("");
-  const [externalName, setExternalName] = useState("");
-  const [externalPhone, setExternalPhone] = useState("");
-  const [externalEmail, setExternalEmail] = useState("");
-  const [contribType, setContribType] = useState<ContributionType>("money");
-  const [contribValue, setContribValue] = useState("");
-  const [contribDesc, setContribDesc] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const filteredMembers = useMemo(() => {
-    const q = memberSearch.trim().toLowerCase();
-    if (!q) return members.slice(0, 30);
-    return members
-      .filter((m) =>
-        `${m.last_name} ${m.first_name} ${m.email ?? ""}`
-          .toLowerCase()
-          .includes(q)
-      )
-      .slice(0, 30);
-  }, [members, memberSearch]);
-
-  async function submit() {
-    setErr(null);
-    if (mode === "member" && !memberId) {
-      setErr("Επιλέξτε μέλος.");
-      return;
-    }
-    if (mode === "external" && !externalName.trim()) {
-      setErr("Συμπληρώστε όνομα χορηγού.");
-      return;
-    }
-
-    if (!clubId) {
-      setErr("Δεν έχει εντοπιστεί σύλλογος.");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const supabase = getBrowserClient();
-      let sponsor: Sponsor;
-
-      if (mode === "member") {
-        // Reuse existing sponsor row for this member if any
-        const { data: existing, error: qErr } = await supabase
-          .from("sponsors")
-          .select("*")
-          .eq("member_id", memberId)
-          .eq("club_id", clubId)
-          .maybeSingle();
-        if (qErr) throw qErr;
-        if (existing) {
-          sponsor = existing as Sponsor;
-        } else {
-          const m = memberLookup.get(memberId);
-          const insert: SponsorInsert = {
-            club_id: clubId,
-            member_id: memberId,
-            external_name: null,
-            contact_phone: m?.phone ?? null,
-            contact_email: m?.email ?? null,
-          };
-          const { data: ins, error: iErr } = await supabase
-            .from("sponsors")
-            .insert(insert)
-            .select("*")
-            .single();
-          if (iErr) throw iErr;
-          sponsor = ins as Sponsor;
-        }
-      } else {
-        const insert: SponsorInsert = {
-          club_id: clubId,
-          member_id: null,
-          external_name: externalName.trim(),
-          contact_phone: externalPhone.trim() || null,
-          contact_email: externalEmail.trim() || null,
-        };
-        const { data: ins, error: iErr } = await supabase
-          .from("sponsors")
-          .insert(insert)
-          .select("*")
-          .single();
-        if (iErr) throw iErr;
-        sponsor = ins as Sponsor;
-      }
-
-      const isMember = !!sponsor.member_id;
-      const display = isMember
-        ? memberLookup.get(sponsor.member_id!)
-          ? memberDisplayName(memberLookup.get(sponsor.member_id!)!)
-          : "—"
-        : (sponsor.external_name ?? "—");
-
-      onPick({
-        sponsor_id: sponsor.id,
-        display_name: display,
-        is_member: isMember,
-        contribution_type: contribType,
-        contribution_value: contribValue,
-        contribution_description: contribDesc,
-      });
-    } catch (e) {
-      setErr(errorMessage(e, "Σφάλμα δημιουργίας χορηγού."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[90vh] w-full max-w-xl flex-col rounded-xl border border-border bg-surface shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="border-b border-border p-5">
-          <h3 className="text-base font-semibold">Προσθήκη Χορηγού</h3>
-          <div className="mt-3 inline-flex rounded-lg border border-border bg-background p-0.5 text-xs">
-            {(
-              [
-                { id: "member" as PickerMode, label: "Μέλος" },
-                { id: "external" as PickerMode, label: "Εξωτερικός" },
-              ] as const
-            ).map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setMode(t.id)}
-                className={
-                  "rounded-md px-3 py-1 transition " +
-                  (mode === t.id
-                    ? "bg-accent text-white"
-                    : "text-muted hover:text-foreground")
-                }
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
-          {mode === "member" ? (
-            <>
-              <input
-                type="search"
-                value={memberSearch}
-                onChange={(e) => setMemberSearch(e.target.value)}
-                placeholder="Αναζήτηση μέλους…"
-                className={inputClass}
-              />
-              <ul className="max-h-56 divide-y divide-border overflow-y-auto rounded-lg border border-border">
-                {filteredMembers.length === 0 ? (
-                  <li className="px-3 py-3 text-center text-xs text-muted">
-                    Δεν βρέθηκαν.
-                  </li>
-                ) : (
-                  filteredMembers.map((m) => {
-                    const active = memberId === m.id;
-                    return (
-                      <li key={m.id}>
-                        <button
-                          type="button"
-                          onClick={() => setMemberId(m.id)}
-                          className={
-                            "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition " +
-                            (active
-                              ? "bg-accent/10 text-accent"
-                              : "hover:bg-foreground/5")
-                          }
-                        >
-                          <span className="truncate font-medium">
-                            {m.last_name} {m.first_name}
-                          </span>
-                          {m.email && (
-                            <span className="text-[10px] text-muted">
-                              {m.email}
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    );
-                  })
-                )}
-              </ul>
-            </>
-          ) : (
-            <div className="space-y-3">
-              <Field label="Όνομα" required>
-                <input
-                  type="text"
-                  value={externalName}
-                  onChange={(e) => setExternalName(e.target.value)}
-                  className={inputClass}
-                />
-              </Field>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Τηλέφωνο">
-                  <input
-                    type="tel"
-                    value={externalPhone}
-                    onChange={(e) => setExternalPhone(e.target.value)}
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="Email">
-                  <input
-                    type="email"
-                    value={externalEmail}
-                    onChange={(e) => setExternalEmail(e.target.value)}
-                    className={inputClass}
-                  />
-                </Field>
-              </div>
-            </div>
-          )}
-
-          <fieldset className="space-y-3 rounded-lg border border-border p-3">
-            <legend className="px-2 text-xs font-semibold uppercase tracking-wider text-muted">
-              Προσφορά
-            </legend>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Field label="Είδος">
-                <select
-                  value={contribType}
-                  onChange={(e) =>
-                    setContribType(e.target.value as ContributionType)
-                  }
-                  className={inputClass}
-                >
-                  {CONTRIBUTION_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Αξία (€)">
-                <input
-                  type="number"
-                  step="0.01"
-                  inputMode="decimal"
-                  value={contribValue}
-                  onChange={(e) => setContribValue(e.target.value)}
-                  placeholder="0.00"
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Περιγραφή">
-                <input
-                  type="text"
-                  value={contribDesc}
-                  onChange={(e) => setContribDesc(e.target.value)}
-                  placeholder="π.χ. 10 μπουκάλια κρασί"
-                  className={inputClass}
-                />
-              </Field>
-            </div>
-          </fieldset>
-
-          {err && (
-            <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
-              {err}
-            </div>
-          )}
-        </div>
-
-        <div className="flex justify-end gap-2 border-t border-border p-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background disabled:opacity-50"
-          >
-            Ακύρωση
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={saving}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
-          >
-            {saving ? "Προσθήκη…" : "Προσθήκη"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function Field({
   label,

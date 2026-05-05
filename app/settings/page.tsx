@@ -44,6 +44,12 @@ const CARDS: Card[] = [
     description: "Ορίστε κατηγορίες (Ενήλικας, Παιδί κλπ.) για τιμολόγηση εκδηλώσεων.",
   },
   {
+    href: "/settings/club/expense-categories",
+    icon: "💸",
+    title: "Κατηγορίες Εξόδων",
+    description: "Κατηγορίες εξόδων ανά εκδήλωση (DJ, ορχήστρα, φωτογράφος κ.λπ.)",
+  },
+  {
     href: "/discounts",
     icon: "💰",
     title: "Εκπτώσεις",
