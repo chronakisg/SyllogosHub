@@ -1,5 +1,6 @@
 import type {
   Club,
+  EventExpense,
   EventSponsor,
   EventTicketPrice,
   Reservation,
@@ -209,4 +210,32 @@ export function formatRevenueBreakdown(
   }
 
   return parts.join(" + ");
+}
+
+export type EventExpensesSummary = {
+  totalExpenses: number;
+  paidExpenses: number;
+  pendingExpenses: number;
+};
+
+export function calculateEventExpenses(
+  expenses: EventExpense[]
+): EventExpensesSummary {
+  let paidExpenses = 0;
+  let pendingExpenses = 0;
+
+  for (const e of expenses) {
+    const amount = Number(e.amount);
+    if (e.paid_at) {
+      paidExpenses += amount;
+    } else {
+      pendingExpenses += amount;
+    }
+  }
+
+  return {
+    totalExpenses: paidExpenses + pendingExpenses,
+    paidExpenses,
+    pendingExpenses,
+  };
 }
