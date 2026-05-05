@@ -6,6 +6,7 @@ import type {
   ContributionType,
   EventSponsor,
   EventSponsorInsert,
+  Sponsor,
 } from "@/lib/supabase/types";
 import { formatEuro } from "@/lib/utils/eventRevenue";
 
@@ -29,6 +30,10 @@ type EventSponsorWithSponsor = EventSponsor & {
   } | null;
 };
 
+type SponsorWithMember = Sponsor & {
+  member: { first_name: string | null; last_name: string | null } | null;
+};
+
 // ── Helpers ──────────────────────────────────────────────────
 
 const CONTRIBUTION_TYPE_LABELS: Record<ContributionType, string> = {
@@ -39,8 +44,27 @@ const CONTRIBUTION_TYPE_LABELS: Record<ContributionType, string> = {
   other: "Άλλο",
 };
 
+const CONTRIBUTION_OPTIONS: Array<{ value: ContributionType; label: string }> =
+  [
+    { value: "money", label: "Χρήματα" },
+    { value: "product", label: "Προϊόν" },
+    { value: "service", label: "Υπηρεσία" },
+    { value: "venue", label: "Χώρος" },
+    { value: "other", label: "Άλλο" },
+  ];
+
 const inputClass =
   "rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
+
+function sponsorListName(s: SponsorWithMember): string {
+  if (s.member) {
+    const name = [s.member.last_name, s.member.first_name]
+      .filter(Boolean)
+      .join(" ");
+    if (name) return name;
+  }
+  return s.external_name ?? "—";
+}
 
 function sponsorDisplayName(s: EventSponsorWithSponsor): string {
   if (s.sponsor?.member) {
@@ -85,6 +109,7 @@ export default function SponsorsPanel({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [showAddDialog, setShowAddDialog] = useState(false);
 
   // ── Load ──────────────────────────────────────────────────
 
@@ -133,6 +158,20 @@ export default function SponsorsPanel({
 
   function removeRow(idx: number) {
     setRows((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function handleAddSponsor(newRow: {
+    sponsor_id: string;
+    display_name: string;
+    contribution_type: ContributionType;
+    contribution_value: string;
+    contribution_description: string;
+  }) {
+    setRows((prev) => [
+      ...prev,
+      { ...newRow, is_received: false, received_at: "" },
+    ]);
+    setShowAddDialog(false);
   }
 
   // ── Summary (money only) ──────────────────────────────────
@@ -250,28 +289,37 @@ export default function SponsorsPanel({
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted">
-          🤝 Χορηγίες Εκδήλωσης
-        </h2>
-        {hasMoneyRows && (
-          <p className="text-xs text-muted">
-            Δεσμευμένες:{" "}
-            <span className="font-medium text-foreground">
-              {formatEuro(summary.pledged)}
-            </span>{" "}
-            • Εισπραχθείσες:{" "}
-            <span className="text-emerald-600 dark:text-emerald-400">
-              {formatEuro(summary.received)}
-            </span>
-          </p>
-        )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-baseline gap-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted">
+            🤝 Χορηγίες Εκδήλωσης
+          </h2>
+          {hasMoneyRows && (
+            <p className="text-xs text-muted">
+              Δεσμευμένες:{" "}
+              <span className="font-medium text-foreground">
+                {formatEuro(summary.pledged)}
+              </span>{" "}
+              • Εισπραχθείσες:{" "}
+              <span className="text-emerald-600 dark:text-emerald-400">
+                {formatEuro(summary.received)}
+              </span>
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAddDialog(true)}
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
+        >
+          + Προσθήκη Χορηγίας
+        </button>
       </div>
 
       {/* Empty state */}
       {rows.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted">
-          Δεν υπάρχουν χορηγοί. Προσθέστε χορηγούς από την εκδήλωση.
+          Δεν υπάρχουν χορηγοί ακόμα.
         </p>
       ) : (
         <div className="overflow-x-auto overflow-hidden rounded-lg border border-border">
@@ -454,6 +502,257 @@ export default function SponsorsPanel({
           </button>
         </div>
       )}
+
+      {/* Add dialog */}
+      {showAddDialog && (
+        <AddSponsorshipDialog
+          clubId={clubId}
+          linkedSponsorIds={new Set(rows.map((r) => r.sponsor_id))}
+          onClose={() => setShowAddDialog(false)}
+          onAdd={handleAddSponsor}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── AddSponsorshipDialog ──────────────────────────────────────
+
+type AddRow = {
+  sponsor_id: string;
+  display_name: string;
+  contribution_type: ContributionType;
+  contribution_value: string;
+  contribution_description: string;
+};
+
+function AddSponsorshipDialog({
+  clubId,
+  linkedSponsorIds,
+  onClose,
+  onAdd,
+}: {
+  clubId: string;
+  linkedSponsorIds: Set<string>;
+  onClose: () => void;
+  onAdd: (row: AddRow) => void;
+}) {
+  const [allSponsors, setAllSponsors] = useState<SponsorWithMember[]>([]);
+  const [sponsorsLoading, setSponsorsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedSponsorId, setSelectedSponsorId] = useState("");
+  const [contribType, setContribType] = useState<ContributionType>("money");
+  const [contribValue, setContribValue] = useState("");
+  const [contribDesc, setContribDesc] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = getBrowserClient();
+        const { data, error } = await supabase
+          .from("sponsors")
+          .select("*, member:member_id(first_name, last_name)")
+          .eq("club_id", clubId)
+          .order("external_name", { ascending: true, nullsFirst: false });
+        if (cancelled) return;
+        if (!error) setAllSponsors((data ?? []) as unknown as SponsorWithMember[]);
+      } finally {
+        if (!cancelled) setSponsorsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [clubId]);
+
+  const availableSponsors = useMemo(
+    () => allSponsors.filter((s) => !linkedSponsorIds.has(s.id)),
+    [allSponsors, linkedSponsorIds]
+  );
+
+  const filteredSponsors = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return availableSponsors;
+    return availableSponsors.filter((s) =>
+      sponsorListName(s).toLowerCase().includes(q)
+    );
+  }, [availableSponsors, searchQuery]);
+
+  function submit() {
+    setErr(null);
+    if (!selectedSponsorId) {
+      setErr("Επιλέξτε χορηγό.");
+      return;
+    }
+    const selected = availableSponsors.find((s) => s.id === selectedSponsorId);
+    if (!selected) return;
+    onAdd({
+      sponsor_id: selected.id,
+      display_name: sponsorListName(selected),
+      contribution_type: contribType,
+      contribution_value: contribValue,
+      contribution_description: contribDesc,
+    });
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[90vh] w-full max-w-xl flex-col rounded-xl border border-border bg-surface shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="border-b border-border p-5">
+          <h3 className="text-base font-semibold">Προσθήκη Χορηγίας</h3>
+        </div>
+
+        {/* Body */}
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+          {/* Sponsor picker */}
+          <div>
+            <span className="mb-1 block text-xs font-medium text-muted">
+              Χορηγός
+            </span>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Αναζήτηση χορηγού…"
+              className={inputClass + " mb-2 w-full"}
+            />
+            {sponsorsLoading ? (
+              <p className="py-3 text-center text-xs text-muted">Φόρτωση…</p>
+            ) : allSponsors.length === 0 ? (
+              <div className="rounded-lg border border-border p-6 text-center">
+                <p className="text-sm">Δεν υπάρχουν χορηγοί καταχωρημένοι.</p>
+                <p className="mt-2 text-xs text-muted">
+                  Δημιουργήστε πρώτα χορηγό από το tab &ldquo;Χορηγοί&rdquo; στα Οικονομικά.
+                </p>
+              </div>
+            ) : (
+              <ul className="max-h-60 divide-y divide-border overflow-y-auto rounded-lg border border-border">
+                {filteredSponsors.length === 0 ? (
+                  <li className="p-3 text-center text-sm text-muted">
+                    Δεν βρέθηκε χορηγός. Δημιουργήστε νέο από το tab &ldquo;Χορηγοί&rdquo; στα Οικονομικά.
+                  </li>
+                ) : (
+                  filteredSponsors.map((s) => (
+                    <li key={s.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSponsorId(s.id)}
+                        className={
+                          "flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm transition " +
+                          (selectedSponsorId === s.id
+                            ? "bg-accent/10 text-accent"
+                            : "hover:bg-foreground/5")
+                        }
+                      >
+                        <span className="truncate font-medium">
+                          {sponsorListName(s)}
+                        </span>
+                        <span
+                          className={
+                            "whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] " +
+                            (s.member_id
+                              ? "bg-blue-500/10 text-blue-700 dark:text-blue-300"
+                              : "bg-amber-500/10 text-amber-700 dark:text-amber-300")
+                          }
+                        >
+                          {s.member_id ? "Μέλος" : "Εξωτερικός"}
+                        </span>
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            )}
+          </div>
+
+          {/* Contribution */}
+          <fieldset className="space-y-3 rounded-lg border border-border p-3">
+            <legend className="px-2 text-xs font-semibold uppercase tracking-wider text-muted">
+              Προσφορά
+            </legend>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-muted">
+                  Είδος
+                </span>
+                <select
+                  value={contribType}
+                  onChange={(e) =>
+                    setContribType(e.target.value as ContributionType)
+                  }
+                  className={inputClass + " w-full"}
+                >
+                  {CONTRIBUTION_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-muted">
+                  Αξία (€)
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={contribValue}
+                  onChange={(e) => setContribValue(e.target.value)}
+                  placeholder="0.00"
+                  className={inputClass + " w-full"}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-muted">
+                  Περιγραφή
+                </span>
+                <input
+                  type="text"
+                  value={contribDesc}
+                  onChange={(e) => setContribDesc(e.target.value)}
+                  placeholder="π.χ. 10 μπουκάλια κρασί"
+                  className={inputClass + " w-full"}
+                />
+              </label>
+            </div>
+          </fieldset>
+
+          {err && (
+            <p className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+              {err}
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 border-t border-border p-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-foreground/5"
+          >
+            Ακύρωση
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!selectedSponsorId}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-90 disabled:opacity-50"
+          >
+            Προσθήκη
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
