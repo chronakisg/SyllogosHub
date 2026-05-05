@@ -5,6 +5,7 @@ import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import type {
   Event as EventRow,
+  EventExpense,
   EventSponsor,
   Sponsor,
 } from "@/lib/supabase/types";
@@ -15,6 +16,7 @@ import {
   RESERVATION_SELECT,
 } from "@/lib/utils/attendees";
 import {
+  calculateEventExpenses,
   calculateEventRevenue,
   calculateReservationRevenue,
   formatEuro,
@@ -59,6 +61,7 @@ export default function EventDashboardTab() {
   const [reservations, setReservations] = useState<ReservationWithAttendees[]>([]);
   const [ticketPrices, setTicketPrices] = useState<TicketPriceWithCategory[]>([]);
   const [eventSponsors, setEventSponsors] = useState<EventSponsorWithSponsor[]>([]);
+  const [eventExpenses, setEventExpenses] = useState<EventExpense[]>([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
   const [sponsorsError, setSponsorsError] = useState<string | null>(null);
@@ -97,6 +100,7 @@ export default function EventDashboardTab() {
       setReservations([]);
       setTicketPrices([]);
       setEventSponsors([]);
+      setEventExpenses([]);
       setSponsorsError(null);
       return;
     }
@@ -106,7 +110,7 @@ export default function EventDashboardTab() {
     (async () => {
       try {
         const supabase = getBrowserClient();
-        const [resRes, pricesRes, sponsorsRes] = await Promise.all([
+        const [resRes, pricesRes, sponsorsRes, expensesRes] = await Promise.all([
           supabase
             .from("reservations")
             .select(RESERVATION_SELECT)
@@ -122,12 +126,21 @@ export default function EventDashboardTab() {
             .from("event_sponsors")
             .select("*, sponsor:sponsor_id(*, member:member_id(first_name, last_name))")
             .eq("event_id", selectedEventId),
+          supabase
+            .from("event_expenses")
+            .select("*")
+            .eq("event_id", selectedEventId),
         ]);
         if (cancelled) return;
         if (resRes.error) throw resRes.error;
         if (pricesRes.error) throw pricesRes.error;
         setReservations((resRes.data ?? []) as unknown as ReservationWithAttendees[]);
         setTicketPrices((pricesRes.data ?? []) as unknown as TicketPriceWithCategory[]);
+        if (expensesRes.error) {
+          setEventExpenses([]);
+        } else {
+          setEventExpenses((expensesRes.data ?? []) as EventExpense[]);
+        }
         if (sponsorsRes.error) {
           setSponsorsError(errorMessage(sponsorsRes.error, "Σφάλμα φόρτωσης χορηγιών."));
           setEventSponsors([]);
@@ -223,6 +236,11 @@ export default function EventDashboardTab() {
       (s) => s.contribution_type === "money" && s.contribution_value != null
     ),
     [eventSponsors]
+  );
+
+  const expensesSummary = useMemo(
+    () => calculateEventExpenses(eventExpenses),
+    [eventExpenses]
   );
 
   const hasTicketPrices = ticketPrices.length > 0;
@@ -325,22 +343,28 @@ export default function EventDashboardTab() {
                       : null
                   }
                 />
-                {/* TODO Phase 2 — expenses data */}
                 <MoneyCard
                   icon="💸"
                   title="Έξοδα"
-                  total={0}
-                  paid={0}
-                  pending={0}
+                  total={expensesSummary.totalExpenses}
+                  paid={expensesSummary.paidExpenses}
+                  pending={expensesSummary.pendingExpenses}
                   paidLabel="Πληρώθηκαν"
                   pendingLabel="Εκκρεμή"
-                  paidPercent={null}
-                  placeholder
+                  paidPercent={
+                    expensesSummary.totalExpenses > 0
+                      ? Math.round(
+                          (expensesSummary.paidExpenses / expensesSummary.totalExpenses) * 100
+                        )
+                      : null
+                  }
                 />
                 <SummaryCard
                   paidRevenue={eventRevenue?.paidRevenue ?? 0}
                   pendingRevenue={eventRevenue?.pendingRevenue ?? 0}
                   totalRevenue={eventRevenue?.totalRevenue ?? 0}
+                  expensesPaid={expensesSummary.paidExpenses}
+                  expensesPending={expensesSummary.pendingExpenses}
                 />
               </div>
             )}
@@ -495,7 +519,6 @@ function MoneyCard({
   paidLabel,
   pendingLabel,
   paidPercent,
-  placeholder = false,
 }: {
   icon: string;
   title: string;
@@ -505,44 +528,33 @@ function MoneyCard({
   paidLabel: string;
   pendingLabel: string;
   paidPercent: number | null;
-  placeholder?: boolean;
 }) {
   return (
-    <div className={
-      "flex h-full flex-col rounded-xl border p-4 " +
-      (placeholder ? "border-border/40 bg-surface/40" : "border-border bg-surface")
-    }>
+    <div className="flex h-full flex-col rounded-xl border border-border bg-surface p-4">
       <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">
         {icon} {title}
       </p>
-      {placeholder ? (
-        <div className="space-y-1.5 text-muted/60">
-          <p className="text-xl font-semibold">—</p>
-          <p className="text-sm italic">Phase 2 — διαχείριση εξόδων στο επόμενο update</p>
+      <div className="space-y-2">
+        <p className="text-xl font-semibold tabular-nums">{formatEuro(total)}</p>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted">✅ {paidLabel}</span>
+          <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
+            {formatEuro(paid)}
+            {paidPercent !== null && (
+              <span className="ml-1 text-xs text-muted">({paidPercent}%)</span>
+            )}
+          </span>
         </div>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-xl font-semibold tabular-nums">{formatEuro(total)}</p>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted">✅ {paidLabel}</span>
-            <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
-              {formatEuro(paid)}
-              {paidPercent !== null && (
-                <span className="ml-1 text-xs text-muted">({paidPercent}%)</span>
-              )}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted">⚠️ {pendingLabel}</span>
-            <span className={
-              "tabular-nums " +
-              (pending > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted")
-            }>
-              {formatEuro(pending)}
-            </span>
-          </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted">⚠️ {pendingLabel}</span>
+          <span className={
+            "tabular-nums " +
+            (pending > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted")
+          }>
+            {formatEuro(pending)}
+          </span>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -551,14 +563,15 @@ function SummaryCard({
   paidRevenue,
   pendingRevenue,
   totalRevenue,
+  expensesPaid,
+  expensesPending,
 }: {
   paidRevenue: number;
   pendingRevenue: number;
   totalRevenue: number;
+  expensesPaid: number;
+  expensesPending: number;
 }) {
-  // TODO Phase 2 — expenses
-  const expensesPaid = 0;
-  const expensesPending = 0;
   const now = paidRevenue - expensesPaid;
   const final = totalRevenue - (expensesPaid + expensesPending);
   return (
