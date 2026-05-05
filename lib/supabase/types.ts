@@ -394,6 +394,16 @@ export type TicketCategoryUpdate = Partial<
   Omit<TicketCategory, "id" | "created_at">
 >;
 
+export type ExpenseCategory =
+  | "entertainment"
+  | "photography"
+  | "venue"
+  | "catering"
+  | "decoration"
+  | "transportation"
+  | "utilities"
+  | "other";
+
 export type Sponsor = {
   id: string;
   club_id: string | null;
@@ -1067,6 +1077,66 @@ export type Database = {
           },
         ];
       };
+      event_expenses: {
+        Row: {
+          id: string;
+          club_id: string;
+          event_id: string;
+          category: ExpenseCategory;
+          amount: number;
+          vendor_name: string | null;
+          description: string | null;
+          paid_at: string | null;
+          payment_method: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          club_id: string;
+          event_id: string;
+          category: ExpenseCategory;
+          amount: number;
+          vendor_name?: string | null;
+          description?: string | null;
+          paid_at?: string | null;
+          payment_method?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          club_id?: string;
+          event_id?: string;
+          category?: ExpenseCategory;
+          amount?: number;
+          vendor_name?: string | null;
+          description?: string | null;
+          paid_at?: string | null;
+          payment_method?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "event_expenses_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "event_expenses_event_id_fkey";
+            columns: ["event_id"];
+            isOneToOne: false;
+            referencedRelation: "events";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       payment_templates: {
         Row: PaymentTemplate;
         Insert: PaymentTemplateInsert;
@@ -1213,4 +1283,44 @@ export const TICKET_CATEGORY_KIND_LABELS: Record<TicketCategoryKind, string> = {
   adult: "Ενήλικας",
   child: "Παιδί",
   other: "Άλλο",
+};
+
+export type EventExpense =
+  Database["public"]["Tables"]["event_expenses"]["Row"];
+export type EventExpenseInsert =
+  Database["public"]["Tables"]["event_expenses"]["Insert"];
+export type EventExpenseUpdate =
+  Database["public"]["Tables"]["event_expenses"]["Update"];
+
+export const EXPENSE_CATEGORIES: readonly ExpenseCategory[] = [
+  "entertainment",
+  "photography",
+  "venue",
+  "catering",
+  "decoration",
+  "transportation",
+  "utilities",
+  "other",
+] as const;
+
+export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
+  entertainment: "Διασκέδαση",
+  photography: "Φωτογραφία/Βίντεο",
+  venue: "Ενοίκιο χώρου",
+  catering: "Catering / Φαγητό",
+  decoration: "Διακόσμηση",
+  transportation: "Μεταφορικά",
+  utilities: "ΔΕΗ / Νερό",
+  other: "Άλλο",
+};
+
+export const EXPENSE_CATEGORY_ICONS: Record<ExpenseCategory, string> = {
+  entertainment: "🎵",
+  photography: "📸",
+  venue: "🏠",
+  catering: "🍽️",
+  decoration: "🎨",
+  transportation: "🚗",
+  utilities: "⚡",
+  other: "📋",
 };
