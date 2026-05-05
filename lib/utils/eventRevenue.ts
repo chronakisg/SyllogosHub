@@ -1,6 +1,7 @@
 import type {
   Club,
   EventExpense,
+  EventSponsor,
   EventTicketPrice,
   Reservation,
   TicketCategoryKind,
@@ -32,6 +33,7 @@ export type ReservationRevenue = {
 
 export type EventRevenue = {
   reservationsRevenue: number;
+  receivedSponsorsRevenue: number;
   totalRevenue: number;
   paidRevenue: number;
   pendingRevenue: number;
@@ -149,10 +151,11 @@ export function calculateEventRevenue(
   reservations: Reservation[],
   attendeesByReservation: Map<string, AttendeeWithMember[]>,
   ticketPrices: TicketPriceWithCategory[],
+  eventSponsors: EventSponsor[],
   club: Pick<Club, "child_age_threshold">
 ): EventRevenue {
   let reservationsRevenue = 0;
-  let paidRevenue = 0;
+  let paidReservationsRevenue = 0;
   let paidReservationsCount = 0;
 
   for (const r of reservations) {
@@ -160,18 +163,26 @@ export function calculateEventRevenue(
     const rev = calculateReservationRevenue(r, attendees, ticketPrices, club);
     reservationsRevenue += rev.grandTotal;
     if (r.is_paid) {
-      paidRevenue += rev.grandTotal;
+      paidReservationsRevenue += rev.grandTotal;
       paidReservationsCount++;
     }
   }
 
-  const totalRevenue = reservationsRevenue;
+  const receivedSponsorsRevenue = eventSponsors
+    .filter(
+      (s) =>
+        s.contribution_type === "money" &&
+        s.received_at !== null &&
+        s.contribution_value != null
+    )
+    .reduce((sum, s) => sum + (s.contribution_value ?? 0), 0);
 
   return {
     reservationsRevenue,
-    totalRevenue,
-    paidRevenue,
-    pendingRevenue: reservationsRevenue - paidRevenue,
+    receivedSponsorsRevenue,
+    totalRevenue: reservationsRevenue + receivedSponsorsRevenue,
+    paidRevenue: paidReservationsRevenue + receivedSponsorsRevenue,
+    pendingRevenue: reservationsRevenue - paidReservationsRevenue,
     reservationsCount: reservations.length,
     paidReservationsCount,
   };

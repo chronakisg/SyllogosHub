@@ -123,12 +123,16 @@ export default function SponsorsPanel({
     };
   }, [eventId, clubId]);
 
-  // ── Row update ────────────────────────────────────────────
+  // ── Row helpers ───────────────────────────────────────────
 
   function updateRow(idx: number, patch: Partial<SponsorRow>) {
     setRows((prev) =>
       prev.map((r, i) => (i === idx ? { ...r, ...patch } : r))
     );
+  }
+
+  function removeRow(idx: number) {
+    setRows((prev) => prev.filter((_, i) => i !== idx));
   }
 
   // ── Summary (money only) ──────────────────────────────────
@@ -274,10 +278,11 @@ export default function SponsorsPanel({
           <table className="w-full table-fixed text-sm">
             <thead className="border-b border-border bg-background/50 text-xs uppercase tracking-wider text-muted">
               <tr>
-                <th className="w-[30%] px-3 py-2 text-left">Χορηγός</th>
-                <th className="w-[15%] px-3 py-2 text-right">Αξία €</th>
-                <th className="w-[30%] px-3 py-2 text-left">Περιγραφή</th>
-                <th className="w-[25%] px-3 py-2 text-left">Εισπράχθηκε</th>
+                <th className="w-[28%] px-3 py-2 text-left">Χορηγός</th>
+                <th className="w-[12%] px-3 py-2 text-right">Αξία €</th>
+                <th className="w-[28%] px-3 py-2 text-left">Περιγραφή</th>
+                <th className="w-[27%] px-3 py-2 text-left">Εισπράχθηκε</th>
+                <th className="w-[5%] px-3 py-2" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -311,7 +316,14 @@ export default function SponsorsPanel({
                         className={inputClass + " w-full text-right"}
                       />
                     ) : (
-                      <span className="block text-right text-muted">—</span>
+                      <input
+                        type="text"
+                        value="—"
+                        disabled
+                        className={inputClass + " w-full text-right text-muted/60 cursor-not-allowed"}
+                        tabIndex={-1}
+                        aria-label="Δεν εφαρμόζεται"
+                      />
                     )}
                   </td>
 
@@ -357,6 +369,19 @@ export default function SponsorsPanel({
                         />
                       )}
                     </div>
+                  </td>
+
+                  {/* Delete */}
+                  <td className="px-3 py-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() => removeRow(i)}
+                      title="Αφαίρεση χορηγού"
+                      aria-label="Αφαίρεση"
+                      className="rounded p-1 text-danger hover:bg-danger/10"
+                    >
+                      🗑
+                    </button>
                   </td>
                 </tr>
               ))}

@@ -24,6 +24,7 @@ import {
   formatRevenueBreakdown,
 } from "@/lib/utils/eventRevenue";
 import ExpensesPanel from "./ExpensesPanel";
+import SponsorsPanel from "./SponsorsPanel";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ type EventSponsorWithSponsor = EventSponsor & {
   sponsor: SponsorWithMember | null;
 };
 
-type SubTab = "income" | "expenses";
+type SubTab = "income" | "expenses" | "sponsors";
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -211,9 +212,10 @@ export default function EventDashboardTab() {
       reservations,
       attendeesByReservation,
       ticketPrices,
+      eventSponsors,
       club
     );
-  }, [reservations, attendeesByReservation, ticketPrices, club]);
+  }, [reservations, attendeesByReservation, ticketPrices, eventSponsors, club]);
 
   const reservationRevenues = useMemo(() => {
     const map = new Map<string, ReturnType<typeof calculateReservationRevenue>>();
@@ -261,9 +263,25 @@ export default function EventDashboardTab() {
     });
   }, [eventSponsors]);
 
+  const sponsorsMoneyReceived = useMemo(() => {
+    return eventSponsors
+      .filter(
+        (s) =>
+          s.contribution_type === "money" &&
+          s.received_at !== null &&
+          s.contribution_value != null
+      )
+      .reduce((sum, s) => sum + (s.contribution_value ?? 0), 0);
+  }, [eventSponsors]);
+
   const sponsorsMoneyPledged = useMemo(() => {
     return eventSponsors
-      .filter((s) => s.contribution_type === "money" && s.contribution_value != null)
+      .filter(
+        (s) =>
+          s.contribution_type === "money" &&
+          s.received_at === null &&
+          s.contribution_value != null
+      )
       .reduce((sum, s) => sum + (s.contribution_value ?? 0), 0);
   }, [eventSponsors]);
 
@@ -334,6 +352,18 @@ export default function EventDashboardTab() {
               }
             >
               💸 Έξοδα
+            </button>
+            <button
+              type="button"
+              onClick={() => setSubTab("sponsors")}
+              className={
+                "rounded-md px-3 py-1.5 transition " +
+                (subTab === "sponsors"
+                  ? "bg-foreground/10 font-semibold text-foreground"
+                  : "text-foreground/70 hover:bg-foreground/5")
+              }
+            >
+              🤝 Χορηγοί
             </button>
           </div>
 
@@ -557,17 +587,29 @@ export default function EventDashboardTab() {
                           </li>
                         );
                       })}
-                      {sponsorsMoneyPledged > 0 && (
-                        <li className="flex items-center justify-between bg-background/40 px-4 py-2.5 text-sm font-semibold">
-                          <span>Δεσμευμένες χορηγίες</span>
-                          <span className="tabular-nums">
-                            {formatEuro(sponsorsMoneyPledged)}
-                          </span>
-                        </li>
+                      {(sponsorsMoneyReceived > 0 || sponsorsMoneyPledged > 0) && (
+                        <>
+                          {sponsorsMoneyReceived > 0 && (
+                            <li className="flex items-center justify-between bg-background/40 px-4 py-2.5 text-sm font-semibold">
+                              <span>Εισπραχθείσες χορηγίες</span>
+                              <span className="tabular-nums text-emerald-600 dark:text-emerald-400">
+                                {formatEuro(sponsorsMoneyReceived)}
+                              </span>
+                            </li>
+                          )}
+                          {sponsorsMoneyPledged > 0 && (
+                            <li className="flex items-center justify-between bg-background/40 px-4 py-2.5 text-sm font-semibold">
+                              <span>Δεσμευμένες χορηγίες</span>
+                              <span className="tabular-nums text-amber-600 dark:text-amber-400">
+                                {formatEuro(sponsorsMoneyPledged)}
+                              </span>
+                            </li>
+                          )}
+                        </>
                       )}
                     </ul>
                     <p className="border-t border-border px-4 py-2 text-xs italic text-muted">
-                      Οι χορηγίες δεν περιλαμβάνονται στα Έσοδα μέχρι να εισπραχθούν.
+                      Οι δεσμευμένες χορηγίες δεν περιλαμβάνονται στα Έσοδα μέχρι να εισπραχθούν.
                     </p>
                   </div>
                 </section>
@@ -581,6 +623,16 @@ export default function EventDashboardTab() {
               clubId={clubId}
               onExpensesChange={(newExpenses) => {
                 setEventExpenses(newExpenses);
+              }}
+            />
+          )}
+
+          {subTab === "sponsors" && clubId && (
+            <SponsorsPanel
+              eventId={selectedEventId}
+              clubId={clubId}
+              onSponsorsChange={(newSponsors) => {
+                setEventSponsors(newSponsors as unknown as EventSponsorWithSponsor[]);
               }}
             />
           )}
