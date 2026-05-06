@@ -307,6 +307,38 @@ export default function CashierPage() {
     };
   }, [expandedReservationId, reservationRows, club, ticketPrices]);
 
+  // Compute total για επιλεγμένους (named + anonymous)
+  const selectionTotals = useMemo(() => {
+    if (!expandedData || selectedAttendeeIds.size === 0) {
+      return { count: 0, amount: 0 };
+    }
+
+    let amount = 0;
+
+    // Named attendees: lookup by id στο namedAttendees
+    for (const { attendee, price } of expandedData.namedAttendees) {
+      if (selectedAttendeeIds.has(attendee.id)) {
+        amount += price;
+      }
+    }
+
+    // Anonymous adults
+    for (const a of expandedData.adultBucket.unpaid) {
+      if (selectedAttendeeIds.has(a.id)) {
+        amount += expandedData.adultBucket.price;
+      }
+    }
+
+    // Anonymous children
+    for (const a of expandedData.childBucket.unpaid) {
+      if (selectedAttendeeIds.has(a.id)) {
+        amount += expandedData.childBucket.price;
+      }
+    }
+
+    return { count: selectedAttendeeIds.size, amount };
+  }, [expandedData, selectedAttendeeIds]);
+
   // Loading guard
   if (role.loading || currentClub.loading) {
     return (
@@ -437,21 +469,38 @@ export default function CashierPage() {
                       )
                     : expandedData.row.group_name}
                 </h2>
-                <p className="mt-0.5 text-xs text-muted">
-                  {expandedData.row.attendees.length} άτομα
-                  {expandedData.row.table_number != null && (
-                    <>
-                      {" · Νο "}
-                      {expandedData.row.table_number}
-                    </>
-                  )}
-                  {" · "}
-                  {expandedData.row.paidCount}/
-                  {expandedData.row.attendees.length} πληρωμένοι
-                  {" · "}
-                  {expandedData.row.presentCount}/
-                  {expandedData.row.attendees.length} παρόντες
-                </p>
+                <div className="mt-0.5 space-y-0.5 text-xs text-muted">
+                  <p>
+                    {expandedData.row.attendees.length} άτομα
+                    {expandedData.row.table_number != null && (
+                      <>
+                        {" · Νο "}
+                        {expandedData.row.table_number}
+                      </>
+                    )}
+                    {" · "}
+                    <span aria-hidden="true">🧑</span>{" "}
+                    {expandedData.row.adultCount}
+                    {expandedData.row.childCount > 0 && (
+                      <>
+                        {" · "}
+                        <span aria-hidden="true">👶</span>{" "}
+                        {expandedData.row.childCount}
+                      </>
+                    )}
+                  </p>
+                  <p>
+                    {expandedData.row.paidCount}/
+                    {expandedData.row.attendees.length} πληρωμένοι
+                    {" · "}
+                    {expandedData.row.presentCount}/
+                    {expandedData.row.attendees.length} παρόντες
+                  </p>
+                  <p className="font-medium text-foreground">
+                    {formatEuroCompact(expandedData.row.paidPrice)} από{" "}
+                    {formatEuroCompact(expandedData.row.totalPrice)}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
@@ -595,9 +644,39 @@ export default function CashierPage() {
             </div>
 
             <div className="sticky bottom-0 border-t border-border bg-surface px-4 py-3">
-              <p className="text-center text-[11px] text-muted">
-                (Sticky footer με payment button έρχεται στο commit 5)
-              </p>
+              <div className="mb-2 flex items-center justify-between text-xs text-muted">
+                <span>
+                  Επιλεγμένοι:{" "}
+                  <strong className="text-foreground tabular-nums">
+                    {selectionTotals.count}
+                  </strong>
+                </span>
+                <span>
+                  Σύνολο:{" "}
+                  <strong className="text-foreground tabular-nums">
+                    {formatEuroCompact(selectionTotals.amount)}
+                  </strong>
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={selectionTotals.count === 0}
+                onClick={() => {
+                  // Mutation έρχεται σε commit 6
+                  console.log("Payment trigger:", {
+                    reservationId: expandedReservationId,
+                    selectedIds: Array.from(selectedAttendeeIds),
+                    amount: selectionTotals.amount,
+                  });
+                  alert(
+                    `Πληρωμή & Check-in για ${selectionTotals.count} άτομα — ${formatEuroCompact(selectionTotals.amount)}\n\n(Mutation logic έρχεται στο commit 6)`
+                  );
+                }}
+                className="w-full rounded-lg bg-[var(--brand-primary)] px-4 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label={`Πληρωμή και check-in για ${selectionTotals.count} άτομα`}
+              >
+                💰 Πληρωμή & Check-in ({selectionTotals.count})
+              </button>
             </div>
           </div>
         </div>
