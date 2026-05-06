@@ -57,6 +57,8 @@ export default function CashierPage() {
   // Open-party modal state
   const [expandedReservationId, setExpandedReservationId] = useState<string | null>(null);
   const [selectedAttendeeIds, setSelectedAttendeeIds] = useState<Set<string>>(new Set());
+  const [isPaying, setIsPaying] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!eventId || !currentClub.club?.id) return;
@@ -130,7 +132,7 @@ export default function CashierPage() {
     return () => {
       cancelled = true;
     };
-  }, [eventId, currentClub.club?.id]);
+  }, [eventId, currentClub.club?.id, reloadKey]);
 
   // Esc key closes the open-party modal
   useEffect(() => {
@@ -338,6 +340,65 @@ export default function CashierPage() {
 
     return { count: selectedAttendeeIds.size, amount };
   }, [expandedData, selectedAttendeeIds]);
+
+  async function handlePayment() {
+    if (!expandedData || selectionTotals.count === 0 || isPaying) return;
+    setIsPaying(true);
+    setError(null);
+
+    try {
+      const supabase = getBrowserClient();
+      const now = new Date().toISOString();
+      const userId = role.userId ?? null;
+
+      // Map each selected attendee id to its price
+      const amountMap = new Map<string, number>();
+      for (const { attendee, price } of expandedData.namedAttendees) {
+        if (selectedAttendeeIds.has(attendee.id)) amountMap.set(attendee.id, price);
+      }
+      for (const a of expandedData.adultBucket.unpaid) {
+        if (selectedAttendeeIds.has(a.id)) amountMap.set(a.id, expandedData.adultBucket.price);
+      }
+      for (const a of expandedData.childBucket.unpaid) {
+        if (selectedAttendeeIds.has(a.id)) amountMap.set(a.id, expandedData.childBucket.price);
+      }
+
+      // Group by price → one UPDATE per unique amount
+      const byAmount = new Map<number, string[]>();
+      for (const [id, amount] of amountMap) {
+        if (!byAmount.has(amount)) byAmount.set(amount, []);
+        byAmount.get(amount)!.push(id);
+      }
+
+      const results = await Promise.all(
+        Array.from(byAmount.entries()).map(([amount, ids]) =>
+          supabase
+            .from("reservation_attendees")
+            .update({
+              paid_at: now,
+              paid_amount: amount,
+              paid_by_user_id: userId,
+              presence_status: "present" as const,
+              checked_in_at: now,
+            })
+            .in("id", ids)
+        )
+      );
+
+      for (const res of results) {
+        if (res.error) throw res.error;
+      }
+
+      setExpandedReservationId(null);
+      setSelectedAttendeeIds(new Set());
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      console.error("Payment failed:", err);
+      setError(err instanceof Error ? err.message : "Αποτυχία πληρωμής");
+    } finally {
+      setIsPaying(false);
+    }
+  }
 
   // Loading guard
   if (role.loading || currentClub.loading) {
@@ -660,22 +721,14 @@ export default function CashierPage() {
               </div>
               <button
                 type="button"
-                disabled={selectionTotals.count === 0}
-                onClick={() => {
-                  // Mutation έρχεται σε commit 6
-                  console.log("Payment trigger:", {
-                    reservationId: expandedReservationId,
-                    selectedIds: Array.from(selectedAttendeeIds),
-                    amount: selectionTotals.amount,
-                  });
-                  alert(
-                    `Πληρωμή & Check-in για ${selectionTotals.count} άτομα — ${formatEuroCompact(selectionTotals.amount)}\n\n(Mutation logic έρχεται στο commit 6)`
-                  );
-                }}
+                disabled={selectionTotals.count === 0 || isPaying}
+                onClick={handlePayment}
                 className="w-full rounded-lg bg-[var(--brand-primary)] px-4 py-3 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label={`Πληρωμή και check-in για ${selectionTotals.count} άτομα`}
               >
-                💰 Πληρωμή & Check-in ({selectionTotals.count})
+                {isPaying
+                  ? "Αποθήκευση…"
+                  : `💰 Πληρωμή & Check-in (${selectionTotals.count})`}
               </button>
             </div>
           </div>
