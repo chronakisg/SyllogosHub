@@ -209,15 +209,63 @@ function EntranceListView() {
 
   const totals = useMemo(() => {
     let present = 0;
+    let expected = 0;
     let total = 0;
     for (const r of reservationsWithOptimistic) {
       for (const a of r.attendees) {
         total += 1;
         if (isPresentLike(a.presence_status)) present += 1;
+        if (a.presence_status === "expected") expected += 1;
       }
     }
-    return { present, total };
+    return { present, expected, total };
   }, [reservationsWithOptimistic]);
+
+  const [lockConfirmOpen, setLockConfirmOpen] = useState(false);
+  const [locking, setLocking] = useState(false);
+
+  const handleLockPresence = useCallback(async () => {
+    if (totals.expected === 0) return;
+
+    setLocking(true);
+    setError(null);
+    try {
+      // Collect attendee IDs με presence_status === "expected"
+      const expectedIds: string[] = [];
+      for (const r of reservationsWithOptimistic) {
+        for (const a of r.attendees) {
+          if (a.presence_status === "expected") {
+            expectedIds.push(a.id);
+          }
+        }
+      }
+
+      if (expectedIds.length === 0) {
+        setLockConfirmOpen(false);
+        return;
+      }
+
+      const supabase = getBrowserClient();
+      const { error: updateError } = await supabase
+        .from("reservation_attendees")
+        .update({ presence_status: "no_show" })
+        .in("id", expectedIds);
+
+      if (updateError) throw updateError;
+
+      await refetch();
+      setLockConfirmOpen(false);
+    } catch (err) {
+      console.error("Lock presence failed:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Αποτυχία κλειδώματος παρουσιών"
+      );
+    } finally {
+      setLocking(false);
+    }
+  }, [totals.expected, reservationsWithOptimistic, refetch]);
 
   async function handleTogglePresence(
     attendeeId: string,
@@ -341,6 +389,27 @@ function EntranceListView() {
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-3 print:hidden">
+            <button
+              type="button"
+              onClick={() => setLockConfirmOpen(true)}
+              disabled={totals.expected === 0 || locking}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Κλείδωμα παρουσιών"
+            >
+              <span aria-hidden="true">🔒</span>
+              <span>Κλείδωμα</span>
+              <span
+                className={
+                  totals.expected > 0
+                    ? "rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900"
+                    : "rounded-full bg-background px-1.5 py-0.5 text-[11px] font-medium text-muted"
+                }
+              >
+                {totals.expected}
+              </span>
+            </button>
+          </div>
           <div className="text-right">
             <p className="text-xs uppercase tracking-wide text-muted">
               Παρόντες
@@ -389,6 +458,56 @@ function EntranceListView() {
           }
         }
       `}</style>
+
+      {lockConfirmOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="lock-confirm-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 print:hidden"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !locking) {
+              setLockConfirmOpen(false);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && !locking) {
+              setLockConfirmOpen(false);
+            }
+          }}
+        >
+          <div className="w-full max-w-sm rounded-lg bg-surface p-5 shadow-lg">
+            <h2 id="lock-confirm-title" className="text-base font-semibold">
+              Κλείδωμα παρουσιών;
+            </h2>
+            <p className="mt-2 text-sm text-muted">
+              {totals.expected}{" "}
+              {totals.expected === 1 ? "άτομο που αναμένεται" : "άτομα που αναμένονται"}{" "}
+              θα μαρκαριστούν ως «δεν ήρθαν». Μπορείς να αλλάξεις
+              χειροκίνητα όποιον χρειαστεί.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setLockConfirmOpen(false)}
+                disabled={locking}
+                className="rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-background disabled:opacity-50"
+              >
+                Ακύρωση
+              </button>
+              <button
+                type="button"
+                onClick={handleLockPresence}
+                disabled={locking}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-90 disabled:opacity-50"
+              >
+                <span aria-hidden="true">🔒</span>
+                {locking ? "Κλείδωμα..." : "Κλείδωμα"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

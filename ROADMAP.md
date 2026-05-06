@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-05 (Event Dashboard Phase 1 + Phase 2 + sponsor financial architecture)  
+> Last updated: 2026-05-06 (Presence Lock — Layer 2 complete)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -104,33 +104,6 @@ _(no active branches)_
   - UI: Dropdown στο "Νέα Παρέα" modal (default: τρέχων user)
   - Sidebar display: «Κράτηση από: ΧΡΟΝΑΚΗΣ ΓΙΩΡΓΟΣ»
   - Estimated: M-L
-
-- [ ] **🎩 Presence "Κλείδωμα Παρουσιών" — bulk lock action**
-
-  Stack: 🎩 Operational
-
-  Strategic context: Η 3-state spec (expected/present/no_show)
-  είναι ολοκληρωμένη σε schema (PR #7) και UI (PR #10).
-  Λείπει μόνο το manual lock action που μετατρέπει bulk όλους
-  τους "expected" σε "no_show" μετά grace period.
-
-  Done μέχρι τώρα:
-  - presence_status enum schema (PR #7)
-  - 3-state UI counters + badges στο AttendeesEditor (PR #10)
-  - Entrance list 3-state buckets (PR #10)
-  - "Δεν ήρθε" → "Αναμένεται" rename (PR #10)
-  - Removal του "Καθάρισε ανώνυμους απόντες" (PR #11)
-
-  What's left:
-  - Button "Κλείδωμα παρουσιών" στο /seating/entrance-list
-  - Confirmation dialog: "Όσοι αναμένονται θα μαρκαριστούν
-    ως no-show"
-  - Reserved tables που είναι άδεια: confirmation dialog
-    για unlock
-  - Manual revert per attendee (no_show → expected)
-
-  Estimated: S-M (single button, modal, bulk update query)
-  Connects με: Vision Layer 2 (Presence Layer ολοκληρώνεται)
 
 ### Invitations & Check-in domain (future layers)
 
@@ -520,6 +493,28 @@ _(no active branches)_
   - Estimated: S (write doc + add to README)
 
 ## ✅ Recently Done
+
+### feat/presence-lock (merged TBD) — PR #?
+
+🎩 Operational — Presence Layer ολοκληρώνεται.
+
+- [x] totals.expected counter (internal)
+- [x] Lock button "🔒 Κλείδωμα" στο header του
+  /seating/entrance-list με amber count chip
+- [x] Disabled state όταν δεν υπάρχουν expected
+- [x] Confirmation modal με singular/plural copy
+- [x] Backdrop click + Esc to close (όχι κατά το locking)
+- [x] Bulk update query (`expected` → `no_show`)
+- [x] Optimistic refetch pattern (existing convention)
+- [x] Manual revert per attendee ήδη δούλευε μέσω cycle
+
+Out of scope (παραμένουν ως future entries):
+- Reserved-table unlock flow
+- Bulk undo
+- Auto-lock βάσει ώρας
+
+Connects με: Vision & Architecture Compass — Layer 2 (Presence)
+ολοκληρωμένο σε identity/UI level.
 
 ### feat/event-dashboard-phase1 (merged 2026-05-05) — PR #22
 
