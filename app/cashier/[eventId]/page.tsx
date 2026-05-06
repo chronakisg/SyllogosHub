@@ -10,6 +10,7 @@ import { AccessDenied } from "@/lib/auth/AccessDenied";
 import {
   RESERVATION_SELECT,
   formatMemberName,
+  sortAttendees,
   type ReservationWithAttendees,
 } from "@/lib/utils/attendees";
 import {
@@ -51,6 +52,10 @@ export default function CashierPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Open-party modal state
+  const [expandedReservationId, setExpandedReservationId] = useState<string | null>(null);
+  const [selectedAttendeeIds, setSelectedAttendeeIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!eventId || !currentClub.club?.id) return;
@@ -125,6 +130,20 @@ export default function CashierPage() {
       cancelled = true;
     };
   }, [eventId, currentClub.club?.id]);
+
+  // Esc key closes the open-party modal
+  useEffect(() => {
+    if (!expandedReservationId) return;
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setExpandedReservationId(null);
+      }
+    }
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [expandedReservationId]);
 
   // Compute reservations με status + pricing — memoized για performance
   const reservationRows: ReservationRow[] = useMemo(() => {
@@ -221,6 +240,40 @@ export default function CashierPage() {
 
     return { totalAttendees, paidAttendees, presentAttendees };
   }, [reservationRows]);
+
+  // Currently expanded reservation με computed attendee rows
+  const expandedData = useMemo(() => {
+    if (!expandedReservationId || !club) return null;
+
+    const row = reservationRows.find((r) => r.id === expandedReservationId);
+    if (!row) return null;
+
+    const sortedAttendees = sortAttendees(row.attendees);
+
+    const namedAttendees = sortedAttendees
+      .filter((a) => a.member_id !== null || a.guest_name !== null)
+      .map((a) => {
+        const category = resolveAttendeeCategory(a, club);
+        const priceMatch = matchTicketPrice(category, ticketPrices);
+        const price = priceMatch?.price ?? 0;
+        return {
+          attendee: a,
+          category,
+          price,
+          isPaid: a.paid_at !== null,
+        };
+      });
+
+    const anonymousAttendees = sortedAttendees.filter(
+      (a) => a.member_id === null && a.guest_name === null
+    );
+
+    return {
+      row,
+      namedAttendees,
+      anonymousAttendees,
+    };
+  }, [expandedReservationId, reservationRows, club, ticketPrices]);
 
   // Loading guard
   if (role.loading || currentClub.loading) {
@@ -319,15 +372,172 @@ export default function CashierPage() {
       ) : (
         <ul className="flex flex-col gap-2">
           {visibleRows.map((r) => (
-            <ReservationCard key={r.id} row={r} />
+            <ReservationCard
+              key={r.id}
+              row={r}
+              onOpen={() => {
+                setExpandedReservationId(r.id);
+                setSelectedAttendeeIds(new Set());
+              }}
+            />
           ))}
         </ul>
+      )}
+
+      {expandedData && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setExpandedReservationId(null)}
+        >
+          <div
+            className="flex h-[90vh] w-full max-w-lg flex-col rounded-t-xl border border-border bg-surface shadow-xl sm:h-auto sm:max-h-[85vh] sm:rounded-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 flex items-start justify-between gap-3 border-b border-border bg-surface px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-base font-semibold">
+                  {expandedData.row.attendees.find((a) => a.is_lead)?.member
+                    ? formatMemberName(
+                        expandedData.row.attendees.find((a) => a.is_lead)!
+                          .member
+                      )
+                    : expandedData.row.group_name}
+                </h2>
+                <p className="mt-0.5 text-xs text-muted">
+                  {expandedData.row.attendees.length} άτομα
+                  {expandedData.row.table_number != null && (
+                    <>
+                      {" · Νο "}
+                      {expandedData.row.table_number}
+                    </>
+                  )}
+                  {" · "}
+                  {expandedData.row.paidCount}/
+                  {expandedData.row.attendees.length} πληρωμένοι
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExpandedReservationId(null)}
+                className="rounded-md px-2 py-1 text-lg leading-none text-muted transition hover:bg-foreground/5 hover:text-foreground"
+                aria-label="Κλείσιμο"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-3">
+              {expandedData.namedAttendees.length > 0 && (
+                <>
+                  <p className="mb-2 text-[10px] uppercase tracking-wide text-muted">
+                    Ονομασμένοι ({expandedData.namedAttendees.length})
+                  </p>
+                  <ul className="flex flex-col gap-0.5">
+                    {expandedData.namedAttendees.map(
+                      ({ attendee, category, price, isPaid }) => {
+                        const checked = selectedAttendeeIds.has(attendee.id);
+                        const name = attendee.member
+                          ? formatMemberName(attendee.member)
+                          : (attendee.guest_name ?? "");
+                        return (
+                          <li
+                            key={attendee.id}
+                            className={
+                              "flex items-center gap-3 rounded-md px-2 py-2 " +
+                              (isPaid
+                                ? "opacity-60"
+                                : "transition hover:bg-foreground/5")
+                            }
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked || isPaid}
+                              disabled={isPaid}
+                              onChange={(e) => {
+                                setSelectedAttendeeIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (e.target.checked) next.add(attendee.id);
+                                  else next.delete(attendee.id);
+                                  return next;
+                                });
+                              }}
+                              className="h-4 w-4 shrink-0 cursor-pointer accent-[var(--brand-primary)] disabled:cursor-not-allowed"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 text-sm">
+                                {attendee.is_lead && (
+                                  <span aria-hidden="true">⭐</span>
+                                )}
+                                <span className="truncate font-medium">
+                                  {name}
+                                </span>
+                                {category === "child" && (
+                                  <span aria-hidden="true" className="text-xs">
+                                    👶
+                                  </span>
+                                )}
+                              </div>
+                              <div className="mt-0.5 text-[11px] text-muted">
+                                {isPaid ? (
+                                  <span className="text-emerald-700">
+                                    ✅ Πληρωμένο
+                                  </span>
+                                ) : attendee.presence_status === "present" ? (
+                                  <span className="text-amber-700">
+                                    📍 Παρών χωρίς πληρωμή
+                                  </span>
+                                ) : (
+                                  <span>⏳ Αναμένεται</span>
+                                )}
+                              </div>
+                            </div>
+                            <span className="text-sm font-medium tabular-nums">
+                              {formatEuroCompact(price)}
+                            </span>
+                          </li>
+                        );
+                      }
+                    )}
+                  </ul>
+                </>
+              )}
+
+              {expandedData.anonymousAttendees.length > 0 && (
+                <p className="mt-4 rounded-md border border-dashed border-border bg-background px-3 py-2 text-[11px] text-muted">
+                  + {expandedData.anonymousAttendees.length} ανώνυμοι (έρχονται
+                  στο επόμενο commit)
+                </p>
+              )}
+
+              {expandedData.namedAttendees.length === 0 &&
+                expandedData.anonymousAttendees.length === 0 && (
+                  <p className="py-8 text-center text-sm text-muted">
+                    Δεν υπάρχουν attendees σε αυτή την παρέα.
+                  </p>
+                )}
+            </div>
+
+            <div className="sticky bottom-0 border-t border-border bg-surface px-4 py-3">
+              <p className="text-center text-[11px] text-muted">
+                (Sticky footer με payment button έρχεται στο commit 5)
+              </p>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-function ReservationCard({ row }: { row: ReservationRow }) {
+function ReservationCard({
+  row,
+  onOpen,
+}: {
+  row: ReservationRow;
+  onOpen: () => void;
+}) {
   const lead = row.attendees.find((a) => a.is_lead);
   const leadName = lead?.member ? formatMemberName(lead.member) : null;
 
@@ -397,9 +607,9 @@ function ReservationCard({ row }: { row: ReservationRow }) {
         </span>
         <button
           type="button"
-          disabled
-          className="cursor-not-allowed rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted opacity-60"
-          aria-label="Άνοιξε παρέα (έρχεται σε επόμενο commit)"
+          onClick={onOpen}
+          className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-accent/60 hover:bg-foreground/5"
+          aria-label="Άνοιξε παρέα"
         >
           🎯 Άνοιξε παρέα
         </button>
