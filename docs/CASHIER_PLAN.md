@@ -6,7 +6,7 @@
 
 ## Στόχος
 
-Νέο page `/events/[id]/cashier` που επιτρέπει στο προεδρείο/ταμία
+Νέο page `/cashier/[eventId]` που επιτρέπει στο προεδρείο/ταμία
 στην είσοδο εκδήλωσης να κάνει **πληρωμή + check-in σε ένα tap**
 ανά attendee ή ανά παρέα.
 
@@ -39,8 +39,16 @@
 
 ### Section 2 — Route & Permissions
 
-- Route: `/events/[id]/cashier` (per-event context)
-- Entry point: button «💰 Άνοιγμα Ταμείου» στο event modal/dashboard
+- Route: `/cashier/[eventId]` (top-level, operational stack)
+- Entry points:
+  - Sidebar menu link «💰 Ταμείο» (permission-gated, οδηγεί
+    σε event picker αν δεν υπάρχει context)
+  - Button «💰 Άνοιγμα Ταμείου» στο event modal/dashboard
+- Architectural reasoning: Cashier είναι distinct operational
+  module (ταμίας στην είσοδο), όχι sub-feature των events.
+  Mobile-first ergonomics — bookmark στο home screen χωρίς
+  layers. Standalone-able principle (potential separate
+  product για restaurants/ticket offices).
 - Permission gate: `cashier` permission (υπάρχει ήδη στο role system)
 - AccessDenied page για users χωρίς permission
 - Mobile-first design (tap targets ≥ 44px, sticky header/footer)
