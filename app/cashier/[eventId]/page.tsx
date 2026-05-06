@@ -436,9 +436,9 @@ export default function CashierPage() {
       <header className="sticky top-0 z-10 -mx-6 mb-4 border-b border-border bg-background px-6 py-3 lg:-mx-10 lg:px-10">
         <div className="mb-2 flex items-center gap-2">
           <Link
-            href="/"
+            href="/finances?tab=dashboard"
             className="text-sm text-muted transition hover:text-foreground"
-            aria-label="Επιστροφή"
+            aria-label="Επιστροφή στον Πίνακα Εκδηλώσεων"
           >
             ← Πίσω
           </Link>
