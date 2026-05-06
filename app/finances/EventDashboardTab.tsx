@@ -25,6 +25,8 @@ import {
 } from "@/lib/utils/eventRevenue";
 import ExpensesPanel from "./ExpensesPanel";
 import SponsorsPanel from "./SponsorsPanel";
+import Link from "next/link";
+import { useRole } from "@/lib/hooks/useRole";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -65,6 +67,7 @@ function sponsorDisplayName(s: EventSponsorWithSponsor): string {
 
 export default function EventDashboardTab() {
   const { clubId, club, loading: clubLoading } = useCurrentClub();
+  const role = useRole();
 
   const [events, setEvents] = useState<EventRow[]>([]);
   const [eventsLoading, setEventsLoading] = useState(true);
@@ -300,22 +303,33 @@ export default function EventDashboardTab() {
       {/* Event selector */}
       <div>
         <span className="mb-1 block text-xs font-medium text-muted">Εκδήλωση</span>
-        <select
-          value={selectedEventId ?? ""}
-          onChange={(e) => setSelectedEventId(e.target.value || null)}
-          disabled={eventsLoading || events.length === 0}
-          className={inputClass + " w-full sm:w-auto sm:min-w-[280px] disabled:opacity-60"}
-        >
-          {events.length === 0 ? (
-            <option value="">— Καμία εκδήλωση —</option>
-          ) : (
-            events.map((ev) => (
-              <option key={ev.id} value={ev.id}>
-                {ev.event_name} — {new Date(ev.event_date).toLocaleDateString("el-GR")}
-              </option>
-            ))
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={selectedEventId ?? ""}
+            onChange={(e) => setSelectedEventId(e.target.value || null)}
+            disabled={eventsLoading || events.length === 0}
+            className={inputClass + " w-full sm:w-auto sm:min-w-[280px] disabled:opacity-60"}
+          >
+            {events.length === 0 ? (
+              <option value="">— Καμία εκδήλωση —</option>
+            ) : (
+              events.map((ev) => (
+                <option key={ev.id} value={ev.id}>
+                  {ev.event_name} — {new Date(ev.event_date).toLocaleDateString("el-GR")}
+                </option>
+              ))
+            )}
+          </select>
+          {selectedEventId && role.permissions.includes("cashier") && (
+            <Link
+              href={`/cashier/${selectedEventId}`}
+              className="rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-foreground/5"
+              aria-label="Άνοιγμα ταμείου για την επιλεγμένη εκδήλωση"
+            >
+              💰 Ταμείο →
+            </Link>
           )}
-        </select>
+        </div>
       </div>
 
       {eventsError && (

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -48,7 +49,7 @@ function displayName(s: SponsorWithStats): string {
   return s.external_name ?? "—";
 }
 
-export default function SponsorsTab() {
+export default function SponsorsPage() {
   const role = useRole();
   const { clubId, loading: clubLoading } = useCurrentClub();
   const [sponsors, setSponsors] = useState<SponsorWithStats[]>([]);
@@ -231,12 +232,31 @@ export default function SponsorsTab() {
     }
   }
 
-  if (role.userId && !role.permissions.includes("events")) {
+  if (role.userId && !role.permissions.includes("settings")) {
     return <AccessDenied />;
   }
 
   return (
-    <div>
+    <div className="mx-auto w-full max-w-5xl">
+      <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <Link
+          href="/settings"
+          className="inline-flex items-baseline gap-2 text-xl font-semibold tracking-tight text-foreground transition hover:text-foreground/70"
+        >
+          <span aria-hidden="true">←</span>
+          Χορηγοί
+        </Link>
+        <button
+          type="button"
+          onClick={openCreate}
+          className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
+        >
+          + Νέος Χορηγός
+        </button>
+      </header>
+      <p className="mb-4 text-sm text-muted">
+        Master κατάλογος χορηγών συλλόγου. Από εδώ τους συνδέεις σε κάθε εκδήλωση μέσω της σελίδας Οικονομικών.
+      </p>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <input
           type="search"
@@ -245,13 +265,6 @@ export default function SponsorsTab() {
           placeholder="Αναζήτηση…"
           className="min-w-[14rem] flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
         />
-        <button
-          type="button"
-          onClick={openCreate}
-          className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-90"
-        >
-          + Νέος Χορηγός
-        </button>
       </div>
 
       {error && (

@@ -31,15 +31,13 @@ import type {
 } from "@/lib/supabase/types";
 import { calculateDiscount, generateUuid } from "@/lib/utils/discounts";
 import { formatMemberName } from "@/lib/utils/attendees";
-import SponsorsTab from "./SponsorsTab";
 import EventDashboardTab from "./EventDashboardTab";
 
-type Tab = "payments" | "dashboard" | "sponsors";
+type Tab = "payments" | "dashboard";
 
 function resolveTab(raw: string | null): Tab {
   if (raw === "reservations") return "dashboard"; // backwards compat for old bookmarks
   if (raw === "dashboard") return "dashboard";
-  if (raw === "sponsors") return "sponsors";
   return "payments";
 }
 
@@ -127,17 +125,12 @@ function FinancesContent() {
         <TabButton current={tab} value="dashboard" onSelect={handleTabChange}>
           Πίνακας Εκδηλώσεων
         </TabButton>
-        <TabButton current={tab} value="sponsors" onSelect={handleTabChange}>
-          Χορηγοί
-        </TabButton>
       </div>
 
       {tab === "payments" ? (
         <PaymentsTab />
-      ) : tab === "dashboard" ? (
-        <EventDashboardTab />
       ) : (
-        <SponsorsTab />
+        <EventDashboardTab />
       )}
     </div>
   );

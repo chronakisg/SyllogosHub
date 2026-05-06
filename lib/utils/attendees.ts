@@ -41,6 +41,9 @@ export const RESERVATION_SELECT = `
     checked_in_at,
     is_child_override,
     notes,
+    paid_at,
+    paid_amount,
+    paid_by_user_id,
     created_at,
     updated_at,
     member:member_id (

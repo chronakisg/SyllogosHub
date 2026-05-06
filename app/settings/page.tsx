@@ -50,6 +50,12 @@ const CARDS: Card[] = [
     description: "Κατηγορίες εξόδων ανά εκδήλωση (DJ, ορχήστρα, φωτογράφος κ.λπ.)",
   },
   {
+    href: "/settings/club/sponsors",
+    icon: "🤝",
+    title: "Χορηγοί",
+    description: "Master κατάλογος χορηγών συλλόγου.",
+  },
+  {
     href: "/discounts",
     icon: "💰",
     title: "Εκπτώσεις",

@@ -501,6 +501,9 @@ export type ReservationAttendee = {
   checked_in_at: string | null;
   is_child_override: boolean | null;
   notes: string | null;
+  paid_at: string | null;
+  paid_amount: number | null;
+  paid_by_user_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -516,6 +519,9 @@ export type ReservationAttendeeInsert = {
   checked_in_at?: string | null;
   is_child_override?: boolean | null;
   notes?: string | null;
+  paid_at?: string | null;
+  paid_amount?: number | null;
+  paid_by_user_id?: string | null;
   created_at?: string;
   updated_at?: string;
 };

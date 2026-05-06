@@ -105,33 +105,6 @@ _(no active branches)_
   - Sidebar display: «Κράτηση από: ΧΡΟΝΑΚΗΣ ΓΙΩΡΓΟΣ»
   - Estimated: M-L
 
-- [ ] **🎩 Presence "Κλείδωμα Παρουσιών" — bulk lock action**
-
-  Stack: 🎩 Operational
-
-  Strategic context: Η 3-state spec (expected/present/no_show)
-  είναι ολοκληρωμένη σε schema (PR #7) και UI (PR #10).
-  Λείπει μόνο το manual lock action που μετατρέπει bulk όλους
-  τους "expected" σε "no_show" μετά grace period.
-
-  Done μέχρι τώρα:
-  - presence_status enum schema (PR #7)
-  - 3-state UI counters + badges στο AttendeesEditor (PR #10)
-  - Entrance list 3-state buckets (PR #10)
-  - "Δεν ήρθε" → "Αναμένεται" rename (PR #10)
-  - Removal του "Καθάρισε ανώνυμους απόντες" (PR #11)
-
-  What's left:
-  - Button "Κλείδωμα παρουσιών" στο /seating/entrance-list
-  - Confirmation dialog: "Όσοι αναμένονται θα μαρκαριστούν
-    ως no-show"
-  - Reserved tables που είναι άδεια: confirmation dialog
-    για unlock
-  - Manual revert per attendee (no_show → expected)
-
-  Estimated: S-M (single button, modal, bulk update query)
-  Connects με: Vision Layer 2 (Presence Layer ολοκληρώνεται)
-
 ### Invitations & Check-in domain (future layers)
 
 - [ ] **Invitation token** — `reservation_attendees.invitation_token` (uuid, unique)
@@ -293,6 +266,48 @@ _(no active branches)_
 
 ### UX & Polish
 
+- [ ] **🎵 Master `/settings/club/entertainers` page**
+
+  Stack: 📊 Διαχειριστικό
+
+  Strategic context: Master κατάλογος ψυχαγωγών υπάρχει σε schema
+  (`entertainers` table) και χρησιμοποιείται μέσω inline create
+  στο event modal. Λείπει visibility — δεν υπάρχει standalone
+  management page.
+
+  Mirror του pattern που εφαρμόστηκε σε:
+  - PR sponsors-to-settings (Χορηγοί master κατάλογος)
+  - /settings/club/ticket-categories
+  - /settings/club/expense-categories
+
+  UI:
+  - List entertainers με τύπο + contact info + event count
+  - Create / edit / delete (delete-protect αν συνδέεται με events)
+  - Card στο /settings dashboard με icon 🎵
+  - Permission gate: settings
+
+  Estimated: S-M (mirror του sponsors-to-settings)
+  Connects με: εφαρμογή του "Entertainers ↔ Event Expenses sync"
+
+- [ ] **🪧 Empty state hints σε dropdowns**
+
+  Stack: 📊 Cross-cutting UX
+
+  Strategic context: Όταν master catalog είναι κενός, ο user
+  βλέπει empty dropdown και υποθέτει bug. Real example: 
+  /events Συνεργάτες tab — dropdown φαινόταν "σπασμένο" επειδή
+  δεν είχαν δημιουργηθεί entertainers ακόμα.
+
+  Pattern για όλα τα catalog-driven dropdowns:
+  - Όταν options.length === 0, εμφάνιση μηνύματος:
+    "Δεν υπάρχουν [τύπος] στον κατάλογο. Πατήστε «+ Νέο/α [τύπος]»
+    για να ξεκινήσετε."
+  - Αφορά: entertainers, sponsors (αν εμφανίζονται empty),
+    ticket-categories, expense-categories, departments
+  - Inline action button οπτικά prominent
+
+  Estimated: S (helper component + 5-6 sites)
+
 - [ ] **Mobile responsive fixes** — user card too tall σε mobile viewport
 - [ ] **Real PWA logo** (αντικατάσταση placeholder #800000)
 - [ ] **Manifest screenshots** για app stores / install prompts
@@ -372,32 +387,41 @@ _(no active branches)_
 
 ### Schema evolution (future)
 
-- [ ] **🏗️ Event Partners Schema (replaces entertainment string)**
+- [ ] **🎵 Entertainers ↔ Event Expenses sync**
 
-  Stack: 📊 Διαχειριστικό
+  Stack: 📊 + 💰 (cross-cutting)
 
-  Strategic context: Σήμερα τα entertainment partners είναι free-form
-  text. Πρέπει structured data ώστε να συνδέονται με event_expenses
-  (DJ name + DJ fee).
+  Strategic context: Schema είναι ήδη structured (`entertainers` +
+  `entertainment_types` + `event_entertainers` με fee column από
+  PR #12 era). Λείπει η σύνδεση με `event_expenses` και η σωστή
+  permission segmentation.
 
-  Schema:
-  - Migrate από flat 'entertainment' field → structured table
-  - `event_partners (id, event_id, role, name, contact, fee, notes)`
-  - Roles: DJ, ορχήστρα, φωτογράφος, βιντεολήπτης, decorator, etc.
+  Σημερινό drift:
+  - `event_entertainers.fee` δείχνει αμοιβές στο event modal
+    Συνεργάτες tab — ορατό σε όποιον έχει `events` permission
+  - `event_expenses` είναι ξεχωριστό domain στο /finances Έξοδα
+  - Ο γραμματέας γράφει την ίδια αμοιβή 2 φορές με κατηγοριοποίηση
+    χωρίς ονόματα (DJ — 600€ vs DJ Νίκος — 600€)
+  - Architectural principle violation: τιμές πρέπει να είναι
+    permission-gated (`finances` only), όχι παντού
 
-  Sync με event_expenses: ένας partner = ένα expense entry
-  (auto-link by event + role).
+  Στόχος (Option C — strip & relink):
+  - Drop column `event_entertainers.fee` (αφαίρεση από Συνεργάτες tab)
+  - Συνεργάτες tab γίνεται info-only (entertainer + notes)
+  - Νέο column `event_expenses.entertainer_id` (uuid FK nullable)
+  - /finances Έξοδα tab: όταν category = entertainment, dropdown
+    entertainer + auto-populate description
+  - Migration script: μεταφορά existing fees σε expense rows
+  - Permission gating: αμοιβές μόνο σε `finances` role visibility
 
-  UI:
-  - Replace simple text field στο edit modal με structured form
-  - "+ Συνεργάτης" → name + role dropdown + fee
-  - Display στο event dashboard: lista με ρόλους
+  UX μετά:
+  - Πρόεδρος/γραμματέας στο event modal: βλέπει "DJ Νίκος" χωρίς τιμή
+  - Ταμίας στα Οικονομικά: βλέπει "DJ Νίκος — 600€" ως expense
+  - Single source of truth: ένα data entry, όχι δύο
 
-  Migration challenge: existing entertainment data → manual review
-  + categorization.
-
-  Estimated: M (schema + migration script + UI overhaul)
-  Connects με: event_expenses, Event Dashboard
+  Estimated: M-L (schema migration + UI refactor + data migration)
+  Connects με: event_expenses, /finances Έξοδα tab, Event Dashboard,
+  permission system
 
 ### Seating UX follow-ups (post PR #12 + #13)
 
@@ -454,14 +478,6 @@ _(no active branches)_
   - Proposed location: `app/settings/club/discount-rules/page.tsx`
   - Requires URL migration + redirect from old route
   - Estimated: S
-
-- [ ] **Entertainers + fee field** (auto-link με expenses)
-  - Σήμερα entertainment partners είναι free-form text στο
-    event modal "Συνεργάτες" tab
-  - Future: structured data με fee column ώστε να συνδέονται
-    με event_expenses (DJ name + DJ fee → auto-create expense)
-  - Connects με: Event Dashboard
-  - Estimated: M
 
 - [ ] **Expanded expense fields UI** (vendor_name + payment_method + notes)
   - Schema έχει ήδη columns, save logic τα στέλνει null
