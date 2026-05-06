@@ -11,6 +11,7 @@ import {
   RESERVATION_SELECT,
   formatMemberName,
   sortAttendees,
+  type AttendeeWithMember,
   type ReservationWithAttendees,
 } from "@/lib/utils/attendees";
 import {
@@ -268,10 +269,41 @@ export default function CashierPage() {
       (a) => a.member_id === null && a.guest_name === null
     );
 
+    // Group anonymous attendees ανά category + paid status
+    const anonymousAdults = anonymousAttendees.filter((a) => {
+      const cat = resolveAttendeeCategory(a, club);
+      return cat === "adult";
+    });
+    const anonymousChildren = anonymousAttendees.filter((a) => {
+      const cat = resolveAttendeeCategory(a, club);
+      return cat === "child";
+    });
+
+    const adultPriceMatch = matchTicketPrice("adult", ticketPrices);
+    const childPriceMatch = matchTicketPrice("child", ticketPrices);
+
+    const adultBucket = {
+      label: "Ενήλικες",
+      icon: "🧑",
+      category: "adult" as const,
+      unpaid: anonymousAdults.filter((a) => a.paid_at === null),
+      price: adultPriceMatch?.price ?? 0,
+    };
+
+    const childBucket = {
+      label: "Παιδιά",
+      icon: "👶",
+      category: "child" as const,
+      unpaid: anonymousChildren.filter((a) => a.paid_at === null),
+      price: childPriceMatch?.price ?? 0,
+    };
+
     return {
       row,
       namedAttendees,
       anonymousAttendees,
+      adultBucket,
+      childBucket,
     };
   }, [expandedReservationId, reservationRows, club, ticketPrices]);
 
@@ -416,6 +448,9 @@ export default function CashierPage() {
                   {" · "}
                   {expandedData.row.paidCount}/
                   {expandedData.row.attendees.length} πληρωμένοι
+                  {" · "}
+                  {expandedData.row.presentCount}/
+                  {expandedData.row.attendees.length} παρόντες
                 </p>
               </div>
               <button
@@ -504,11 +539,51 @@ export default function CashierPage() {
                 </>
               )}
 
-              {expandedData.anonymousAttendees.length > 0 && (
-                <p className="mt-4 rounded-md border border-dashed border-border bg-background px-3 py-2 text-[11px] text-muted">
-                  + {expandedData.anonymousAttendees.length} ανώνυμοι (έρχονται
-                  στο επόμενο commit)
-                </p>
+              {(expandedData.adultBucket.unpaid.length > 0 ||
+                expandedData.childBucket.unpaid.length > 0) && (
+                <div className="mt-4">
+                  <p className="mb-2 text-[10px] uppercase tracking-wide text-muted">
+                    Ανώνυμοι (
+                    {expandedData.adultBucket.unpaid.length +
+                      expandedData.childBucket.unpaid.length}
+                    )
+                  </p>
+                  <ul className="flex flex-col gap-1">
+                    {[expandedData.adultBucket, expandedData.childBucket]
+                      .filter((b) => b.unpaid.length > 0)
+                      .map((bucket) => (
+                        <AnonymousBucketRow
+                          key={bucket.category}
+                          bucket={bucket}
+                          selectedIds={selectedAttendeeIds}
+                          onAdd={() => {
+                            const next = bucket.unpaid.find(
+                              (a) => !selectedAttendeeIds.has(a.id)
+                            );
+                            if (next) {
+                              setSelectedAttendeeIds((prev) => {
+                                const updated = new Set(prev);
+                                updated.add(next.id);
+                                return updated;
+                              });
+                            }
+                          }}
+                          onRemove={() => {
+                            const lastSelected = bucket.unpaid
+                              .filter((a) => selectedAttendeeIds.has(a.id))
+                              .at(-1);
+                            if (lastSelected) {
+                              setSelectedAttendeeIds((prev) => {
+                                const updated = new Set(prev);
+                                updated.delete(lastSelected.id);
+                                return updated;
+                              });
+                            }
+                          }}
+                        />
+                      ))}
+                  </ul>
+                </div>
               )}
 
               {expandedData.namedAttendees.length === 0 &&
@@ -612,6 +687,66 @@ function ReservationCard({
           aria-label="Άνοιξε παρέα"
         >
           🎯 Άνοιξε παρέα
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function AnonymousBucketRow({
+  bucket,
+  selectedIds,
+  onAdd,
+  onRemove,
+}: {
+  bucket: {
+    label: string;
+    icon: string;
+    category: "adult" | "child";
+    unpaid: AttendeeWithMember[];
+    price: number;
+  };
+  selectedIds: Set<string>;
+  onAdd: () => void;
+  onRemove: () => void;
+}) {
+  const selectedCount = bucket.unpaid.filter((a) =>
+    selectedIds.has(a.id)
+  ).length;
+
+  return (
+    <li className="flex items-center gap-3 rounded-md px-2 py-2 transition hover:bg-foreground/5">
+      <span aria-hidden="true" className="text-lg leading-none">
+        {bucket.icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium">{bucket.label}</div>
+        <div className="mt-0.5 text-[11px] text-muted">
+          {bucket.unpaid.length} διαθέσιμοι ·{" "}
+          {formatEuroCompact(bucket.price)}/άτομο
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={selectedCount === 0}
+          className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-base font-medium transition hover:border-accent/60 hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label={`Αφαίρεση ${bucket.label.toLowerCase()}`}
+        >
+          −
+        </button>
+        <span className="min-w-[1.5rem] text-center text-sm font-medium tabular-nums">
+          {selectedCount}
+        </span>
+        <button
+          type="button"
+          onClick={onAdd}
+          disabled={selectedCount >= bucket.unpaid.length}
+          className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-base font-medium transition hover:border-accent/60 hover:bg-foreground/5 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label={`Προσθήκη ${bucket.label.toLowerCase()}`}
+        >
+          +
         </button>
       </div>
     </li>
