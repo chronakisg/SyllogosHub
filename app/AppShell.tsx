@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getBrowserClient } from "@/lib/supabase/client";
 import { useRole, type Permission, type RoleState } from "@/lib/hooks/useRole";
 import { useClubSettings } from "@/lib/hooks/useClubSettings";
@@ -45,6 +45,37 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { settings: club, clubName } = useClubSettings();
   const currentClub = useCurrentClub();
   const [signingOut, setSigningOut] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+
+    function handleClickOutside(event: MouseEvent | TouchEvent) {
+      if (
+        userMenuRef.current &&
+        !userMenuRef.current.contains(event.target as Node)
+      ) {
+        setUserMenuOpen(false);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setUserMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [userMenuOpen]);
 
   const headerTitle = currentClub.club?.name || clubName;
 
@@ -77,29 +108,66 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen flex-col overflow-hidden lg:flex-row">
       <aside className="flex w-full shrink-0 flex-col border-b border-border bg-surface lg:h-screen lg:w-64 lg:border-b-0 lg:border-r">
-        <div className="shrink-0 px-4 py-5">
-          <Link href="/" className="flex items-start gap-2">
-            {club.logo_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={club.logo_url}
-                alt={headerTitle}
-                className="h-9 w-9 shrink-0 rounded-lg object-cover"
-              />
-            ) : (
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--brand-primary)] text-sm font-semibold text-white">
-                {(headerTitle?.[0] ?? "Σ").toUpperCase()}
+        <div ref={userMenuRef} className="relative shrink-0 px-4 py-2 lg:py-5">
+          <div className="flex items-center gap-2">
+            <Link
+              href="/"
+              className="flex min-w-0 flex-1 items-center gap-2 lg:items-start"
+            >
+              {club.logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={club.logo_url}
+                  alt={headerTitle}
+                  className="h-8 w-8 shrink-0 rounded-lg object-cover lg:h-9 lg:w-9"
+                />
+              ) : (
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--brand-primary)] text-sm font-semibold text-white lg:h-9 lg:w-9">
+                  {(headerTitle?.[0] ?? "Σ").toUpperCase()}
+                </span>
+              )}
+              <span className="flex min-w-0 flex-col leading-tight">
+                <span className="truncate text-sm font-semibold lg:break-words lg:whitespace-normal">
+                  {headerTitle}
+                </span>
+                <span className="mt-0.5 hidden text-[10px] uppercase tracking-wider text-muted lg:block">
+                  SyllogosHub
+                </span>
               </span>
+            </Link>
+            {!role.loading && isLoggedIn && (
+              <button
+                type="button"
+                onClick={() => setUserMenuOpen((v) => !v)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold uppercase text-white lg:hidden"
+                aria-label="Μενού χρήστη"
+                aria-expanded={userMenuOpen}
+              >
+                {computeInitials(role.firstName, role.lastName, role.email)}
+              </button>
             )}
-            <span className="flex min-w-0 flex-col leading-tight">
-              <span className="break-words text-sm font-semibold">
-                {headerTitle}
-              </span>
-              <span className="mt-0.5 text-[10px] uppercase tracking-wider text-muted">
-                SyllogosHub
-              </span>
-            </span>
-          </Link>
+            {!role.loading && !isLoggedIn && (
+              <Link
+                href="/login"
+                className="flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-medium lg:hidden"
+              >
+                <UserIcon className="h-3.5 w-3.5" />
+                Σύνδεση
+              </Link>
+            )}
+          </div>
+          {userMenuOpen && isLoggedIn && (
+            <div className="absolute right-3 top-full z-30 mt-1 w-64 rounded-xl border border-border bg-surface p-3 shadow-lg lg:hidden">
+              <UserMenuContent
+                role={role}
+                signingOut={signingOut}
+                onSignOut={() => {
+                  setUserMenuOpen(false);
+                  handleSignOut();
+                }}
+              />
+            </div>
+          )}
         </div>
         <nav className="min-h-0 flex-1 overflow-hidden px-3 pb-3 lg:overflow-y-auto">
           <ul className="flex gap-1 overflow-x-auto lg:flex-col lg:gap-0.5 lg:overflow-x-visible">
@@ -145,7 +213,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             })}
           </ul>
         </nav>
-        <div className="shrink-0 border-t border-border p-3">
+        <div className="hidden shrink-0 border-t border-border p-3 lg:block">
           {role.loading ? (
             <p className="px-3 text-xs text-muted">Φόρτωση…</p>
           ) : isLoggedIn ? (
@@ -216,6 +284,54 @@ function UserCard({
       >
         {signingOut ? "Αποσύνδεση…" : "Αποσύνδεση"}
       </button>
+    </div>
+  );
+}
+
+function UserMenuContent({
+  role,
+  signingOut,
+  onSignOut,
+}: {
+  role: RoleState;
+  signingOut: boolean;
+  onSignOut: () => void;
+}) {
+  const fullName = composeFullName(role.firstName, role.lastName);
+  const displayName = fullName ?? role.email ?? "—";
+  const initials = computeInitials(role.firstName, role.lastName, role.email);
+  const badgeLabel = pickBadgeLabel(role);
+
+  return (
+    <div>
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-semibold uppercase text-white">
+          {initials}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">
+            {displayName}
+          </p>
+          {fullName && role.email && (
+            <p className="truncate text-[11px] text-muted">{role.email}</p>
+          )}
+        </div>
+      </div>
+      {badgeLabel && (
+        <span className="mt-3 inline-block rounded-full border border-border bg-background px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+          {badgeLabel}
+        </span>
+      )}
+      <div className="mt-3 border-t border-border pt-2">
+        <button
+          type="button"
+          onClick={onSignOut}
+          disabled={signingOut}
+          className="block w-full rounded-md px-3 py-2 text-left text-sm transition hover:bg-foreground/5 disabled:opacity-50"
+        >
+          {signingOut ? "Αποσύνδεση…" : "Αποσύνδεση"}
+        </button>
+      </div>
     </div>
   );
 }
