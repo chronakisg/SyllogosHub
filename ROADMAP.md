@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-05 (Event Dashboard Phase 1 + Phase 2 + sponsor financial architecture)  
+> Last updated: 2026-05-06 (Cashier Phase 1 — schema + UI + entry point στο finance dashboard)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -168,54 +168,64 @@ _(no active branches)_
 
 ### Finances domain
 
-- [ ] **📊 Event Dashboard — Phase 3 (live status + cashier flow)**
+- [ ] **📊 Event Dashboard — Phase 3 (live status enhancements)**
 
   Stack: 📊 + 🎩 Operational hybrid
 
-  Phase 3 scope:
-  - Live παρόντες counter στο dashboard
-  - Εκκρεμείς πληρωμές με quick toggle
-  - Quick action button: "💰 Άνοιγμα Ταμείου"
-  - Cashier flow integration (search + payment + check-in)
+  Done in 2026-05-06 (Cashier PR2):
+  - [x] Quick action button "💰 Ταμείο →" δίπλα στο event picker
+  - [x] Cashier flow integration (dedicated /cashier/[eventId]
+    route με back link σε /finances?tab=dashboard)
 
-  Connects με: 3-state presence + Cashier Interface entry
+  Phase 3 remaining scope:
+  - Live παρόντες counter στο dashboard (refresh αυτόματα όταν
+    γίνεται mutation σε άλλο tab — Supabase realtime)
+  - Εκκρεμείς πληρωμές με quick toggle στο reservation drill-down
+    (δεν εμφανίζεται στο cashier — εδώ είναι για admin overview)
 
-  Estimated: L
+  Connects με: 3-state presence + Cashier Phase 2 realtime sync
+
+  Estimated: M (μειώθηκε από L μετά την Phase 1 ολοκλήρωση)
 
 ### 🎩 Operational interfaces
 
-- [ ] **💰 Cashier Interface (Φάση 2 — Είσοδος/Ταμείο)**
+- [ ] **💰 Cashier Interface — Phase 2 enhancements**
 
   Stack: 🎩 Operational
 
-  Strategic context: Διακριτός ρόλος από maître. Ο ταμίας/προεδρείο
-  στην πόρτα κάνει payment + check-in. Ο maître μέσα στο χώρο κάνει
-  guidance + waiter notifications. Δεν είναι ίδιος user, ίδιο interface.
+  Phase 1 ολοκληρώθηκε στο PR1+PR2 (2026-05-06): see Recently Done.
+  Phase 2 deferred items, εντοπισμένα κατά την υλοποίηση:
 
-  Νέο menu location: TBD (πιθανότατα tab μέσα στα Events ή
-  top-level menu "Ταμείο")
+  Selection & flow shortcuts:
+  - "Επιλογή όλων unpaid" quick shortcut button μέσα στο modal
+    για παρέες με pre-paid 10 προσκλήσεις (1-tap select all)
+  - Walk-ins quick-add: button «+ Νέα παρέα» μέσα στο cashier
+    flow για άτομα χωρίς reservation
+  - Sidebar top-level link «💰 Ταμείο» με event picker
+    (alternative entry για multi-event scenarios)
+  - Smart back navigation: document.referrer fallback αντί
+    hard-coded /finances?tab=dashboard
 
-  Flow:
-  - Search by attendee name (fuzzy match όλων των reservations του
-    selected event)
-  - Action card per attendee/παρέα:
-    - Όνομα + Παρέα + Τραπέζι (location info)
-    - Payment status: ✅ Πληρωμένο / ⚠️ Εκκρεμές
-    - Buttons: [Πληρώθηκε τώρα] + [Check-in]
-    - Future: [Εκτύπωση εισιτηρίου]
-  - Παρέες έρχονται σπαστά (2 τώρα, 2 αργότερα)
-  - Per-attendee check-in (όχι bulk)
-  - Πληρωμή είναι παρέα-level (ένας πληρώνει για όλη την ομάδα)
+  Concurrency & robustness:
+  - Concurrent edit handling: optimistic UI με toast
+    «πληρώθηκαν X από Y — οι υπόλοιποι ήδη πληρώθηκαν»
+    (Section 3c.1 του CASHIER_PLAN.md)
+  - Real-time sync με Supabase realtime subscriptions ώστε
+    multi-cashier scenarios να βλέπουν live updates
 
-  ΟΧΙ νούμερα/ποσά μετά τη φάση πληρωμής — μόνο "πληρωμένο ναι/όχι"
-  σαν gating signal.
+  Print & receipts:
+  - Εκτύπωση εισιτηρίου ανά attendee/παρέα (thermal-receipt
+    layout + PDF download για mobile preview)
+  - Branding συλλόγου + QR code για future re-scan
 
-  Estimated: L (multi-commit, νέο page, search component, action card,
-  payment integration)
-  Connects με: 3-state presence (διαβάζει presence_status),
-  Event Dashboard (entry point button),
-  ✅ role-based permissions (foundation ready),
-  User Management Module (assign Ταμία dynamically)
+  Refund flow:
+  - Currently: refund = never (constitutionally)
+  - Future iteration: αν προκύψει need από users, undo flow
+    με audit log + reason field
+
+  Estimated: M-L (κάθε feature ~S-M ξεχωριστά)
+  Connects με: ολοκληρωμένο Cashier Phase 1, 3-state presence,
+  realtime infrastructure, print/PDF generation
 
 ### Schema evolution
 
@@ -499,7 +509,9 @@ _(no active branches)_
 - [ ] **Drop snapshot tables** (post merge):
   - `reservations_backup_20260430`
   - `members_backup_20260430`
+  - `reservation_attendees_backup_20260506` (Cashier PR1 safety net)
   - Παραμένουν ως safety net για το beta — drop όταν συγχωνευθεί feature
+    + production stable για ~1 εβδομάδα
 - [ ] **Drop `user_roles` table (dead code)**
   - Defined σε `lib/supabase/types.ts` αλλά δεν χρησιμοποιείται
   - `useRole` διαβάζει αλλά δεν επηρεάζει permission computation
@@ -520,6 +532,77 @@ _(no active branches)_
   - Estimated: S (write doc + add to README)
 
 ## ✅ Recently Done
+
+### feat/cashier-schema + feat/cashier-page (2026-05-06) — PR1 + PR2
+
+Two-PR stacked feature για Cashier Interface Phase 1.
+Comprehensive planning session με 26 locked decisions
+στο docs/CASHIER_PLAN.md, 8 internal commits στο PR2,
+real mutation tested in production.
+
+**PR1: feat/cashier-schema (1 commit)**
+- [x] Migration 0013: per-attendee payment fields
+  - paid_at timestamptz NULL
+  - paid_amount numeric(10,2) NULL
+  - paid_by_user_id uuid NULL → auth.users(id) ON DELETE SET NULL
+  - CHECK constraint: paid_amount required if paid_at
+  - Partial index idx_attendees_unpaid (WHERE paid_at IS NULL)
+  - Snapshot table reservation_attendees_backup_20260506 πριν τη migration
+- [x] types.ts: ReservationAttendee Row + Insert types
+  (Update auto-derived μέσω Partial<Omit>)
+- [x] docs/CASHIER_PLAN.md: 117 lines comprehensive plan doc
+- [x] RESERVATION_SELECT στο shared lib/utils/attendees.ts
+  ενημερώθηκε με τα 3 νέα payment columns (μετά από bug fix:
+  undefined !== null εμφάνιζε όλους ως πληρωμένους)
+
+**PR2: feat/cashier-page (7 commits)**
+- [x] Skeleton route + permission gate (cashier permission)
+  στο top-level /cashier/[eventId]
+- [x] Reservation cards list με 3 status states
+  (⚠️ pending / 🟡 partial / ✅ complete) + age breakdown
+  + KPIs (X/Y πληρωμένοι · Z/Y παρόντες)
+- [x] Open-party modal με named attendees lista,
+  3 close mechanisms (backdrop, ×, Esc), bottom-sheet
+  σε mobile / centered σε desktop
+- [x] Anonymous buckets (Ενήλικες/Παιδιά) με ± counter
+  selection logic
+- [x] Sticky footer με selection totals + 3-line modal header
+  (composition / status / X€ από Y€)
+- [x] Atomic payment + check-in mutation:
+  - Group selected attendees by price → 1 UPDATE per
+    unique amount (Promise.all parallel)
+  - Single UPDATE sets paid_at + paid_amount + paid_by_user_id
+    + presence_status='present' + checked_in_at
+  - isPaying state για double-tap protection
+  - reloadKey για refetch trigger
+  - Error handling με existing error banner
+- [x] Entry button «💰 Ταμείο →» στο event dashboard
+  (/finances?tab=dashboard) δίπλα στο event picker
+  - Permission-gated visibility
+  - Conditional on selectedEventId truthy
+- [x] Back link στο cashier /finances?tab=dashboard
+  (αντί / που ήταν safe default)
+
+**Architectural decisions:**
+- Per-attendee data, party-level UX
+- Refund = never (constitutionally)
+- Standalone-able principle preserved (cashier route ξεχωριστό
+  από /seating, mobile-first, focused tool)
+- Permission segmentation: payment editing μόνο για όσους
+  έχουν cashier permission. Group-based via roles
+  (Ταμίας/Πρόεδρος/Διαχειριστής)
+- Architectural correction mid-flow: entry point μετακινήθηκε
+  από /events (δημόσιο) → /finances (financial-permission-gated)
+- One-shot atomic mutation: payment + check-in σε ένα SQL UPDATE
+
+**Production verification:**
+- Real payment flow tested με 1 attendee (ΧΡΟΝΑΚΗΣ ΓΙΩΡΓΟΣ)
+- All 5 fields updated atomically στη DB
+- UI refresh-άρει σωστά μετά mutation
+- Partial status emerged correctly (1/9 paid)
+
+**Phase 2 deferred items**: see Cashier Interface entry στα
+High Priority sections.
 
 ### feat/event-dashboard-phase1 (merged 2026-05-05) — PR #22
 
