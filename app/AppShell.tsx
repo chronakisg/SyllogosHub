@@ -79,7 +79,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const headerTitle = currentClub.club?.name || clubName;
 
-  if (pathname === "/login") {
+  if (
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/login")
+  ) {
     return <>{children}</>;
   }
 
@@ -88,7 +91,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     try {
       const supabase = getBrowserClient();
       await supabase.auth.signOut();
-      router.replace("/");
+      router.replace("/login");
       router.refresh();
     } finally {
       setSigningOut(false);
