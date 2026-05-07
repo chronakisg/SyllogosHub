@@ -9,7 +9,7 @@ export function AdminHeader() {
   async function handleLogout() {
     const supabase = getBrowserClient();
     await supabase.auth.signOut();
-    router.push("/login");
+    router.push("/login?redirect=/admin/clubs");
   }
 
   return (
