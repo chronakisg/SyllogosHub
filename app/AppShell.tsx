@@ -79,7 +79,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const headerTitle = currentClub.club?.name || clubName;
 
-  if (pathname === "/login") {
+  if (
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/login")
+  ) {
     return <>{children}</>;
   }
 
