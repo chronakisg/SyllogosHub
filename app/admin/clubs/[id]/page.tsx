@@ -31,7 +31,7 @@ export default async function AdminClubDetailPage({
   // A. Club info
   const { data: club, error: clubError } = await supabase
     .from("clubs")
-    .select("id, name, slug, plan, is_active, created_at")
+    .select("id, name, slug, plan, is_active, created_at, category")
     .eq("id", id)
     .maybeSingle();
   if (clubError) throw clubError;

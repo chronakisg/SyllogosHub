@@ -2,10 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin } from "@/lib/auth/requireSuperAdmin";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { seedClub } from "@/lib/admin/seedClub";
-import type { ClubPlan } from "@/lib/supabase/types";
+import type { ClubCategory, ClubPlan } from "@/lib/supabase/types";
 
 // ─────────── Validation rules ───────────
 const VALID_PLANS: readonly ClubPlan[] = ["basic", "pro", "premium"] as const;
+const VALID_CATEGORIES: readonly ClubCategory[] = [
+  "traditional",
+  "sports",
+  "cultural",
+  "professional",
+  "friends",
+  "other",
+] as const;
 // Slug: lowercase alphanumeric + hyphens between segments. Δεν επιτρέπει
 // leading/trailing hyphens ή double hyphens.
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -19,6 +27,7 @@ type CreateClubBody = {
   adminPassword?: unknown;
   adminFirstName?: unknown;
   adminLastName?: unknown;
+  category?: unknown;
 };
 
 function isString(v: unknown): v is string {
@@ -52,6 +61,7 @@ export async function POST(req: NextRequest) {
       adminPassword,
       adminFirstName,
       adminLastName,
+      category,
     } = raw;
 
     if (
@@ -86,6 +96,20 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+    const hasCategory = category !== undefined;
+    if (hasCategory) {
+      if (
+        !isString(category) ||
+        !VALID_CATEGORIES.includes(category as ClubCategory)
+      ) {
+        return NextResponse.json(
+          {
+            error: `Invalid category — αποδεκτές τιμές: ${VALID_CATEGORIES.join(", ")}`,
+          },
+          { status: 400 },
+        );
+      }
+    }
     if (adminPassword.length < 8) {
       return NextResponse.json(
         { error: "Το password πρέπει να έχει τουλάχιστον 8 χαρακτήρες" },
@@ -117,8 +141,9 @@ export async function POST(req: NextRequest) {
         slug,
         plan: plan as ClubPlan,
         is_active: true,
+        ...(hasCategory && { category: category as ClubCategory }),
       })
-      .select("id, name, slug, plan, is_active, created_at")
+      .select("id, name, slug, plan, is_active, created_at, category")
       .single();
     if (clubError) {
       if (clubError.code === PG_UNIQUE_VIOLATION) {

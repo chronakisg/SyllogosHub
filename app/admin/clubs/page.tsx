@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { CLUB_CATEGORY_LABELS } from "@/lib/supabase/types";
+import type { ClubCategory } from "@/lib/supabase/types";
 
 const PLAN_BADGE: Record<string, string> = {
   basic: "bg-gray-200 text-gray-800",
@@ -18,15 +20,25 @@ function formatDate(iso: string) {
 export default async function AdminClubsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ created?: string; deleted?: string }>;
+  searchParams: Promise<{
+    created?: string;
+    deleted?: string;
+    category?: string;
+  }>;
 }) {
-  const { created, deleted } = await searchParams;
+  const { created, deleted, category } = await searchParams;
 
   const supabase = getAdminClient();
-  const { data: clubs, error } = await supabase
+  let query = supabase
     .from("clubs")
-    .select("id, name, slug, plan, is_active, created_at")
+    .select("id, name, slug, plan, is_active, created_at, category")
     .order("created_at", { ascending: false });
+
+  if (category && category in CLUB_CATEGORY_LABELS) {
+    query = query.eq("category", category as ClubCategory);
+  }
+
+  const { data: clubs, error } = await query;
 
   if (error) throw error;
 
@@ -54,6 +66,23 @@ export default async function AdminClubsPage({
         </div>
       )}
 
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-gray-600 mr-1">Φίλτρο κατηγορίας:</span>
+        <FilterLink
+          href="/admin/clubs"
+          label="Όλες"
+          active={!category || !(category in CLUB_CATEGORY_LABELS)}
+        />
+        {Object.entries(CLUB_CATEGORY_LABELS).map(([value, label]) => (
+          <FilterLink
+            key={value}
+            href={`/admin/clubs?category=${value}`}
+            label={label}
+            active={category === value}
+          />
+        ))}
+      </div>
+
       {!clubs || clubs.length === 0 ? (
         <div className="bg-white rounded-lg border border-gray-200 p-12 text-center text-gray-500">
           Δεν υπάρχουν σύλλογοι
@@ -65,6 +94,7 @@ export default async function AdminClubsPage({
               <tr>
                 <th className="text-left px-4 py-3 font-medium">Όνομα</th>
                 <th className="text-left px-4 py-3 font-medium">Slug</th>
+                <th className="text-left px-4 py-3 font-medium">Κατηγορία</th>
                 <th className="text-left px-4 py-3 font-medium">Πλάνο</th>
                 <th className="text-left px-4 py-3 font-medium">Κατάσταση</th>
                 <th className="text-left px-4 py-3 font-medium">
@@ -88,6 +118,11 @@ export default async function AdminClubsPage({
                   </td>
                   <td className="px-4 py-3 text-gray-600 font-mono text-xs">
                     {club.slug}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-700">
+                      {CLUB_CATEGORY_LABELS[club.category]}
+                    </span>
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -119,5 +154,28 @@ export default async function AdminClubsPage({
         </div>
       )}
     </div>
+  );
+}
+
+function FilterLink({
+  href,
+  label,
+  active,
+}: {
+  href: string;
+  label: string;
+  active: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`px-3 py-1 rounded transition-colors ${
+        active
+          ? "bg-[#800000] text-white font-medium"
+          : "text-gray-700 hover:bg-gray-100"
+      }`}
+    >
+      {label}
+    </Link>
   );
 }
