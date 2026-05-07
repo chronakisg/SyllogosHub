@@ -97,6 +97,33 @@ _(no active branches)_
 
 ## 🟡 High Priority (post-beta)
 
+### Super Admin & Multi-tenancy
+
+- [ ] **Modular features ανά σύλλογο** (feature flags)
+  - Core για όλους: Μέλη + Εκδηλώσεις + Ημερολόγιο
+  - Opt-in modules: Seating, Cashier, Οικονομικά, Επικοινωνία
+  - Schema: club_modules table (club_id, module, enabled)
+  - Admin panel: toggle modules ανά σύλλογο
+  - Sidebar: εμφάνιση μόνο enabled modules
+  - Billing: modules συνδεδεμένα με plan
+  - Estimated: L (multi-session, schema + UI + sidebar refactor)
+
+- [ ] **Κατηγορίες συλλόγων**
+  - Παραδοσιακοί, αθλητικοί, επαγγελματικοί, φιλικοί κλπ
+  - Schema: clubs.category column
+  - Admin panel + onboarding form
+  - Estimated: S
+
+- [ ] **Admin panel — Club edit functionality**
+  - /admin/clubs/[id]: αλλαγή plan, toggle is_active
+  - PATCH /api/admin/clubs/[id]
+  - Estimated: S-M
+
+- [ ] **Ημερολόγιο ως default module για όλους**
+  - Σήμερα: optional στο sidebar
+  - Στόχος: πάντα ορατό, visual αποτέλεσμα για όλους
+  - Estimated: XS (sidebar config change)
+
 ### Reservations & Attendees domain
 
 - [ ] **Booker concept** — `reservations.booker_member_id`
@@ -220,6 +247,20 @@ _(no active branches)_
   Priority: High (UX blocker σε field use)
 
 ## 🟢 Nice to Have / Future
+
+### Super Admin & Multi-tenancy
+
+- [ ] **Standalone syllogoshub.gr + ξεχωριστό Super Admin app**
+  - Σήμερα: /admin ζει μέσα στον Hub (hub.party4u.gr)
+  - Στόχος: admin.syllogoshub.gr ως ξεχωριστό Next.js app
+  - Γίνεται μετά την ολοκλήρωση του syllogoshub.gr
+  - Estimated: L
+
+- [ ] **Free trial 3 μηνών για νέους συλλόγους**
+  - clubs.trial_ends_at column
+  - Auto-disable μετά τη λήξη
+  - Warning banner στον σύλλογο πριν τη λήξη
+  - Estimated: M
 
 ### Seating UX
 
@@ -548,6 +589,23 @@ _(no active branches)_
   - Estimated: S (write doc + add to README)
 
 ## ✅ Recently Done
+
+### feat/super-admin-panel (merged 2026-05-07) — PR #31 + #32
+
+- [x] Migration 0014: super_admins table + clubs.plan/is_active columns
+- [x] lib/admin/seedClub.ts — seed defaults για νέο σύλλογο
+      (6 roles + permissions, 2 ticket categories,
+       8 expense categories, club_settings)
+- [x] lib/auth/requireSuperAdmin.ts — server-side guard
+- [x] POST /api/admin/clubs — create club + seed + auth user +
+      member + role assignment end-to-end
+- [x] proxy.ts: redirect /admin/* → /login αν no session
+- [x] app/admin/layout.tsx — super-admin guard + isolated layout
+- [x] app/admin/clubs/page.tsx — λίστα συλλόγων με plan/status badges
+- [x] app/admin/clubs/new/page.tsx — form δημιουργίας νέου συλλόγου
+- [x] app/admin/clubs/[id]/page.tsx — club detail με stats + billing
+- [x] app/AppShell.tsx — skip render για /admin/* (hooks-safe)
+- [x] fix: logout redirect → /login?redirect=/admin/clubs (PR #32)
 
 ### feat/cashier-schema + feat/cashier-page (2026-05-06) — PR1 + PR2
 
