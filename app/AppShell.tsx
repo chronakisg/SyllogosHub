@@ -91,7 +91,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     try {
       const supabase = getBrowserClient();
       await supabase.auth.signOut();
-      router.replace("/");
+      router.replace("/login");
       router.refresh();
     } finally {
       setSigningOut(false);
