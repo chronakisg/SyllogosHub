@@ -1,5 +1,6 @@
 import { requireSuperAdmin } from "@/lib/auth/requireSuperAdmin";
 import { redirect } from "next/navigation";
+import { AdminHeader } from "./AdminHeader";
 
 export default async function AdminLayout({
   children,
@@ -14,10 +15,7 @@ export default async function AdminLayout({
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-[#800000] text-white px-6 py-3 flex items-center justify-between">
-        <span className="font-semibold">SyllogosHub — Super Admin</span>
-        <span className="text-sm opacity-70">Διαχείριση Συλλόγων</span>
-      </div>
+      <AdminHeader />
       <main className="p-6">{children}</main>
     </div>
   );
