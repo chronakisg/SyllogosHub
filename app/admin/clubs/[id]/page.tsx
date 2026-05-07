@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { ClubEditPanel } from "./ClubEditPanel";
 
 const PLAN_BADGE: Record<string, string> = {
   basic: "bg-gray-200 text-gray-800",
@@ -110,6 +111,10 @@ export default async function AdminClubDetailPage({
             </span>
           </div>
 
+          <div className="mt-2 text-sm text-gray-500">
+            Ενεργός από: {formatDate(club.created_at)}
+          </div>
+
           <div className="mt-4">
             <a
               href={SITE_URL}
@@ -138,26 +143,8 @@ export default async function AdminClubDetailPage({
         />
       </div>
 
-      {/* ── Billing ── */}
-      <Section title="Billing">
-        <Row label="Πλάνο">
-          <span
-            className={`px-2 py-1 rounded text-xs font-medium ${
-              PLAN_BADGE[club.plan] ?? "bg-gray-100 text-gray-700"
-            }`}
-          >
-            {club.plan}
-          </span>
-        </Row>
-        <Row label="Ενεργός από">{formatDate(club.created_at)}</Row>
-        <Row label="Κατάσταση">
-          {club.is_active ? (
-            <span className="text-green-700">Ενεργός ✓</span>
-          ) : (
-            <span className="text-red-700">Ανενεργός</span>
-          )}
-        </Row>
-      </Section>
+      {/* ── Plan & Status (editable) ── */}
+      <ClubEditPanel club={club} />
 
       {/* ── Quick Actions ── */}
       <Section title="Quick Actions">

@@ -18,9 +18,9 @@ function formatDate(iso: string) {
 export default async function AdminClubsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ created?: string }>;
+  searchParams: Promise<{ created?: string; deleted?: string }>;
 }) {
-  const { created } = await searchParams;
+  const { created, deleted } = await searchParams;
 
   const supabase = getAdminClient();
   const { data: clubs, error } = await supabase
@@ -45,6 +45,12 @@ export default async function AdminClubsPage({
       {created === "1" && (
         <div className="mb-4 rounded bg-green-50 border border-green-200 px-4 py-3 text-green-800 text-sm">
           Ο σύλλογος δημιουργήθηκε επιτυχώς.
+        </div>
+      )}
+
+      {deleted === "1" && (
+        <div className="mb-4 rounded bg-red-50 border border-red-200 px-4 py-3 text-red-800 text-sm">
+          Ο σύλλογος διαγράφηκε οριστικά.
         </div>
       )}
 
