@@ -1,12 +1,16 @@
 export type MemberStatus = "active" | "inactive";
 export type PaymentType = "monthly_fee" | "annual";
 
+export type ClubPlan = "basic" | "pro" | "premium";
+
 export type Club = {
   id: string;
   slug: string;
   name: string;
   child_age_threshold: number;
   created_at: string;
+  plan: ClubPlan;
+  is_active: boolean;
 };
 
 export type ClubInsert = {
@@ -15,6 +19,8 @@ export type ClubInsert = {
   name: string;
   child_age_threshold?: number;
   created_at?: string;
+  plan?: ClubPlan;
+  is_active?: boolean;
 };
 
 export type ClubUpdate = Partial<Omit<Club, "id" | "created_at">>;
@@ -784,6 +790,11 @@ export type UserRoleInsert = {
 
 export type UserRoleUpdate = Partial<Omit<UserRoleRow, "user_id" | "created_at">>;
 
+export type SuperAdmin = {
+  user_id: string;
+  created_at: string;
+};
+
 export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "12";
@@ -1296,6 +1307,12 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      super_admins: {
+        Row: SuperAdmin;
+        Insert: { user_id: string; created_at?: string };
+        Update: { created_at?: string };
+        Relationships: [];
       };
     };
     Views: Record<string, never>;
