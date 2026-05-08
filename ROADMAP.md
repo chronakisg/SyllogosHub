@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-06 (Cashier Phase 1 — schema + UI + entry point στο finance dashboard)  
+> Last updated: 2026-05-08 (Modular features per club)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -96,33 +96,6 @@ _(no active branches)_
 - [ ] **iOS Safari PWA test** — verify install + auto-update flow
 
 ## 🟡 High Priority (post-beta)
-
-### Super Admin & Multi-tenancy
-
-- [ ] **Modular features ανά σύλλογο** (feature flags)
-  - Core για όλους: Μέλη + Εκδηλώσεις + Ημερολόγιο
-  - Opt-in modules: Seating, Cashier, Οικονομικά, Επικοινωνία
-  - Schema: club_modules table (club_id, module, enabled)
-  - Admin panel: toggle modules ανά σύλλογο
-  - Sidebar: εμφάνιση μόνο enabled modules
-  - Billing: modules συνδεδεμένα με plan
-  - Estimated: L (multi-session, schema + UI + sidebar refactor)
-
-- [ ] **Κατηγορίες συλλόγων**
-  - Παραδοσιακοί, αθλητικοί, επαγγελματικοί, φιλικοί κλπ
-  - Schema: clubs.category column
-  - Admin panel + onboarding form
-  - Estimated: S
-
-- [ ] **Admin panel — Club edit functionality**
-  - /admin/clubs/[id]: αλλαγή plan, toggle is_active
-  - PATCH /api/admin/clubs/[id]
-  - Estimated: S-M
-
-- [ ] **Ημερολόγιο ως default module για όλους**
-  - Σήμερα: optional στο sidebar
-  - Στόχος: πάντα ορατό, visual αποτέλεσμα για όλους
-  - Estimated: XS (sidebar config change)
 
 ### Reservations & Attendees domain
 
@@ -589,6 +562,31 @@ _(no active branches)_
   - Estimated: S (write doc + add to README)
 
 ## ✅ Recently Done
+
+### feat/club-modules (merged 2026-05-08) — PR #36
+
+Per-club feature flags για modules — Modular features ανά σύλλογο.
+Foundation για multi-tenant SaaS με differentiated module access.
+
+**Schema (migration 0017):**
+- [x] club_modules table (club_id, module, enabled) με CASCADE + RLS off
+- [x] CHECK constraint: 7 modules (members, events, seating, finances, cashier, calendar, communications)
+- [x] Seed: όλα enabled για existing clubs
+
+**Code:**
+- [x] types.ts: ClubModule + Row/Insert/Update + Database entry (hand-crafted, όχι gen types)
+- [x] CORE_CLUB_MODULES (members/events/calendar) — πάντα ενεργά
+- [x] CLUB_MODULE_LABELS για UI
+- [x] useClubModules hook με per-clubId cache + refresh event
+- [x] AppShell: NavItem.module field, sidebar filter με enabled set
+- [x] API: GET + PATCH /api/admin/clubs/[id]/modules με requireSuperAdmin
+- [x] ClubModulesPanel: toggle switches στο /admin/clubs/[id]
+- [x] Core modules guard (UI + API): 400 αν disable core
+
+**Architecture:**
+- Modules = additional gate πάνω από permissions
+- Standalone-able principle preserved: σύλλογος με μόνο members/events/calendar = MVP
+- Foundation για billing tier differentiation (μελλοντικά)
 
 ### feat/super-admin-panel (merged 2026-05-07) — PR #31 + #32
 
