@@ -376,7 +376,7 @@ export default function MembersPage() {
   }
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim().toLowerCase().replace(/ς/g, 'σ');
     return members.filter((m) => {
       if (statusFilter !== "all" && m.status !== statusFilter) return false;
       if (boardOnly && !m.is_board_member) return false;
@@ -408,7 +408,8 @@ export default function MembersPage() {
         ]
           .filter(Boolean)
           .join(" ")
-          .toLowerCase();
+          .toLowerCase()
+          .replace(/ς/g, 'σ');
         if (!hay.includes(q)) return false;
       }
       return true;
