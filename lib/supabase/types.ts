@@ -104,6 +104,9 @@ export type Member = {
   email_verified: boolean;
   email_verified_at: string | null;
   email_verified_by: string | null;
+  email_verification_token: string | null;
+  email_verification_sent_at: string | null;
+  email_verification_expires_at: string | null;
   created_at: string;
   father_name: string | null;
   mother_name: string | null;
