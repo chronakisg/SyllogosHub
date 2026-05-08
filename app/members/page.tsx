@@ -227,6 +227,8 @@ export default function MembersPage() {
     action?: { label: string; run: () => void };
   };
   const [toast, setToast] = useState<Toast | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [bulkSending, setBulkSending] = useState(false);
   useEffect(() => {
     if (!toast) return;
     const ms = toast.action ? 8000 : 5000;
@@ -738,6 +740,65 @@ export default function MembersPage() {
     }
   }
 
+  async function handleSendVerification(member: MemberWithDepartments) {
+    if (!member.email || member.email_verified) return;
+    setSendingId(member.id);
+    try {
+      const res = await fetch(
+        `/api/members/${member.id}/send-verification-email`,
+        { method: "POST" }
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast({ message: `✗ ${body.error ?? "Σφάλμα αποστολής"}` });
+      } else {
+        setToast({ message: `✓ Email στάλθηκε στο ${member.email}` });
+      }
+    } catch {
+      setToast({ message: "✗ Σφάλμα δικτύου" });
+    } finally {
+      setSendingId(null);
+    }
+  }
+
+  async function handleBulkSend() {
+    const candidates = members.filter(
+      (m) => m.email && !m.email_verified
+    );
+    if (candidates.length === 0) {
+      setToast({ message: "Δεν υπάρχουν μέλη για αποστολή" });
+      return;
+    }
+    const confirmed = window.confirm(
+      `Θα σταλούν ${candidates.length} emails verification σε όλα τα μη-επιβεβαιωμένα μέλη.\n\nΣυνέχεια;`
+    );
+    if (!confirmed) return;
+
+    setBulkSending(true);
+    try {
+      const res = await fetch("/api/members/send-verification-bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dry_run: false }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast({ message: `✗ ${body.error ?? "Σφάλμα"}` });
+      } else {
+        const errCount = body.errors?.length ?? 0;
+        const msg = errCount > 0
+          ? `✓ Στάλθηκαν ${body.sent} emails (${errCount} σφάλματα)`
+          : `✓ Στάλθηκαν ${body.sent} emails`;
+        setToast({ message: msg });
+        await loadMembers();
+      }
+    } catch {
+      setToast({ message: "✗ Σφάλμα δικτύου" });
+    } finally {
+      setBulkSending(false);
+    }
+  }
+
   function exportToExcel() {
     const rows = filtered.map((m) => ({
       Επώνυμο: m.last_name,
@@ -790,6 +851,15 @@ export default function MembersPage() {
           Διαχείριση Μελών
         </h1>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleBulkSend}
+            disabled={bulkSending}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background disabled:opacity-50"
+            title="Αποστολή verification email σε όλα τα μη-επιβεβαιωμένα"
+          >
+            {bulkSending ? "Αποστολή…" : "📨 Bulk Verification"}
+          </button>
           <button
             type="button"
             onClick={exportToExcel}
@@ -1100,6 +1170,17 @@ export default function MembersPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex gap-2">
+                        {m.email && !m.email_verified && (
+                          <button
+                            type="button"
+                            onClick={() => handleSendVerification(m)}
+                            disabled={sendingId === m.id}
+                            className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background disabled:opacity-50"
+                            title="Αποστολή email verification"
+                          >
+                            {sendingId === m.id ? "…" : "📧 Verify"}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => openEdit(m)}
