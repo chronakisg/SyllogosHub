@@ -131,6 +131,7 @@ export default function MembersPage() {
   const [ageFilter, setAgeFilter] = useState<"all" | "child" | "adult">("all");
   const [familyOnly, setFamilyOnly] = useState(false);
   const [unverifiedOnly, setUnverifiedOnly] = useState(false);
+  const [missingField, setMissingField] = useState<string>("");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MemberWithDepartments | null>(null);
@@ -397,6 +398,20 @@ export default function MembersPage() {
         !m.departments.some((d) => d.department_id === departmentFilter)
       )
         return false;
+      if (missingField) {
+        const isEmpty = (v: string | null | undefined) => !v || !v.trim();
+        const checks: Record<string, boolean> = {
+          phone:            isEmpty(m.phone),
+          email:            isEmpty(m.email),
+          birth_date:       !m.birth_date,
+          address:          isEmpty(m.address),
+          occupation:       isEmpty(m.occupation),
+          father_name:      isEmpty(m.father_name),
+          mother_name:      isEmpty(m.mother_name),
+          maiden_name:      isEmpty(m.maiden_name),
+        };
+        if (!checks[missingField]) return false;
+      }
       if (q) {
         const hay = [
           m.first_name,
@@ -422,6 +437,7 @@ export default function MembersPage() {
     unverifiedOnly,
     ageFilter,
     departmentFilter,
+    missingField,
   ]);
 
   function clearFilters() {
@@ -432,6 +448,7 @@ export default function MembersPage() {
     setAgeFilter("all");
     setUnverifiedOnly(false);
     setFamilyOnly(false);
+    setMissingField("");
   }
 
   function openCreate() {
@@ -752,7 +769,8 @@ export default function MembersPage() {
     boardOnly ||
     ageFilter !== "all" ||
     familyOnly ||
-    unverifiedOnly;
+    unverifiedOnly ||
+    !!missingField;
 
   if (role.loading) {
     return (
@@ -790,103 +808,93 @@ export default function MembersPage() {
         </div>
       </header>
 
-      <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-3">
-        <div className="min-w-[14rem] flex-1">
-          <label className="mb-1 block text-xs font-medium text-muted">
-            Αναζήτηση
-          </label>
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Όνομα, τηλέφωνο, email…"
-            className={inputClass}
-          />
+      <div className="mb-4 rounded-xl border border-border bg-surface p-3 space-y-3">
+        {/* Γραμμή 1: selects */}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[14rem] flex-1">
+            <label className="mb-1 block text-xs font-medium text-muted">Αναζήτηση</label>
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Όνομα, τηλέφωνο, email…"
+              className={inputClass}
+            />
+          </div>
+          <div className="min-w-[10rem]">
+            <label className="mb-1 block text-xs font-medium text-muted">Τμήμα</label>
+            <select value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)} className={inputClass}>
+              <option value="">— Όλα —</option>
+              {departmentOptions.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[9rem]">
+            <label className="mb-1 block text-xs font-medium text-muted">Κατάσταση</label>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as "all" | MemberStatus)} className={inputClass}>
+              <option value="all">Όλες</option>
+              <option value="active">Ενεργά</option>
+              <option value="inactive">Ανενεργά</option>
+            </select>
+          </div>
+          <div className="min-w-[10rem]">
+            <label className="mb-1 block text-xs font-medium text-muted">Ηλικιακή κατηγορία</label>
+            <select value={ageFilter} onChange={(e) => setAgeFilter(e.target.value as "all" | "child" | "adult")} className={inputClass}>
+              <option value="all">Όλα</option>
+              <option value="child">Παιδιά (&lt;18)</option>
+              <option value="adult">Ενήλικες (18+)</option>
+            </select>
+          </div>
+          <div className="min-w-[10rem]">
+            <label className="mb-1 block text-xs font-medium text-muted">
+              Ελλειπή Στοιχεία
+            </label>
+            <select
+              value={missingField}
+              onChange={(e) => setMissingField(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">— Όλα —</option>
+              <option value="phone">Τηλέφωνο</option>
+              <option value="email">Email</option>
+              <option value="birth_date">Ημερομηνία γέννησης</option>
+              <option value="address">Διεύθυνση</option>
+              <option value="occupation">Επάγγελμα</option>
+              <option value="father_name">Όνομα πατρός</option>
+              <option value="mother_name">Όνομα μητρός</option>
+              <option value="maiden_name">Γένος</option>
+            </select>
+          </div>
         </div>
-        <div className="min-w-[10rem]">
-          <label className="mb-1 block text-xs font-medium text-muted">
-            Τμήμα
+        {/* Γραμμή 2: checkboxes + clear button */}
+        <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={boardOnly} onChange={(e) => setBoardOnly(e.target.checked)} className="h-4 w-4 rounded border-border" />
+            Μόνο Δ.Σ.
           </label>
-          <select
-            value={departmentFilter}
-            onChange={(e) => setDepartmentFilter(e.target.value)}
-            className={inputClass}
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={familyOnly} onChange={(e) => setFamilyOnly(e.target.checked)} className="h-4 w-4 rounded border-border" />
+            Μόνο οικογένειες
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={unverifiedOnly} onChange={(e) => setUnverifiedOnly(e.target.checked)} className="h-4 w-4 rounded border-border" />
+            Μόνο μη-επιβεβαιωμένα
+          </label>
+          <button
+            type="button"
+            onClick={clearFilters}
+            disabled={!filtersActive}
+            className="rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-background disabled:opacity-50"
           >
-            <option value="">— Όλα —</option>
-            {departmentOptions.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
+            Καθαρισμός φίλτρων
+          </button>
+          <span className="ml-auto text-sm text-muted">
+            {filtered.length === members.length
+              ? `${members.length} μέλη`
+              : `${filtered.length} / ${members.length} μέλη`}
+          </span>
         </div>
-        <div className="min-w-[9rem]">
-          <label className="mb-1 block text-xs font-medium text-muted">
-            Κατάσταση
-          </label>
-          <select
-            value={statusFilter}
-            onChange={(e) =>
-              setStatusFilter(e.target.value as "all" | MemberStatus)
-            }
-            className={inputClass}
-          >
-            <option value="all">Όλες</option>
-            <option value="active">Ενεργά</option>
-            <option value="inactive">Ανενεργά</option>
-          </select>
-        </div>
-        <div className="min-w-[10rem]">
-          <label className="mb-1 block text-xs font-medium text-muted">
-            Ηλικιακή κατηγορία
-          </label>
-          <select
-            value={ageFilter}
-            onChange={(e) =>
-              setAgeFilter(e.target.value as "all" | "child" | "adult")
-            }
-            className={inputClass}
-          >
-            <option value="all">Όλα</option>
-            <option value="child">Παιδιά (&lt;18)</option>
-            <option value="adult">Ενήλικες (18+)</option>
-          </select>
-        </div>
-        <label className="flex items-center gap-2 self-end pb-2 text-sm">
-          <input
-            type="checkbox"
-            checked={boardOnly}
-            onChange={(e) => setBoardOnly(e.target.checked)}
-            className="h-4 w-4 rounded border-border"
-          />
-          Μόνο Δ.Σ.
-        </label>
-        <label className="flex items-center gap-2 self-end pb-2 text-sm">
-          <input
-            type="checkbox"
-            checked={familyOnly}
-            onChange={(e) => setFamilyOnly(e.target.checked)}
-            className="h-4 w-4 rounded border-border"
-          />
-          Μόνο οικογένειες
-        </label>
-        <label className="flex items-center gap-2 self-end pb-2 text-sm">
-          <input
-            type="checkbox"
-            checked={unverifiedOnly}
-            onChange={(e) => setUnverifiedOnly(e.target.checked)}
-            className="h-4 w-4 rounded border-border"
-          />
-          Μόνο μη-επιβεβαιωμένα
-        </label>
-        <button
-          type="button"
-          onClick={clearFilters}
-          disabled={!filtersActive}
-          className="self-end rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-background disabled:opacity-50"
-        >
-          Καθαρισμός φίλτρων
-        </button>
       </div>
 
       {toast && (
