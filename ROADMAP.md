@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-08 (Modular features per club)  
+> Last updated: 2026-05-08 (Email verification + member self-update)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -218,6 +218,65 @@ _(no active branches)_
 
   Estimated: M (responsive design, AppShell rework)
   Priority: High (UX blocker σε field use)
+
+## 🟣 Member Portal — Επίπεδο 4 (Future Stack)
+
+> Τρίτο stack παράλληλα με 📊 Διαχειριστικό + 🎩 Operational.
+> Member-facing self-service portal. Standalone-able από τα άλλα stacks.
+
+- [ ] **Chunk 2 — Member Auth + Profile**
+
+  Stack: 🟣 Member Portal
+
+  Scope: Magic link login για μέλη με email-based authentication.
+
+  Spec:
+  - /login page (διαφορετικό από admin login)
+  - Supabase Auth signInWithOtp({ email })
+  - First-time invite flow (reuse token mechanism από PR #39)
+  - /profile page με στοιχεία μέλους
+  - Field-level edit permissions (read-only vs editable)
+  - auth.users ↔ members linkage (members.user_id FK ή email match)
+  - RLS policies για self-access only
+
+  Connects με: PR #39 token mechanism, role-based permissions
+
+  Estimated: L (1-2 sessions)
+
+- [ ] **Chunk 3 — Member Events + Finances**
+
+  Stack: 🟣 Member Portal
+
+  Scope: Visibility σε events + financial state του μέλους.
+
+  Spec:
+  - /events public view για member (όλες οι εκδηλώσεις του συλλόγου)
+  - Member's reservations history (μετά + πριν)
+  - /finances/me — οφειλές + πληρωμές history
+  - Status badge (ενεργό/ανενεργό) με reason
+  - Member sees ΟΧΙ amounts of others, μόνο δικά του
+
+  Connects με: events domain, finances domain, RLS policies
+
+  Estimated: L
+
+- [ ] **Chunk 4 — Departments + Classes + Messages**
+
+  Stack: 🟣 Member Portal
+
+  Scope: Class enrollment + announcements per τμήμα.
+
+  Spec (απαιτείται νέο schema):
+  - classes table (department_id FK, schedule, location, instructor)
+  - class_enrollments table (class_id, member_id, enrolled_at)
+  - department_messages table (department_id, title, body, posted_by, posted_at)
+  - /departments/[id] page για members
+  - Family-wide visibility (parent βλέπει παιδιά τους εγγεγραμμένα)
+  - Push notifications για νέα μηνύματα
+
+  Connects με: departments, family system, push notifications
+
+  Estimated: XL (multi-session — απαιτεί schema design)
 
 ## 🟢 Nice to Have / Future
 
@@ -551,6 +610,39 @@ _(no active branches)_
     + state field στο `useRole`
   - Estimated: XS (single SQL + 2 small code edits)
 
+- [ ] **Server-side permission checks στα verification endpoints**
+  - PR #39 endpoints έχουν μόνο auth.getUser() check (όχι permission)
+  - Στην πράξη protected via UI page-level gate, αλλά API direct call
+    bypassable
+  - Add proper RLS-based or role-based check στα:
+    * /api/members/[id]/send-verification-email
+    * /api/members/send-verification-bulk
+  - Connects με: RLS policies (production blocker)
+  - Estimated: S
+
+- [ ] **Drop `clubs.branding` jsonb column (duplicate)**
+  - Schema drift: branding existence σε ΔΥΟ tables
+    * clubs.branding (jsonb με logo_url + primary_color)
+    * club_settings (full row με logo_url, primary_color, secondary_color, accent, theme_preset, ...)
+  - club_settings είναι το source of truth (χρησιμοποιείται από /settings/club UI)
+  - clubs.branding είναι orphan, sync-εμένο manually σήμερα για το PR #39
+  - Refactor: drop clubs.branding column + remove from app code
+  - Estimated: S
+
+- [ ] **Rate limiting για bulk verification send**
+  - Resend free tier: 2/sec sustained, 10/sec burst
+  - Σήμερα δουλεύει για 8 emails (kriton-aigaleo)
+  - Όταν φτάσουμε >100 unverified σε ένα σύλλογο, σπάει
+  - Solution: chunk + delay, ή Resend bulk API
+  - Estimated: S
+
+- [ ] **Domain transition: hub.party4u.gr → syllogoshub.gr**
+  - Όταν ολοκληρωθεί το syllogoshub.gr setup
+  - Verify νέο domain στο Resend (νέα DNS records)
+  - Update env vars (RESEND_FROM_EMAIL, NEXT_PUBLIC_APP_URL)
+  - Vercel redirect από old domain για ήδη-σταλμένα /me/[token] links
+  - Estimated: S
+
 - [ ] **Migration safety conventions** (process, όχι code)
   - Snapshot pattern με `create table as select` αντιγράφει ΜΟΝΟ data, όχι FKs/constraints
   - Για schema rollback: χρησιμοποίησε authentic migration files, όχι rename backup
@@ -562,6 +654,51 @@ _(no active branches)_
   - Estimated: S (write doc + add to README)
 
 ## ✅ Recently Done
+
+### feat/email-verification (merged 2026-05-08) — PR #39
+
+Email verification & member self-update flow με Resend.
+End-to-end production-tested.
+
+**Infrastructure setup:**
+- [x] Resend account + domain `hub.party4u.gr` verified (DKIM/SPF/MX/DMARC)
+- [x] API key generated, env vars στο Vercel + .env.local
+- [x] Logo URL synced στο clubs.branding + club_settings
+
+**Schema (Migration 0019):**
+- [x] members.email_verification_token (text, nullable)
+- [x] members.email_verification_sent_at (timestamptz)
+- [x] members.email_verification_expires_at (timestamptz)
+- [x] Partial index για token lookups (μόνο όπου token != NULL)
+
+**Code (8 commits):**
+- [x] types.ts: 3 νέα verification fields στο Member type
+- [x] lib/email/resend.ts: singleton Resend client με env validation
+- [x] lib/email/templates/memberVerification.ts: branded HTML με
+  logo + μπορντό CTA button + plain text fallback
+- [x] POST /api/members/[id]/send-verification-email (auth)
+- [x] POST /api/members/send-verification-bulk (auth)
+- [x] GET /api/me/[token] (public, no auth — token IS credential)
+- [x] POST /api/me/[token]/update (public, field whitelist)
+- [x] /me/[token] public page με branded form
+
+**Architectural decisions:**
+- Self-update field whitelist: phone, birth_date, address,
+  occupation, parents, maiden_name (όχι first_name/last_name/email)
+- Token = UUID v4, 30-day expiry, **reusable μέχρι expiry**
+  (μέλος μπορεί να ξανανοίξει form να αλλάξει στοιχεία)
+- Implicit verification: αν φτάσει στο email + submit, verified
+- Branding διαβάζεται από `club_settings` table (όχι clubs.branding)
+
+**Production verification:**
+- info@party4u.gr → email στάλθηκε (Resend Status 200)
+- Public page φόρτωσε με σωστό branding (logo + #800000)
+- Submit ενημέρωσε DB (email_verified=true, fields populated)
+- Bulk send button έτοιμο (untested στα 8 emails — manual run)
+
+**Foundation για:**
+- Member Portal Chunks 2-4 (login, profile, events, finances)
+- Token mechanism reusable για first-time invite
 
 ### feat/club-modules (merged 2026-05-08) — PR #36
 
