@@ -1,17 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin } from "@/lib/auth/requireSuperAdmin";
 import { getAdminClient } from "@/lib/supabase/admin";
-import type { ClubPlan, ClubUpdate } from "@/lib/supabase/types";
+import type {
+  ClubCategory,
+  ClubPlan,
+  ClubUpdate,
+} from "@/lib/supabase/types";
 
 type Params = { params: Promise<{ id: string }> };
 
 // ─────────── Validation rules ───────────
 const VALID_PLANS: readonly ClubPlan[] = ["basic", "pro", "premium"] as const;
+const VALID_CATEGORIES: readonly ClubCategory[] = [
+  "traditional",
+  "sports",
+  "cultural",
+  "professional",
+  "friends",
+  "other",
+] as const;
 const PG_NO_ROWS = "PGRST116";
 
 type PatchBody = {
   plan?: unknown;
   is_active?: unknown;
+  category?: unknown;
 };
 
 type DeleteBody = {
@@ -36,13 +49,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       );
     }
 
-    const { plan, is_active } = raw;
+    const { plan, is_active, category } = raw;
     const hasPlan = plan !== undefined;
     const hasIsActive = is_active !== undefined;
+    const hasCategory = category !== undefined;
 
-    if (!hasPlan && !hasIsActive) {
+    if (!hasPlan && !hasIsActive && !hasCategory) {
       return NextResponse.json(
-        { error: "Καμία αλλαγή — δώσε τουλάχιστον plan ή is_active" },
+        {
+          error:
+            "Καμία αλλαγή — δώσε τουλάχιστον plan, is_active ή category",
+        },
         { status: 400 },
       );
     }
@@ -71,12 +88,27 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       update.is_active = is_active;
     }
 
+    if (hasCategory) {
+      if (
+        !isString(category) ||
+        !VALID_CATEGORIES.includes(category as ClubCategory)
+      ) {
+        return NextResponse.json(
+          {
+            error: `Invalid category — αποδεκτές τιμές: ${VALID_CATEGORIES.join(", ")}`,
+          },
+          { status: 400 },
+        );
+      }
+      update.category = category as ClubCategory;
+    }
+
     const admin = getAdminClient();
     const { data: club, error } = await admin
       .from("clubs")
       .update(update)
       .eq("id", id)
-      .select("id, name, slug, plan, is_active, created_at")
+      .select("id, name, slug, plan, is_active, created_at, category")
       .single();
 
     if (error) {

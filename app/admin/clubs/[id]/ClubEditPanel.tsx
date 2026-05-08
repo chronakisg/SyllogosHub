@@ -2,9 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Club, ClubPlan } from "@/lib/supabase/types";
+import {
+  CLUB_CATEGORY_LABELS,
+  type Club,
+  type ClubCategory,
+  type ClubPlan,
+} from "@/lib/supabase/types";
 
-type ClubProps = Pick<Club, "id" | "slug" | "plan" | "is_active">;
+type ClubProps = Pick<
+  Club,
+  "id" | "slug" | "plan" | "is_active" | "category"
+>;
 
 const PLAN_BADGE: Record<string, string> = {
   basic: "bg-gray-200 text-gray-800",
@@ -22,6 +30,9 @@ export function ClubEditPanel({ club }: { club: ClubProps }) {
   const [mode, setMode] = useState<Mode>("view");
   const [planValue, setPlanValue] = useState<ClubPlan>(club.plan);
   const [isActiveValue, setIsActiveValue] = useState<boolean>(club.is_active);
+  const [categoryValue, setCategoryValue] = useState<ClubCategory>(
+    club.category,
+  );
   const [confirmSlugInput, setConfirmSlugInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -30,6 +41,7 @@ export function ClubEditPanel({ club }: { club: ClubProps }) {
   function startEdit() {
     setPlanValue(club.plan);
     setIsActiveValue(club.is_active);
+    setCategoryValue(club.category);
     setError(null);
     setMode("editing");
   }
@@ -56,6 +68,7 @@ export function ClubEditPanel({ club }: { club: ClubProps }) {
         body: JSON.stringify({
           plan: planValue,
           is_active: isActiveValue,
+          category: categoryValue,
         }),
       });
       const body = (await res.json().catch(() => null)) as
@@ -126,6 +139,11 @@ export function ClubEditPanel({ club }: { club: ClubProps }) {
               </span>
             )}
           </Row>
+          <Row label="Κατηγορία">
+            <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-700">
+              {CLUB_CATEGORY_LABELS[club.category]}
+            </span>
+          </Row>
         </div>
 
         <div className="flex items-center justify-between gap-2 pt-3 border-t border-gray-100">
@@ -180,6 +198,26 @@ export function ClubEditPanel({ club }: { club: ClubProps }) {
               className="h-4 w-4 rounded border-gray-300 text-[#800000] focus:ring-[#800000]/20"
             />
             <span className="text-gray-700">Ενεργός σύλλογος</span>
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-gray-700">
+              Κατηγορία
+            </span>
+            <select
+              value={categoryValue}
+              onChange={(e) =>
+                setCategoryValue(e.target.value as ClubCategory)
+              }
+              className={INPUT_CLASS}
+              disabled={saving}
+            >
+              {Object.entries(CLUB_CATEGORY_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
 

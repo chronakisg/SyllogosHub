@@ -3,6 +3,23 @@ export type PaymentType = "monthly_fee" | "annual";
 
 export type ClubPlan = "basic" | "pro" | "premium";
 
+export type ClubCategory =
+  | "traditional"
+  | "sports"
+  | "cultural"
+  | "professional"
+  | "friends"
+  | "other";
+
+export const CLUB_CATEGORY_LABELS: Record<ClubCategory, string> = {
+  traditional: "Παραδοσιακός",
+  sports: "Αθλητικός",
+  cultural: "Πολιτιστικός",
+  professional: "Επαγγελματικός",
+  friends: "Φιλικός",
+  other: "Άλλο",
+};
+
 export type Club = {
   id: string;
   slug: string;
@@ -11,6 +28,7 @@ export type Club = {
   created_at: string;
   plan: ClubPlan;
   is_active: boolean;
+  category: ClubCategory;
 };
 
 export type ClubInsert = {
@@ -21,6 +39,7 @@ export type ClubInsert = {
   created_at?: string;
   plan?: ClubPlan;
   is_active?: boolean;
+  category?: ClubCategory;
 };
 
 export type ClubUpdate = Partial<Omit<Club, "id" | "created_at">>;

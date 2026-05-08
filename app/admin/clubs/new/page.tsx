@@ -3,6 +3,8 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { CLUB_CATEGORY_LABELS } from "@/lib/supabase/types";
+import type { ClubCategory } from "@/lib/supabase/types";
 
 type FormState = {
   name: string;
@@ -12,6 +14,7 @@ type FormState = {
   adminPassword: string;
   adminFirstName: string;
   adminLastName: string;
+  category: ClubCategory;
 };
 
 const INITIAL: FormState = {
@@ -22,6 +25,7 @@ const INITIAL: FormState = {
   adminPassword: "",
   adminFirstName: "",
   adminLastName: "",
+  category: "traditional",
 };
 
 const INPUT_CLASS =
@@ -116,6 +120,23 @@ export default function NewClubPage() {
             <option value="basic">basic</option>
             <option value="pro">pro</option>
             <option value="premium">premium</option>
+          </select>
+        </Field>
+
+        <Field label="Κατηγορία" required>
+          <select
+            required
+            value={form.category}
+            onChange={(e) =>
+              update("category", e.target.value as ClubCategory)
+            }
+            className={INPUT_CLASS}
+          >
+            {Object.entries(CLUB_CATEGORY_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
           </select>
         </Field>
 
