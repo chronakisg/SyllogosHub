@@ -7,6 +7,7 @@ import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
+import { DateInput } from "@/components/DateInput";
 import { calculateAge, generateUuid } from "@/lib/utils/discounts";
 import { formatMemberName } from "@/lib/utils/attendees";
 import {
@@ -60,6 +61,16 @@ type FormState = {
   email_verified: boolean;
   email_verified_at: string | null;
   email_verified_by: string | null;
+  father_name: string;
+  mother_name: string;
+  maiden_name: string;
+  birthplace: string;
+  residence: string;
+  address: string;
+  occupation: string;
+  registry_number: string;
+  application_number: string;
+  application_date: string;
 };
 
 const EMPTY_FORM: FormState = {
@@ -83,6 +94,16 @@ const EMPTY_FORM: FormState = {
   email_verified: false,
   email_verified_at: null,
   email_verified_by: null,
+  father_name: "",
+  mother_name: "",
+  maiden_name: "",
+  birthplace: "",
+  residence: "",
+  address: "",
+  occupation: "",
+  registry_number: "",
+  application_number: "",
+  application_date: "",
 };
 
 function defaultFamilyRole(birthDate: string | null): FamilyRole {
@@ -446,6 +467,16 @@ export default function MembersPage() {
       email_verified: member.email_verified,
       email_verified_at: member.email_verified_at,
       email_verified_by: member.email_verified_by,
+      father_name: member.father_name ?? "",
+      mother_name: member.mother_name ?? "",
+      maiden_name: member.maiden_name ?? "",
+      birthplace: member.birthplace ?? "",
+      residence: member.residence ?? "",
+      address: member.address ?? "",
+      occupation: member.occupation ?? "",
+      registry_number: member.registry_number ?? "",
+      application_number: member.application_number ?? "",
+      application_date: member.application_date ?? "",
     };
     setEditing(member);
     setForm(next);
@@ -603,6 +634,16 @@ export default function MembersPage() {
       family_id: resolvedFamilyId,
       family_role:
         resolvedFamilyId && form.family_role ? form.family_role : null,
+      father_name: form.father_name.trim() || null,
+      mother_name: form.mother_name.trim() || null,
+      maiden_name: form.maiden_name.trim() || null,
+      birthplace: form.birthplace.trim() || null,
+      residence: form.residence.trim() || null,
+      address: form.address.trim() || null,
+      occupation: form.occupation.trim() || null,
+      registry_number: form.registry_number.trim() || null,
+      application_number: form.application_number.trim() || null,
+      application_date: form.application_date || null,
     };
 
     const wasCreate = !editing;
@@ -1620,15 +1661,10 @@ function MemberModal({
 
                 <Field label="Ημερομηνία Γέννησης">
                   <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      lang="el"
+                    <DateInput
                       value={form.birth_date}
-                      onChange={(e) =>
-                        setForm((s) => ({
-                          ...s,
-                          birth_date: e.target.value,
-                        }))
+                      onChange={(iso) =>
+                        setForm((s) => ({ ...s, birth_date: iso }))
                       }
                       className={inputClass}
                     />
@@ -1638,6 +1674,127 @@ function MemberModal({
                       </span>
                     )}
                   </div>
+                </Field>
+
+                <h3 className="text-sm font-semibold text-foreground mt-4 mb-2 pb-1 border-b border-border">
+                  Γονείς
+                </h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Όνομα Πατρός">
+                    <input
+                      type="text"
+                      value={form.father_name}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, father_name: e.target.value }))
+                      }
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="Όνομα Μητρός">
+                    <input
+                      type="text"
+                      value={form.mother_name}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, mother_name: e.target.value }))
+                      }
+                      className={inputClass}
+                    />
+                  </Field>
+                </div>
+                <Field label="Γένος (πατρικό)">
+                  <input
+                    type="text"
+                    value={form.maiden_name}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, maiden_name: e.target.value }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+
+                <h3 className="text-sm font-semibold text-foreground mt-4 mb-2 pb-1 border-b border-border">
+                  Καταγωγή & Διεύθυνση
+                </h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Τόπος Γέννησης">
+                    <input
+                      type="text"
+                      value={form.birthplace}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, birthplace: e.target.value }))
+                      }
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="Τόπος Κατοικίας">
+                    <input
+                      type="text"
+                      value={form.residence}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, residence: e.target.value }))
+                      }
+                      className={inputClass}
+                    />
+                  </Field>
+                </div>
+                <Field label="Διεύθυνση">
+                  <input
+                    type="text"
+                    value={form.address}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, address: e.target.value }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+
+                <h3 className="text-sm font-semibold text-foreground mt-4 mb-2 pb-1 border-b border-border">
+                  Επάγγελμα
+                </h3>
+                <Field label="Επάγγελμα">
+                  <input
+                    type="text"
+                    value={form.occupation}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, occupation: e.target.value }))
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+
+                <h3 className="text-sm font-semibold text-foreground mt-4 mb-2 pb-1 border-b border-border">
+                  Στοιχεία Μητρώου
+                </h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Αριθμός Μητρώου">
+                    <input
+                      type="text"
+                      value={form.registry_number}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, registry_number: e.target.value }))
+                      }
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="Αριθμός Αίτησης">
+                    <input
+                      type="text"
+                      value={form.application_number}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, application_number: e.target.value }))
+                      }
+                      className={inputClass}
+                    />
+                  </Field>
+                </div>
+                <Field label="Ημερομηνία Αίτησης">
+                  <DateInput
+                    value={form.application_date}
+                    onChange={(iso) =>
+                      setForm((s) => ({ ...s, application_date: iso }))
+                    }
+                    className={inputClass}
+                  />
                 </Field>
               </>
             )}

@@ -105,6 +105,16 @@ export type Member = {
   email_verified_at: string | null;
   email_verified_by: string | null;
   created_at: string;
+  father_name: string | null;
+  mother_name: string | null;
+  maiden_name: string | null;
+  birthplace: string | null;
+  residence: string | null;
+  address: string | null;
+  occupation: string | null;
+  registry_number: string | null;
+  application_number: string | null;
+  application_date: string | null;
 };
 
 export type MemberInsert = {
@@ -129,6 +139,16 @@ export type MemberInsert = {
   email_verified_at?: string | null;
   email_verified_by?: string | null;
   created_at?: string;
+  father_name?: string | null;
+  mother_name?: string | null;
+  maiden_name?: string | null;
+  birthplace?: string | null;
+  residence?: string | null;
+  address?: string | null;
+  occupation?: string | null;
+  registry_number?: string | null;
+  application_number?: string | null;
+  application_date?: string | null;
 };
 
 export type MemberUpdate = Partial<Omit<Member, "id" | "created_at">>;
