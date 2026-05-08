@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { ClubEditPanel } from "./ClubEditPanel";
+import { ClubModulesPanel } from "./ClubModulesPanel";
 
 const PLAN_BADGE: Record<string, string> = {
   basic: "bg-gray-200 text-gray-800",
@@ -145,6 +146,8 @@ export default async function AdminClubDetailPage({
 
       {/* ── Plan & Status (editable) ── */}
       <ClubEditPanel club={club} />
+
+      <ClubModulesPanel clubId={club.id} />
 
       {/* ── Quick Actions ── */}
       <Section title="Quick Actions">

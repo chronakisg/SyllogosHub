@@ -44,6 +44,43 @@ export type ClubInsert = {
 
 export type ClubUpdate = Partial<Omit<Club, "id" | "created_at">>;
 
+export type ClubModule =
+  | "members"
+  | "events"
+  | "seating"
+  | "finances"
+  | "cashier"
+  | "calendar"
+  | "communications";
+
+export const CORE_CLUB_MODULES: ClubModule[] = ["members", "events", "calendar"];
+
+export const CLUB_MODULE_LABELS: Record<ClubModule, string> = {
+  members: "Μέλη",
+  events: "Εκδηλώσεις",
+  seating: "Πλάνο Τραπεζιών",
+  finances: "Οικονομικά",
+  cashier: "Ταμείο",
+  calendar: "Ημερολόγιο",
+  communications: "Επικοινωνία",
+};
+
+export type ClubModuleRow = {
+  club_id: string;
+  module: ClubModule;
+  enabled: boolean;
+};
+
+export type ClubModuleInsert = {
+  club_id: string;
+  module: ClubModule;
+  enabled?: boolean;
+};
+
+export type ClubModuleUpdate = {
+  enabled?: boolean;
+};
+
 export type FamilyRole = "parent" | "child" | "spouse" | "other";
 
 export type Member = {
@@ -1189,6 +1226,20 @@ export type Database = {
         Insert: ClubSettingsInsert;
         Update: ClubSettingsUpdate;
         Relationships: [];
+      };
+      club_modules: {
+        Row: ClubModuleRow;
+        Insert: ClubModuleInsert;
+        Update: ClubModuleUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "club_modules_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       reservations: {
         Row: Reservation;

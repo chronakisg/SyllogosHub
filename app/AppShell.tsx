@@ -7,6 +7,8 @@ import { getBrowserClient } from "@/lib/supabase/client";
 import { useRole, type Permission, type RoleState } from "@/lib/hooks/useRole";
 import { useClubSettings } from "@/lib/hooks/useClubSettings";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
+import { useClubModules } from "@/lib/hooks/useClubModules";
+import type { ClubModule } from "@/lib/supabase/types";
 
 type NavSection = "daily" | "config";
 
@@ -17,6 +19,7 @@ type NavItem = {
   adminOnly?: boolean;
   section: NavSection;
   activePaths?: string[];
+  module?: ClubModule;
 };
 
 const SECTION_ORDER: NavSection[] = ["daily", "config"];
@@ -24,10 +27,10 @@ const SECTION_ORDER: NavSection[] = ["daily", "config"];
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Αρχική", permission: null, section: "daily" },
   { href: "/calendar", label: "Ημερολόγιο", permission: null, section: "daily" },
-  { href: "/members", label: "Διαχείριση Μελών", permission: "members", section: "daily" },
-  { href: "/events", label: "Εκδηλώσεις", permission: "events", section: "daily" },
-  { href: "/seating", label: "Πλάνο Τραπεζιών", permission: "seating", section: "daily" },
-  { href: "/finances", label: "Οικονομικά", permission: "finances", section: "daily" },
+  { href: "/members", label: "Διαχείριση Μελών", permission: "members", section: "daily", module: "members" },
+  { href: "/events", label: "Εκδηλώσεις", permission: "events", section: "daily", module: "events" },
+  { href: "/seating", label: "Πλάνο Τραπεζιών", permission: "seating", section: "daily", module: "seating" },
+  { href: "/finances", label: "Οικονομικά", permission: "finances", section: "daily", module: "finances" },
   {
     href: "/settings",
     label: "Ρυθμίσεις",
@@ -44,6 +47,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const role = useRole();
   const { settings: club, clubName } = useClubSettings();
   const currentClub = useCurrentClub();
+  const modules = useClubModules(currentClub.clubId);
   const [signingOut, setSigningOut] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
@@ -104,6 +108,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     ? NAV_ITEMS.filter((item) => !item.adminOnly)
     : NAV_ITEMS.filter((item) => {
         if (item.adminOnly && !isPrivileged) return false;
+        if (item.module && !modules.enabled.has(item.module)) return false;
         if (item.permission === null) return true;
         return role.permissions.includes(item.permission);
       });
