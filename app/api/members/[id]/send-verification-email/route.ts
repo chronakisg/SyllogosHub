@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerClient } from '@/lib/supabase/server';
-import { resend, FROM_EMAIL } from '@/lib/email/resend';
+import { getResend, getFromEmail } from '@/lib/email/resend';
 import { renderMemberVerificationEmail } from '@/lib/email/templates/memberVerification';
 import { randomUUID } from 'crypto';
 
@@ -102,8 +102,8 @@ export async function POST(
     verificationUrl,
   });
 
-  const { error: sendError } = await resend.emails.send({
-    from: FROM_EMAIL,
+  const { error: sendError } = await getResend().emails.send({
+    from: getFromEmail(),
     to: member.email,
     subject,
     html,
