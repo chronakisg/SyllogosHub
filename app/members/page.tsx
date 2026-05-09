@@ -11,6 +11,10 @@ import { DateInput } from "@/components/DateInput";
 import { calculateAge, generateUuid } from "@/lib/utils/discounts";
 import { formatMemberName } from "@/lib/utils/attendees";
 import {
+  formatRelativeDate,
+  getVerificationState,
+} from "@/lib/utils/verificationState";
+import {
   BOARD_POSITIONS,
   DEPARTMENT_ROLE_LABELS,
   FAMILY_ROLE_LABELS,
@@ -132,6 +136,10 @@ export default function MembersPage() {
   const [familyOnly, setFamilyOnly] = useState(false);
   const [unverifiedOnly, setUnverifiedOnly] = useState(false);
   const [missingField, setMissingField] = useState<string>("");
+  const [sortBy, setSortBy] = useState<{
+    column: "name" | "age" | "email" | "status";
+    direction: "asc" | "desc";
+  }>({ column: "name", direction: "asc" });
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MemberWithDepartments | null>(null);
@@ -228,7 +236,7 @@ export default function MembersPage() {
   };
   const [toast, setToast] = useState<Toast | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
-  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkModal, setBulkModal] = useState<BulkModalState | null>(null);
   useEffect(() => {
     if (!toast) return;
     const ms = toast.action ? 8000 : 5000;
@@ -380,7 +388,7 @@ export default function MembersPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return members.filter((m) => {
+    const result = members.filter((m) => {
       if (statusFilter !== "all" && m.status !== statusFilter) return false;
       if (boardOnly && !m.is_board_member) return false;
       if (familyOnly && !m.family_id) return false;
@@ -430,6 +438,42 @@ export default function MembersPage() {
       }
       return true;
     });
+
+    const dir = sortBy.direction === "asc" ? 1 : -1;
+    const sorted = [...result].sort((a, b) => {
+      switch (sortBy.column) {
+        case "name": {
+          return (
+            formatMemberName(a).localeCompare(formatMemberName(b), "el", {
+              sensitivity: "base",
+            }) * dir
+          );
+        }
+        case "age": {
+          const aAge = calculateAge(a.birth_date);
+          const bAge = calculateAge(b.birth_date);
+          if (aAge == null && bAge == null) return 0;
+          if (aAge == null) return 1;
+          if (bAge == null) return -1;
+          return (aAge - bAge) * dir;
+        }
+        case "email": {
+          const aEmail = a.email ?? "";
+          const bEmail = b.email ?? "";
+          if (!aEmail && !bEmail) return 0;
+          if (!aEmail) return 1;
+          if (!bEmail) return -1;
+          return (
+            aEmail.localeCompare(bEmail, "el", { sensitivity: "base" }) * dir
+          );
+        }
+        case "status": {
+          const rank = (s: string) => (s === "active" ? 0 : 1);
+          return (rank(a.status) - rank(b.status)) * dir;
+        }
+      }
+    });
+    return sorted;
   }, [
     members,
     search,
@@ -440,7 +484,16 @@ export default function MembersPage() {
     ageFilter,
     departmentFilter,
     missingField,
+    sortBy,
   ]);
+
+  function handleSort(column: "name" | "age" | "email" | "status") {
+    setSortBy((prev) =>
+      prev.column === column
+        ? { column, direction: prev.direction === "asc" ? "desc" : "asc" }
+        : { column, direction: "asc" }
+    );
+  }
 
   function clearFilters() {
     setSearch("");
@@ -761,7 +814,7 @@ export default function MembersPage() {
     }
   }
 
-  async function handleBulkSend() {
+  function openBulkModal() {
     const candidates = members.filter(
       (m) => m.email && !m.email_verified
     );
@@ -769,12 +822,11 @@ export default function MembersPage() {
       setToast({ message: "Δεν υπάρχουν μέλη για αποστολή" });
       return;
     }
-    const confirmed = window.confirm(
-      `Θα σταλούν ${candidates.length} emails verification σε όλα τα μη-επιβεβαιωμένα μέλη.\n\nΣυνέχεια;`
-    );
-    if (!confirmed) return;
+    setBulkModal({ phase: "confirm", count: candidates.length });
+  }
 
-    setBulkSending(true);
+  async function executeBulkSend() {
+    setBulkModal({ phase: "sending" });
     try {
       const res = await fetch("/api/members/send-verification-bulk", {
         method: "POST",
@@ -783,19 +835,36 @@ export default function MembersPage() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
+        setBulkModal(null);
         setToast({ message: `✗ ${body.error ?? "Σφάλμα"}` });
-      } else {
-        const errCount = body.errors?.length ?? 0;
-        const msg = errCount > 0
-          ? `✓ Στάλθηκαν ${body.sent} emails (${errCount} σφάλματα)`
-          : `✓ Στάλθηκαν ${body.sent} emails`;
-        setToast({ message: msg });
-        await loadMembers();
+        return;
       }
+      const rawErrors: Array<{ member_id: string; reason: string }> =
+        body.errors ?? [];
+      const errors = rawErrors.map((e) => {
+        const member = members.find((m) => m.id === e.member_id);
+        return {
+          email: member?.email ?? e.member_id,
+          error: e.reason,
+        };
+      });
+      setBulkModal({
+        phase: "result",
+        sent: body.sent ?? 0,
+        errors,
+      });
     } catch {
+      setBulkModal(null);
       setToast({ message: "✗ Σφάλμα δικτύου" });
-    } finally {
-      setBulkSending(false);
+    }
+  }
+
+  async function closeBulkModal() {
+    const wasSuccess =
+      bulkModal?.phase === "result" && bulkModal.sent > 0;
+    setBulkModal(null);
+    if (wasSuccess) {
+      await loadMembers();
     }
   }
 
@@ -845,7 +914,7 @@ export default function MembersPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="mx-auto w-full max-w-7xl">
       <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold tracking-tight">
           Διαχείριση Μελών
@@ -853,12 +922,12 @@ export default function MembersPage() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={handleBulkSend}
-            disabled={bulkSending}
+            onClick={openBulkModal}
+            disabled={bulkModal !== null}
             className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background disabled:opacity-50"
             title="Αποστολή verification email σε όλα τα μη-επιβεβαιωμένα"
           >
-            {bulkSending ? "Αποστολή…" : "📨 Bulk Verification"}
+            📨 Bulk Verification
           </button>
           <button
             type="button"
@@ -1001,15 +1070,35 @@ export default function MembersPage() {
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-border bg-background/50 text-xs uppercase tracking-wider text-muted">
+            <thead className="border-b-2 border-[#800000] bg-[#FAF5F5] text-xs uppercase tracking-wider text-[#800000]">
               <tr>
-                <th className="px-4 py-3">Ονοματεπώνυμο</th>
-                <th className="px-4 py-3">Ηλικία</th>
+                <SortableHeader
+                  label="Ονοματεπώνυμο"
+                  column="name"
+                  current={sortBy}
+                  onSort={handleSort}
+                />
+                <SortableHeader
+                  label="Ηλικία"
+                  column="age"
+                  current={sortBy}
+                  onSort={handleSort}
+                />
                 <th className="px-4 py-3">Τηλέφωνο</th>
-                <th className="px-4 py-3">Email</th>
+                <SortableHeader
+                  label="Email"
+                  column="email"
+                  current={sortBy}
+                  onSort={handleSort}
+                />
                 <th className="px-4 py-3">Τμήματα</th>
-                <th className="px-4 py-3">Κατάσταση</th>
-                <th className="px-4 py-3 text-right">Ενέργειες</th>
+                <SortableHeader
+                  label="Κατάσταση"
+                  column="status"
+                  current={sortBy}
+                  onSort={handleSort}
+                />
+                <th className="px-4 py-3 text-right whitespace-nowrap">Ενέργειες</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -1111,7 +1200,12 @@ export default function MembersPage() {
                     <td className="px-4 py-3 text-muted">
                       {m.email ? (
                         <span className="inline-flex items-center gap-1">
-                          <span>{m.email}</span>
+                          <span
+                            className="block max-w-[200px] truncate"
+                            title={m.email}
+                          >
+                            {m.email}
+                          </span>
                           <VerifyBadge
                             type="email"
                             verified={m.email_verified}
@@ -1168,19 +1262,61 @@ export default function MembersPage() {
                         <StatusBadge status={m.status} />
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
                       <div className="inline-flex gap-2">
-                        {m.email && !m.email_verified && (
-                          <button
-                            type="button"
-                            onClick={() => handleSendVerification(m)}
-                            disabled={sendingId === m.id}
-                            className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background disabled:opacity-50"
-                            title="Αποστολή email verification"
-                          >
-                            {sendingId === m.id ? "…" : "📧 Verify"}
-                          </button>
-                        )}
+                        {(() => {
+                          const vState = getVerificationState(m);
+                          const isSending = sendingId === m.id;
+                          switch (vState) {
+                            case "no_email":
+                              return null;
+                            case "never_sent":
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendVerification(m)}
+                                  disabled={isSending}
+                                  className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background disabled:opacity-50"
+                                  title="Αποστολή verification"
+                                >
+                                  {isSending ? "…" : "📧"}
+                                </button>
+                              );
+                            case "pending":
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendVerification(m)}
+                                  disabled={isSending}
+                                  className="rounded-md border border-border px-3 py-1 text-xs text-muted transition hover:bg-background disabled:opacity-50"
+                                  title={`Στάλθηκε ${formatRelativeDate(m.email_verification_sent_at)}. Επανάληψη;`}
+                                >
+                                  {isSending ? "…" : "🔄"}
+                                </button>
+                              );
+                            case "expired":
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendVerification(m)}
+                                  disabled={isSending}
+                                  className="rounded-md border border-amber-400 px-3 py-1 text-xs text-amber-700 transition hover:bg-amber-50 disabled:opacity-50 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                                  title={`Έληξε ${formatRelativeDate(m.email_verification_expires_at)}. Νέα αποστολή;`}
+                                >
+                                  {isSending ? "…" : "⌛"}
+                                </button>
+                              );
+                            case "verified":
+                              return (
+                                <span
+                                  className="inline-flex items-center px-3 py-1 text-xs"
+                                  title={`Επιβεβαιώθηκε ${formatRelativeDate(m.email_verified_at)}`}
+                                >
+                                  ✅
+                                </span>
+                              );
+                          }
+                        })()}
                         <button
                           type="button"
                           onClick={() => openEdit(m)}
@@ -1230,7 +1366,62 @@ export default function MembersPage() {
           onSave={saveStatusChange}
         />
       )}
+
+      {bulkModal && (
+        <BulkSendModal
+          state={bulkModal}
+          onConfirm={executeBulkSend}
+          onClose={closeBulkModal}
+        />
+      )}
     </div>
+  );
+}
+
+type BulkModalState =
+  | { phase: "confirm"; count: number }
+  | { phase: "sending" }
+  | {
+      phase: "result";
+      sent: number;
+      errors: Array<{ email: string; error: string }>;
+    };
+
+type SortColumn = "name" | "age" | "email" | "status";
+type SortState = { column: SortColumn; direction: "asc" | "desc" };
+
+function SortableHeader({
+  label,
+  column,
+  current,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  column: SortColumn;
+  current: SortState;
+  onSort: (column: SortColumn) => void;
+  align?: "left" | "right";
+}) {
+  const isActive = current.column === column;
+  const arrow = isActive ? (current.direction === "asc" ? "↑" : "↓") : "";
+  return (
+    <th
+      onClick={() => onSort(column)}
+      className={
+        "cursor-pointer select-none px-4 py-3 transition hover:bg-[#F0E6E6] " +
+        (align === "right" ? "text-right" : "")
+      }
+      aria-sort={
+        isActive
+          ? current.direction === "asc"
+            ? "ascending"
+            : "descending"
+          : "none"
+      }
+    >
+      {label} <span>{arrow}</span>
+    </th>
   );
 }
 
@@ -2323,6 +2514,112 @@ function lookupVerifierName(
   const v = members.find((m) => m.id === verifierId);
   if (!v) return null;
   return `${v.last_name} ${v.first_name}`.trim();
+}
+
+function BulkSendModal({
+  state,
+  onConfirm,
+  onClose,
+}: {
+  state: BulkModalState;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const isBlocking = state.phase === "sending";
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={() => {
+        if (!isBlocking) onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {state.phase === "confirm" && (
+          <>
+            <h2 className="text-lg font-semibold">Αποστολή verification</h2>
+            <p className="mt-3 text-sm">
+              Θα σταλούν{" "}
+              <span className="font-semibold">{state.count}</span> emails σε
+              όλα τα μη-επιβεβαιωμένα μέλη. Συνέχεια;
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background"
+              >
+                Ακύρωση
+              </button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                className="rounded-lg bg-[#800000] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#660000]"
+              >
+                Αποστολή
+              </button>
+            </div>
+          </>
+        )}
+
+        {state.phase === "sending" && (
+          <div className="flex flex-col items-center gap-3 py-4">
+            <span
+              className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-border border-t-[#800000]"
+              aria-hidden="true"
+            />
+            <p className="text-sm text-muted">
+              Αποστολή... παρακαλώ περιμένετε
+            </p>
+          </div>
+        )}
+
+        {state.phase === "result" && (
+          <>
+            <h2 className="text-lg font-semibold">
+              {state.errors.length === 0
+                ? "✅ Επιτυχής αποστολή"
+                : "⚠️ Ολοκληρώθηκε με σφάλματα"}
+            </h2>
+            <div className="mt-4 space-y-2 text-sm">
+              <p>
+                Στάλθηκαν:{" "}
+                <span className="font-semibold">{state.sent}</span> emails
+              </p>
+              {state.errors.length > 0 && (
+                <div>
+                  <p className="text-amber-700 dark:text-amber-400">
+                    Σφάλματα: {state.errors.length}
+                  </p>
+                  <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border bg-background p-2 text-xs">
+                    {state.errors.map((e, idx) => (
+                      <li key={idx} className="break-words">
+                        <span className="font-medium">{e.email}</span>
+                        <span className="text-muted"> — {e.error}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg bg-[#800000] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#660000]"
+              >
+                Κλείσιμο
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function VerifyBadge({
