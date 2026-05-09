@@ -236,7 +236,7 @@ export default function MembersPage() {
   };
   const [toast, setToast] = useState<Toast | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
-  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkModal, setBulkModal] = useState<BulkModalState | null>(null);
   useEffect(() => {
     if (!toast) return;
     const ms = toast.action ? 8000 : 5000;
@@ -814,7 +814,7 @@ export default function MembersPage() {
     }
   }
 
-  async function handleBulkSend() {
+  function openBulkModal() {
     const candidates = members.filter(
       (m) => m.email && !m.email_verified
     );
@@ -822,12 +822,11 @@ export default function MembersPage() {
       setToast({ message: "Δεν υπάρχουν μέλη για αποστολή" });
       return;
     }
-    const confirmed = window.confirm(
-      `Θα σταλούν ${candidates.length} emails verification σε όλα τα μη-επιβεβαιωμένα μέλη.\n\nΣυνέχεια;`
-    );
-    if (!confirmed) return;
+    setBulkModal({ phase: "confirm", count: candidates.length });
+  }
 
-    setBulkSending(true);
+  async function executeBulkSend() {
+    setBulkModal({ phase: "sending" });
     try {
       const res = await fetch("/api/members/send-verification-bulk", {
         method: "POST",
@@ -836,19 +835,36 @@ export default function MembersPage() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
+        setBulkModal(null);
         setToast({ message: `✗ ${body.error ?? "Σφάλμα"}` });
-      } else {
-        const errCount = body.errors?.length ?? 0;
-        const msg = errCount > 0
-          ? `✓ Στάλθηκαν ${body.sent} emails (${errCount} σφάλματα)`
-          : `✓ Στάλθηκαν ${body.sent} emails`;
-        setToast({ message: msg });
-        await loadMembers();
+        return;
       }
+      const rawErrors: Array<{ member_id: string; reason: string }> =
+        body.errors ?? [];
+      const errors = rawErrors.map((e) => {
+        const member = members.find((m) => m.id === e.member_id);
+        return {
+          email: member?.email ?? e.member_id,
+          error: e.reason,
+        };
+      });
+      setBulkModal({
+        phase: "result",
+        sent: body.sent ?? 0,
+        errors,
+      });
     } catch {
+      setBulkModal(null);
       setToast({ message: "✗ Σφάλμα δικτύου" });
-    } finally {
-      setBulkSending(false);
+    }
+  }
+
+  async function closeBulkModal() {
+    const wasSuccess =
+      bulkModal?.phase === "result" && bulkModal.sent > 0;
+    setBulkModal(null);
+    if (wasSuccess) {
+      await loadMembers();
     }
   }
 
@@ -906,12 +922,12 @@ export default function MembersPage() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={handleBulkSend}
-            disabled={bulkSending}
+            onClick={openBulkModal}
+            disabled={bulkModal !== null}
             className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background disabled:opacity-50"
             title="Αποστολή verification email σε όλα τα μη-επιβεβαιωμένα"
           >
-            {bulkSending ? "Αποστολή…" : "📨 Bulk Verification"}
+            📨 Bulk Verification
           </button>
           <button
             type="button"
@@ -1350,9 +1366,26 @@ export default function MembersPage() {
           onSave={saveStatusChange}
         />
       )}
+
+      {bulkModal && (
+        <BulkSendModal
+          state={bulkModal}
+          onConfirm={executeBulkSend}
+          onClose={closeBulkModal}
+        />
+      )}
     </div>
   );
 }
+
+type BulkModalState =
+  | { phase: "confirm"; count: number }
+  | { phase: "sending" }
+  | {
+      phase: "result";
+      sent: number;
+      errors: Array<{ email: string; error: string }>;
+    };
 
 type SortColumn = "name" | "age" | "email" | "status";
 type SortState = { column: SortColumn; direction: "asc" | "desc" };
@@ -2481,6 +2514,112 @@ function lookupVerifierName(
   const v = members.find((m) => m.id === verifierId);
   if (!v) return null;
   return `${v.last_name} ${v.first_name}`.trim();
+}
+
+function BulkSendModal({
+  state,
+  onConfirm,
+  onClose,
+}: {
+  state: BulkModalState;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const isBlocking = state.phase === "sending";
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={() => {
+        if (!isBlocking) onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {state.phase === "confirm" && (
+          <>
+            <h2 className="text-lg font-semibold">Αποστολή verification</h2>
+            <p className="mt-3 text-sm">
+              Θα σταλούν{" "}
+              <span className="font-semibold">{state.count}</span> emails σε
+              όλα τα μη-επιβεβαιωμένα μέλη. Συνέχεια;
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background"
+              >
+                Ακύρωση
+              </button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                className="rounded-lg bg-[#800000] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#660000]"
+              >
+                Αποστολή
+              </button>
+            </div>
+          </>
+        )}
+
+        {state.phase === "sending" && (
+          <div className="flex flex-col items-center gap-3 py-4">
+            <span
+              className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-border border-t-[#800000]"
+              aria-hidden="true"
+            />
+            <p className="text-sm text-muted">
+              Αποστολή... παρακαλώ περιμένετε
+            </p>
+          </div>
+        )}
+
+        {state.phase === "result" && (
+          <>
+            <h2 className="text-lg font-semibold">
+              {state.errors.length === 0
+                ? "✅ Επιτυχής αποστολή"
+                : "⚠️ Ολοκληρώθηκε με σφάλματα"}
+            </h2>
+            <div className="mt-4 space-y-2 text-sm">
+              <p>
+                Στάλθηκαν:{" "}
+                <span className="font-semibold">{state.sent}</span> emails
+              </p>
+              {state.errors.length > 0 && (
+                <div>
+                  <p className="text-amber-700 dark:text-amber-400">
+                    Σφάλματα: {state.errors.length}
+                  </p>
+                  <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border bg-background p-2 text-xs">
+                    {state.errors.map((e, idx) => (
+                      <li key={idx} className="break-words">
+                        <span className="font-medium">{e.email}</span>
+                        <span className="text-muted"> — {e.error}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg bg-[#800000] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#660000]"
+              >
+                Κλείσιμο
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function VerifyBadge({
