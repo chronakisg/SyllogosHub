@@ -83,12 +83,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const headerTitle = currentClub.club?.name || clubName;
 
-  if (
-    pathname.startsWith("/admin") ||
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/portal") ||
-    pathname.startsWith("/me")
-  ) {
+  // Strict prefix matching — αποφυγή collisions όπως /me vs /members
+  // /me.startsWith('/me') was returning true για /members, /memberX, etc.
+  const skipShell = (
+    pathname === "/login" ||
+    pathname === "/admin" || pathname.startsWith("/admin/") ||
+    pathname === "/portal" || pathname.startsWith("/portal/") ||
+    pathname === "/me" || pathname.startsWith("/me/")
+  );
+
+  if (skipShell) {
     return <>{children}</>;
   }
 
