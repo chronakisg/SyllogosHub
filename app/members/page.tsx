@@ -805,6 +805,7 @@ export default function MembersPage() {
         .eq("id", member.id)
         .eq("club_id", clubId);
       if (delErr) throw delErr;
+      closeModal();
       await loadMembers();
     } catch (err) {
       setError(errorMessage(err, "Σφάλμα διαγραφής μέλους."));
@@ -1327,6 +1328,7 @@ export default function MembersPage() {
           onSubmit={handleSubmit}
           onAddFamilyMember={openCreateLinkedTo}
           onToggleVerification={handleToggleVerification}
+          onDelete={() => editing && handleDelete(editing)}
         />
       )}
 
@@ -1556,6 +1558,7 @@ function MemberModal({
   onSubmit,
   onAddFamilyMember,
   onToggleVerification,
+  onDelete,
 }: {
   editing: Member | null;
   form: FormState;
@@ -1573,6 +1576,7 @@ function MemberModal({
     field: "phone" | "email",
     currentlyVerified: boolean
   ) => void | Promise<void>;
+  onDelete: () => void;
 }) {
   function toggleDepartment(deptId: string, checked: boolean) {
     setForm((s) =>
@@ -1755,40 +1759,54 @@ function MemberModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-border p-6">
-          {editing ? (
-            <>
-              <h2 className="inline-flex items-center gap-2 text-xl font-semibold uppercase">
-                <span
-                  title={editing.status === "active" ? "Ενεργό" : "Ανενεργό"}
-                  aria-label={
-                    editing.status === "active" ? "Ενεργό" : "Ανενεργό"
-                  }
-                  className={
-                    "block h-2.5 w-2.5 shrink-0 rounded-full " +
-                    (editing.status === "active"
-                      ? "bg-emerald-500"
-                      : "bg-rose-500")
-                  }
-                />
-                <span>
-                  {`${form.last_name} ${form.first_name}`.trim() ||
-                    "Επεξεργασία μέλους"}
-                </span>
-              </h2>
-              <p className="mt-0.5 text-sm text-muted">
-                {`${form.last_name} ${form.first_name}`.trim()
-                  ? "Επεξεργασία μέλους"
-                  : ""}
-              </p>
-            </>
-          ) : (
-            <>
-              <h2 className="text-xl font-semibold">Νέο Μέλος</h2>
-              <p className="mt-0.5 text-sm text-muted">
-                Συμπληρώστε τα στοιχεία
-              </p>
-            </>
-          )}
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              {editing ? (
+                <>
+                  <h2 className="inline-flex items-center gap-2 text-xl font-semibold uppercase">
+                    <span
+                      title={editing.status === "active" ? "Ενεργό" : "Ανενεργό"}
+                      aria-label={
+                        editing.status === "active" ? "Ενεργό" : "Ανενεργό"
+                      }
+                      className={
+                        "block h-2.5 w-2.5 shrink-0 rounded-full " +
+                        (editing.status === "active"
+                          ? "bg-emerald-500"
+                          : "bg-rose-500")
+                      }
+                    />
+                    <span>
+                      {`${form.last_name} ${form.first_name}`.trim() ||
+                        "Επεξεργασία μέλους"}
+                    </span>
+                  </h2>
+                  <p className="mt-0.5 text-sm text-muted">
+                    {`${form.last_name} ${form.first_name}`.trim()
+                      ? "Επεξεργασία μέλους"
+                      : ""}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-xl font-semibold">Νέο Μέλος</h2>
+                  <p className="mt-0.5 text-sm text-muted">
+                    Συμπληρώστε τα στοιχεία
+                  </p>
+                </>
+              )}
+            </div>
+            {editing && canEditMembers && (
+              <button
+                type="button"
+                onClick={onDelete}
+                className="whitespace-nowrap rounded-md border border-danger/30 px-3 py-1 text-xs text-danger transition hover:bg-danger/10"
+                title="Διαγραφή μέλους"
+              >
+                🗑 Διαγραφή
+              </button>
+            )}
+          </div>
           <div className="mt-3 inline-flex max-w-full overflow-x-auto rounded-lg border border-border bg-background p-0.5 text-xs">
             <MemberTabBtn
               current={tab}
