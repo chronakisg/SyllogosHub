@@ -1147,7 +1147,11 @@ export default function MembersPage() {
                 </tr>
               ) : (
                 filtered.map((m) => (
-                  <tr key={m.id} className="hover:bg-background/40">
+                  <tr
+                    key={m.id}
+                    onClick={() => openEdit(m)}
+                    className="cursor-pointer transition hover:bg-background/50"
+                  >
                     <td className="px-4 py-3 font-medium">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="inline-flex items-center gap-2">
@@ -1288,7 +1292,10 @@ export default function MembersPage() {
                       {canEditMembers ? (
                         <button
                           type="button"
-                          onClick={() => openStatusModal(m)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openStatusModal(m);
+                          }}
                           className="rounded-full transition hover:opacity-80"
                           title="Αλλαγή κατάστασης"
                         >
@@ -1310,7 +1317,10 @@ export default function MembersPage() {
                               return (
                                 <button
                                   type="button"
-                                  onClick={() => handleSendVerification(m)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSendVerification(m);
+                                  }}
                                   disabled={isSending}
                                   className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background disabled:opacity-50"
                                   title="Αποστολή verification"
@@ -1322,7 +1332,10 @@ export default function MembersPage() {
                               return (
                                 <button
                                   type="button"
-                                  onClick={() => handleSendVerification(m)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSendVerification(m);
+                                  }}
                                   disabled={isSending}
                                   className="rounded-md border border-border px-3 py-1 text-xs text-muted transition hover:bg-background disabled:opacity-50"
                                   title={`Στάλθηκε ${formatRelativeDate(m.email_verification_sent_at)}. Επανάληψη;`}
@@ -1334,7 +1347,10 @@ export default function MembersPage() {
                               return (
                                 <button
                                   type="button"
-                                  onClick={() => handleSendVerification(m)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSendVerification(m);
+                                  }}
                                   disabled={isSending}
                                   className="rounded-md border border-amber-400 px-3 py-1 text-xs text-amber-700 transition hover:bg-amber-50 disabled:opacity-50 dark:text-amber-400 dark:hover:bg-amber-950/30"
                                   title={`Έληξε ${formatRelativeDate(m.email_verification_expires_at)}. Νέα αποστολή;`}
@@ -1355,14 +1371,20 @@ export default function MembersPage() {
                         })()}
                         <button
                           type="button"
-                          onClick={() => openEdit(m)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEdit(m);
+                          }}
                           className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
                         >
                           Επεξεργασία
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDelete(m)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(m);
+                          }}
                           className="rounded-md border border-danger/30 px-3 py-1 text-xs text-danger transition hover:bg-danger/10"
                         >
                           Διαγραφή
