@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-08 (Email verification + member self-update)  
+> Last updated: 2026-05-09 (Members redesign + Member Portal Chunk 2)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -90,9 +90,17 @@ _(no active branches)_
 
 ## 🔴 Critical / Production Blockers
 
-- [ ] **RLS policies** for production multi-tenancy
-  - All current policies are `authenticated_all` → no per-club isolation
+- [ ] **RLS overhaul για όλα τα tables**
+  - Pre-existing 'RLS production blocker' ξεκαθαρίστηκε στο PR #44
+    review: 20 admin sites εξαρτώνται από browser/session queries
+    στο members table χωρίς service role wrapper.
+  - Aggressive RLS → admin app θα σπάσει.
+  - Στόχος: comprehensive policies για όλα τα tables (members,
+    clubs, events, finances, departments, ...) με admin allow-all
+    + member self-access patterns.
+  - Smoke test όλα τα admin sites μετά την εφαρμογή.
   - Required before opening to other clubs beyond beta client
+  - Estimated: L (multi-session)
 - [ ] **iOS Safari PWA test** — verify install + auto-update flow
 
 ## 🟡 High Priority (post-beta)
@@ -224,24 +232,9 @@ _(no active branches)_
 > Τρίτο stack παράλληλα με 📊 Διαχειριστικό + 🎩 Operational.
 > Member-facing self-service portal. Standalone-able από τα άλλα stacks.
 
-- [ ] **Chunk 2 — Member Auth + Profile**
-
-  Stack: 🟣 Member Portal
-
-  Scope: Magic link login για μέλη με email-based authentication.
-
-  Spec:
-  - /login page (διαφορετικό από admin login)
-  - Supabase Auth signInWithOtp({ email })
-  - First-time invite flow (reuse token mechanism από PR #39)
-  - /profile page με στοιχεία μέλους
-  - Field-level edit permissions (read-only vs editable)
-  - auth.users ↔ members linkage (members.user_id FK ή email match)
-  - RLS policies για self-access only
-
-  Connects με: PR #39 token mechanism, role-based permissions
-
-  Estimated: L (1-2 sessions)
+- [x] **Chunk 2 — Member Auth + Profile** — μετακινήθηκε σε
+  Recently Done (PR #44, merged 2026-05-09). Foundation για
+  Chunks 3-4.
 
 - [ ] **Chunk 3 — Member Events + Finances**
 
@@ -256,7 +249,8 @@ _(no active branches)_
   - Status badge (ενεργό/ανενεργό) με reason
   - Member sees ΟΧΙ amounts of others, μόνο δικά του
 
-  Connects με: events domain, finances domain, RLS policies
+  Connects με: events domain, finances domain, RLS policies,
+  Chunk 2 portal foundation (PR #44)
 
   Estimated: L
 
@@ -653,7 +647,116 @@ _(no active branches)_
   - Document αυτές τις conventions σε `docs/MIGRATIONS.md` (όταν γίνει)
   - Estimated: S (write doc + add to README)
 
+## 🔧 Tech Debt
+
+- [ ] **AppShell session-mismatch redirect**
+  Όταν admin κάνει login ως member σε άλλο tab, η admin
+  session αντικαθίσταται. Στο πρώτο tab (admin) ο shell
+  χάνει context. Fix: redirect σε /login αν useRole δεν
+  επιστρέφει admin permissions στις admin routes.
+  Estimated: S
+
+- [ ] **Migration safety: pre-flight smoke test admin pages
+       όταν αλλάζουμε AppShell**
+  Lesson από PR #45: regression test σε admin paths όταν
+  αλλάζεις AppShell guards. Process improvement, όχι code.
+  Estimated: process note
+
 ## ✅ Recently Done
+
+### feat/members-row-redesign (merged 2026-05-09) — PR #46
+
+5-commit redesign του /members admin page βάσει beta feedback.
+
+- [x] Νέα στήλη "Ιδιότητα" (occupation) με sortable header,
+      Greek collation, nulls last
+- [x] Row clickable → ανοίγει Edit modal (hover state +
+      stopPropagation σε όλα τα interactive elements)
+- [x] Αφαίρεση στήλης "Ενέργειες" (actions πια ζουν στο modal)
+- [x] Διαγραφή button μέσα στο modal header (πάνω δεξιά,
+      conditional: editing && canEditMembers, closeModal()
+      μετά από επιτυχία)
+- [x] VerificationStatusBar inline component στο modal με
+      5 states ("Email:" prefix για future-proofing με
+      SMS/push notifications)
+
+Architectural decision: όλες οι ενέργειες του member ζουν
+μαζί στο structured modal context αντί scattered στον πίνακα.
+
+### fix/members-page-shell-loss (merged 2026-05-09) — PR #45
+
+Hotfix για self-inflicted regression από PR #44. Το
+pathname.startsWith('/me') στο AppShell guard έπιανε
+false positive για /members (το /me είναι strict prefix
+του /members).
+
+Fix: defensive strict prefix matching για όλα τα 4
+skip-shell paths. Lesson: regression tests σε admin routes
+όταν αλλάζουμε AppShell guards.
+
+### feat/member-portal-auth (merged 2026-05-09) — PR #44
+
+Member Portal Chunk 2 — magic link auth + /portal/profile.
+8 commits, Migration 0020 (members.user_id), foundation
+για Chunks 3-4.
+
+Architectural decisions:
+- Magic link only (no passwords) μέσω Supabase admin.generateLink
+- hashed_token + verifyOtp pattern (PKCE incompatible με admin-
+  generated links)
+- Server-side email validation ('Δεν είστε μέλος' αν δεν υπάρχει)
+- Lazy auth user creation (no preemptive creation)
+- /portal/* prefix για member-facing routes
+- Branded magic link email (διαφορετικό από verification)
+
+Routes:
+- /portal/login — magic link request form
+- /portal/auth-callback — server-side verifyOtp + linkage
+- /portal/profile — read-only identity + 7-field self-update
+- /api/portal/auth/send-magic-link — email validation + admin
+  generateLink + Resend
+- /api/portal/profile/update — session-authed self-update
+
+Production-tested end-to-end:
+- Magic link sent → click → verifyOtp → linkAuthUserToMember
+  → /portal/profile
+- members.user_id linked με auth.users.id
+- Self-update writes σε DB
+- Logout clears session
+- Proxy guard μπλοκάρει /portal/profile για unauth users
+
+Connected με: PR #39 (verification), PR #42 (lazy Resend),
+types.ts hand-crafted Member type.
+
+### feat/members-sort-by-department (merged 2026-05-09) — PR #43
+
+Επέκταση του sort feature από PR #41 με 5η sortable column
+(Τμήματα). Comparator εκμεταλλεύεται pre-sorted departments
+από loadMembers (O(1) per comparison).
+
+### fix/resend-lazy-validation (merged 2026-05-09) — PR #42
+
+Lazy initialization στο lib/email/resend.ts. Module-level throw
+έσπαζε Next.js build στη φάση 'Collecting page data' όταν τα
+RESEND_* env vars δεν ήταν available στο build environment.
+Production behavior αμετάβλητο.
+
+### feat/members-list-improvements (merged 2026-05-09) — PR #41
+
+5-commit PR με 4 distinct UX issues στο /members page,
+χωρίς schema changes:
+
+- [x] Layout overflow fix (max-w-7xl, email truncation,
+      whitespace-nowrap σε actions column)
+- [x] Dynamic verification button per state (lib/utils/
+      verificationState.ts με 5 states + formatRelativeDate
+      Greek locale)
+- [x] Sortable column headers (Ονοματεπώνυμο, Ηλικία,
+      Email, Κατάσταση)
+- [x] Brand-styled table header (μπορντό text + light tint
+      background)
+- [x] Bulk send result modal (replace window.confirm με
+      2-phase modal)
 
 ### feat/email-verification (merged 2026-05-08) — PR #39
 
