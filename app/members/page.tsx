@@ -1054,7 +1054,7 @@ export default function MembersPage() {
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-border bg-background/50 text-xs uppercase tracking-wider text-muted">
+            <thead className="border-b-2 border-[#800000] bg-[#FAF5F5] text-xs uppercase tracking-wider text-[#800000]">
               <tr>
                 <SortableHeader
                   label="Ονοματεπώνυμο"
@@ -1376,7 +1376,7 @@ function SortableHeader({
     <th
       onClick={() => onSort(column)}
       className={
-        "cursor-pointer select-none px-4 py-3 transition hover:bg-background/80 " +
+        "cursor-pointer select-none px-4 py-3 transition hover:bg-[#F0E6E6] " +
         (align === "right" ? "text-right" : "")
       }
       aria-sort={
@@ -1387,7 +1387,7 @@ function SortableHeader({
           : "none"
       }
     >
-      {label} <span className="text-muted">{arrow}</span>
+      {label} <span>{arrow}</span>
     </th>
   );
 }
