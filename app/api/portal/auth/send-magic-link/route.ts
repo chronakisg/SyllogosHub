@@ -107,7 +107,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const magicLinkUrl = linkData.properties.action_link;
+  // Build custom callback URL με hashed_token (PKCE-incompatible
+  // with admin-generated links, οπότε χρησιμοποιούμε verifyOtp
+  // server-side στο auth-callback)
+  const magicLinkUrl = `${appUrl}/portal/auth-callback?token_hash=${encodeURIComponent(linkData.properties.hashed_token)}&type=magiclink`;
 
   // 6. Send branded email via Resend
   const memberName = `${member.first_name} ${member.last_name}`.trim();
