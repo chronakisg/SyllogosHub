@@ -1127,19 +1127,18 @@ export default function MembersPage() {
                   current={sortBy}
                   onSort={handleSort}
                 />
-                <th className="px-4 py-3 text-right whitespace-nowrap">Ενέργειες</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted">
                     Φόρτωση…
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted">
                     {members.length === 0
                       ? "Δεν υπάρχουν ακόμη μέλη. Πατήστε «Νέο Μέλος» για να ξεκινήσετε."
                       : "Δεν βρέθηκαν αποτελέσματα για τα φίλτρα."}
@@ -1304,92 +1303,6 @@ export default function MembersPage() {
                       ) : (
                         <StatusBadge status={m.status} />
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <div className="inline-flex gap-2">
-                        {(() => {
-                          const vState = getVerificationState(m);
-                          const isSending = sendingId === m.id;
-                          switch (vState) {
-                            case "no_email":
-                              return null;
-                            case "never_sent":
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSendVerification(m);
-                                  }}
-                                  disabled={isSending}
-                                  className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background disabled:opacity-50"
-                                  title="Αποστολή verification"
-                                >
-                                  {isSending ? "…" : "📧"}
-                                </button>
-                              );
-                            case "pending":
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSendVerification(m);
-                                  }}
-                                  disabled={isSending}
-                                  className="rounded-md border border-border px-3 py-1 text-xs text-muted transition hover:bg-background disabled:opacity-50"
-                                  title={`Στάλθηκε ${formatRelativeDate(m.email_verification_sent_at)}. Επανάληψη;`}
-                                >
-                                  {isSending ? "…" : "🔄"}
-                                </button>
-                              );
-                            case "expired":
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSendVerification(m);
-                                  }}
-                                  disabled={isSending}
-                                  className="rounded-md border border-amber-400 px-3 py-1 text-xs text-amber-700 transition hover:bg-amber-50 disabled:opacity-50 dark:text-amber-400 dark:hover:bg-amber-950/30"
-                                  title={`Έληξε ${formatRelativeDate(m.email_verification_expires_at)}. Νέα αποστολή;`}
-                                >
-                                  {isSending ? "…" : "⌛"}
-                                </button>
-                              );
-                            case "verified":
-                              return (
-                                <span
-                                  className="inline-flex items-center px-3 py-1 text-xs"
-                                  title={`Επιβεβαιώθηκε ${formatRelativeDate(m.email_verified_at)}`}
-                                >
-                                  ✅
-                                </span>
-                              );
-                          }
-                        })()}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEdit(m);
-                          }}
-                          className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
-                        >
-                          Επεξεργασία
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(m);
-                          }}
-                          className="rounded-md border border-danger/30 px-3 py-1 text-xs text-danger transition hover:bg-danger/10"
-                        >
-                          Διαγραφή
-                        </button>
-                      </div>
                     </td>
                   </tr>
                 ))
