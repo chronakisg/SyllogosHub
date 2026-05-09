@@ -31,6 +31,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
+  if (request.nextUrl.pathname.startsWith('/portal/profile') && !user) {
+    return NextResponse.redirect(new URL('/portal/login', request.url));
+  }
+
   return response;
 }
 
