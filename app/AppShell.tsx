@@ -85,7 +85,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   if (
     pathname.startsWith("/admin") ||
-    pathname.startsWith("/login")
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/portal") ||
+    pathname.startsWith("/me")
   ) {
     return <>{children}</>;
   }
