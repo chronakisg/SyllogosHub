@@ -137,7 +137,7 @@ export default function MembersPage() {
   const [unverifiedOnly, setUnverifiedOnly] = useState(false);
   const [missingField, setMissingField] = useState<string>("");
   const [sortBy, setSortBy] = useState<{
-    column: "name" | "age" | "email" | "status" | "departments";
+    column: "name" | "age" | "email" | "status" | "departments" | "occupation";
     direction: "asc" | "desc";
   }>({ column: "name", direction: "asc" });
 
@@ -480,6 +480,14 @@ export default function MembersPage() {
           return (
             aFirst.localeCompare(bFirst, "el", { sensitivity: "base" }) * dir
           );
+        }
+        case "occupation": {
+          const aVal = a.occupation?.trim() || null;
+          const bVal = b.occupation?.trim() || null;
+          if (aVal === null && bVal === null) return 0;
+          if (aVal === null) return 1;
+          if (bVal === null) return -1;
+          return aVal.localeCompare(bVal, "el", { sensitivity: "base" }) * dir;
         }
       }
     });
@@ -1108,6 +1116,12 @@ export default function MembersPage() {
                   onSort={handleSort}
                 />
                 <SortableHeader
+                  label="Ιδιότητα"
+                  column="occupation"
+                  current={sortBy}
+                  onSort={handleSort}
+                />
+                <SortableHeader
                   label="Κατάσταση"
                   column="status"
                   current={sortBy}
@@ -1119,13 +1133,13 @@ export default function MembersPage() {
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted">
                     Φόρτωση…
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted">
                     {members.length === 0
                       ? "Δεν υπάρχουν ακόμη μέλη. Πατήστε «Νέο Μέλος» για να ξεκινήσετε."
                       : "Δεν βρέθηκαν αποτελέσματα για τα φίλτρα."}
@@ -1262,6 +1276,13 @@ export default function MembersPage() {
                           ))}
                         </div>
                       )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm">
+                        {m.occupation?.trim() || (
+                          <span className="text-muted">—</span>
+                        )}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       {canEditMembers ? (
@@ -1402,7 +1423,7 @@ type BulkModalState =
       errors: Array<{ email: string; error: string }>;
     };
 
-type SortColumn = "name" | "age" | "email" | "status" | "departments";
+type SortColumn = "name" | "age" | "email" | "status" | "departments" | "occupation";
 type SortState = { column: SortColumn; direction: "asc" | "desc" };
 
 function SortableHeader({
