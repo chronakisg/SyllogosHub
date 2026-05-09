@@ -136,6 +136,10 @@ export default function MembersPage() {
   const [familyOnly, setFamilyOnly] = useState(false);
   const [unverifiedOnly, setUnverifiedOnly] = useState(false);
   const [missingField, setMissingField] = useState<string>("");
+  const [sortBy, setSortBy] = useState<{
+    column: "name" | "age" | "email" | "status";
+    direction: "asc" | "desc";
+  }>({ column: "name", direction: "asc" });
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MemberWithDepartments | null>(null);
@@ -384,7 +388,7 @@ export default function MembersPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return members.filter((m) => {
+    const result = members.filter((m) => {
       if (statusFilter !== "all" && m.status !== statusFilter) return false;
       if (boardOnly && !m.is_board_member) return false;
       if (familyOnly && !m.family_id) return false;
@@ -434,6 +438,42 @@ export default function MembersPage() {
       }
       return true;
     });
+
+    const dir = sortBy.direction === "asc" ? 1 : -1;
+    const sorted = [...result].sort((a, b) => {
+      switch (sortBy.column) {
+        case "name": {
+          return (
+            formatMemberName(a).localeCompare(formatMemberName(b), "el", {
+              sensitivity: "base",
+            }) * dir
+          );
+        }
+        case "age": {
+          const aAge = calculateAge(a.birth_date);
+          const bAge = calculateAge(b.birth_date);
+          if (aAge == null && bAge == null) return 0;
+          if (aAge == null) return 1;
+          if (bAge == null) return -1;
+          return (aAge - bAge) * dir;
+        }
+        case "email": {
+          const aEmail = a.email ?? "";
+          const bEmail = b.email ?? "";
+          if (!aEmail && !bEmail) return 0;
+          if (!aEmail) return 1;
+          if (!bEmail) return -1;
+          return (
+            aEmail.localeCompare(bEmail, "el", { sensitivity: "base" }) * dir
+          );
+        }
+        case "status": {
+          const rank = (s: string) => (s === "active" ? 0 : 1);
+          return (rank(a.status) - rank(b.status)) * dir;
+        }
+      }
+    });
+    return sorted;
   }, [
     members,
     search,
@@ -444,7 +484,16 @@ export default function MembersPage() {
     ageFilter,
     departmentFilter,
     missingField,
+    sortBy,
   ]);
+
+  function handleSort(column: "name" | "age" | "email" | "status") {
+    setSortBy((prev) =>
+      prev.column === column
+        ? { column, direction: prev.direction === "asc" ? "desc" : "asc" }
+        : { column, direction: "asc" }
+    );
+  }
 
   function clearFilters() {
     setSearch("");
@@ -1007,12 +1056,32 @@ export default function MembersPage() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-border bg-background/50 text-xs uppercase tracking-wider text-muted">
               <tr>
-                <th className="px-4 py-3">Ονοματεπώνυμο</th>
-                <th className="px-4 py-3">Ηλικία</th>
+                <SortableHeader
+                  label="Ονοματεπώνυμο"
+                  column="name"
+                  current={sortBy}
+                  onSort={handleSort}
+                />
+                <SortableHeader
+                  label="Ηλικία"
+                  column="age"
+                  current={sortBy}
+                  onSort={handleSort}
+                />
                 <th className="px-4 py-3">Τηλέφωνο</th>
-                <th className="px-4 py-3">Email</th>
+                <SortableHeader
+                  label="Email"
+                  column="email"
+                  current={sortBy}
+                  onSort={handleSort}
+                />
                 <th className="px-4 py-3">Τμήματα</th>
-                <th className="px-4 py-3">Κατάσταση</th>
+                <SortableHeader
+                  label="Κατάσταση"
+                  column="status"
+                  current={sortBy}
+                  onSort={handleSort}
+                />
                 <th className="px-4 py-3 text-right whitespace-nowrap">Ενέργειες</th>
               </tr>
             </thead>
@@ -1282,6 +1351,44 @@ export default function MembersPage() {
         />
       )}
     </div>
+  );
+}
+
+type SortColumn = "name" | "age" | "email" | "status";
+type SortState = { column: SortColumn; direction: "asc" | "desc" };
+
+function SortableHeader({
+  label,
+  column,
+  current,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  column: SortColumn;
+  current: SortState;
+  onSort: (column: SortColumn) => void;
+  align?: "left" | "right";
+}) {
+  const isActive = current.column === column;
+  const arrow = isActive ? (current.direction === "asc" ? "↑" : "↓") : "";
+  return (
+    <th
+      onClick={() => onSort(column)}
+      className={
+        "cursor-pointer select-none px-4 py-3 transition hover:bg-background/80 " +
+        (align === "right" ? "text-right" : "")
+      }
+      aria-sort={
+        isActive
+          ? current.direction === "asc"
+            ? "ascending"
+            : "descending"
+          : "none"
+      }
+    >
+      {label} <span className="text-muted">{arrow}</span>
+    </th>
   );
 }
 
