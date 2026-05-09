@@ -1329,6 +1329,10 @@ export default function MembersPage() {
           onAddFamilyMember={openCreateLinkedTo}
           onToggleVerification={handleToggleVerification}
           onDelete={() => editing && handleDelete(editing)}
+          onSendVerification={() =>
+            editing && handleSendVerification(editing)
+          }
+          sendingId={sendingId}
         />
       )}
 
@@ -1559,6 +1563,8 @@ function MemberModal({
   onAddFamilyMember,
   onToggleVerification,
   onDelete,
+  onSendVerification,
+  sendingId,
 }: {
   editing: Member | null;
   form: FormState;
@@ -1577,6 +1583,8 @@ function MemberModal({
     currentlyVerified: boolean
   ) => void | Promise<void>;
   onDelete: () => void;
+  onSendVerification: () => void;
+  sendingId: string | null;
 }) {
   function toggleDepartment(deptId: string, checked: boolean) {
     setForm((s) =>
@@ -1807,6 +1815,13 @@ function MemberModal({
               </button>
             )}
           </div>
+          {editing && editing.email && (
+            <VerificationStatusBar
+              member={editing}
+              isSending={sendingId === editing.id}
+              onSend={onSendVerification}
+            />
+          )}
           <div className="mt-3 inline-flex max-w-full overflow-x-auto rounded-lg border border-border bg-background p-0.5 text-xs">
             <MemberTabBtn
               current={tab}
@@ -2431,6 +2446,79 @@ function MemberModal({
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+function VerificationStatusBar({
+  member,
+  isSending,
+  onSend,
+}: {
+  member: Member;
+  isSending: boolean;
+  onSend: () => void;
+}) {
+  const state = getVerificationState(member);
+  if (state === "no_email") return null;
+
+  let icon: string;
+  let text: string;
+  let tone: string;
+  let showButton = false;
+  let buttonLabel = "";
+  let buttonTone = "";
+
+  switch (state) {
+    case "never_sent":
+      icon = "✉️";
+      text = "Email: εκκρεμεί επιβεβαίωση";
+      tone = "text-muted";
+      showButton = true;
+      buttonLabel = "📧 Αποστολή";
+      buttonTone =
+        "border-[#800000] text-[#800000] hover:bg-[#800000]/10";
+      break;
+    case "pending":
+      icon = "⏳";
+      text = `Email: στάλθηκε ${formatRelativeDate(member.email_verification_sent_at)}`;
+      tone = "text-muted";
+      showButton = true;
+      buttonLabel = "🔄 Επανάληψη";
+      buttonTone =
+        "border-border text-foreground hover:bg-background";
+      break;
+    case "expired":
+      icon = "⌛";
+      text = `Email: έληξε ${formatRelativeDate(member.email_verification_expires_at)}`;
+      tone = "text-amber-700 dark:text-amber-400";
+      showButton = true;
+      buttonLabel = "🔄 Επανάληψη";
+      buttonTone =
+        "border-amber-500 text-amber-700 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-950/30";
+      break;
+    case "verified":
+      icon = "✅";
+      text = `Email: επιβεβαιώθηκε ${formatRelativeDate(member.email_verified_at)}`;
+      tone = "text-emerald-700 dark:text-emerald-400";
+      break;
+  }
+
+  return (
+    <div className="mt-2 flex items-center gap-2 text-xs">
+      <span className={tone}>
+        {icon} {text}
+      </span>
+      {showButton && (
+        <button
+          type="button"
+          onClick={onSend}
+          disabled={isSending}
+          className={`rounded-md border px-2 py-1 transition disabled:opacity-50 ${buttonTone}`}
+        >
+          {isSending ? "..." : buttonLabel}
+        </button>
+      )}
     </div>
   );
 }
