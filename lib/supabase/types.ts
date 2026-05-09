@@ -118,6 +118,7 @@ export type Member = {
   registry_number: string | null;
   application_number: string | null;
   application_date: string | null;
+  user_id: string | null;
 };
 
 export type MemberInsert = {
@@ -152,6 +153,7 @@ export type MemberInsert = {
   registry_number?: string | null;
   application_number?: string | null;
   application_date?: string | null;
+  user_id?: string | null;
 };
 
 export type MemberUpdate = Partial<Omit<Member, "id" | "created_at">>;
