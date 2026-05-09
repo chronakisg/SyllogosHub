@@ -137,7 +137,7 @@ export default function MembersPage() {
   const [unverifiedOnly, setUnverifiedOnly] = useState(false);
   const [missingField, setMissingField] = useState<string>("");
   const [sortBy, setSortBy] = useState<{
-    column: "name" | "age" | "email" | "status" | "departments";
+    column: "name" | "age" | "email" | "status" | "departments" | "occupation";
     direction: "asc" | "desc";
   }>({ column: "name", direction: "asc" });
 
@@ -481,6 +481,14 @@ export default function MembersPage() {
             aFirst.localeCompare(bFirst, "el", { sensitivity: "base" }) * dir
           );
         }
+        case "occupation": {
+          const aVal = a.occupation?.trim() || null;
+          const bVal = b.occupation?.trim() || null;
+          if (aVal === null && bVal === null) return 0;
+          if (aVal === null) return 1;
+          if (bVal === null) return -1;
+          return aVal.localeCompare(bVal, "el", { sensitivity: "base" }) * dir;
+        }
       }
     });
     return sorted;
@@ -797,6 +805,7 @@ export default function MembersPage() {
         .eq("id", member.id)
         .eq("club_id", clubId);
       if (delErr) throw delErr;
+      closeModal();
       await loadMembers();
     } catch (err) {
       setError(errorMessage(err, "Σφάλμα διαγραφής μέλους."));
@@ -1108,12 +1117,17 @@ export default function MembersPage() {
                   onSort={handleSort}
                 />
                 <SortableHeader
+                  label="Ιδιότητα"
+                  column="occupation"
+                  current={sortBy}
+                  onSort={handleSort}
+                />
+                <SortableHeader
                   label="Κατάσταση"
                   column="status"
                   current={sortBy}
                   onSort={handleSort}
                 />
-                <th className="px-4 py-3 text-right whitespace-nowrap">Ενέργειες</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -1133,7 +1147,11 @@ export default function MembersPage() {
                 </tr>
               ) : (
                 filtered.map((m) => (
-                  <tr key={m.id} className="hover:bg-background/40">
+                  <tr
+                    key={m.id}
+                    onClick={() => openEdit(m)}
+                    className="cursor-pointer transition hover:bg-background/50"
+                  >
                     <td className="px-4 py-3 font-medium">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="inline-flex items-center gap-2">
@@ -1264,10 +1282,20 @@ export default function MembersPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
+                      <span className="text-sm">
+                        {m.occupation?.trim() || (
+                          <span className="text-muted">—</span>
+                        )}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
                       {canEditMembers ? (
                         <button
                           type="button"
-                          onClick={() => openStatusModal(m)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openStatusModal(m);
+                          }}
                           className="rounded-full transition hover:opacity-80"
                           title="Αλλαγή κατάστασης"
                         >
@@ -1276,77 +1304,6 @@ export default function MembersPage() {
                       ) : (
                         <StatusBadge status={m.status} />
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <div className="inline-flex gap-2">
-                        {(() => {
-                          const vState = getVerificationState(m);
-                          const isSending = sendingId === m.id;
-                          switch (vState) {
-                            case "no_email":
-                              return null;
-                            case "never_sent":
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={() => handleSendVerification(m)}
-                                  disabled={isSending}
-                                  className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background disabled:opacity-50"
-                                  title="Αποστολή verification"
-                                >
-                                  {isSending ? "…" : "📧"}
-                                </button>
-                              );
-                            case "pending":
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={() => handleSendVerification(m)}
-                                  disabled={isSending}
-                                  className="rounded-md border border-border px-3 py-1 text-xs text-muted transition hover:bg-background disabled:opacity-50"
-                                  title={`Στάλθηκε ${formatRelativeDate(m.email_verification_sent_at)}. Επανάληψη;`}
-                                >
-                                  {isSending ? "…" : "🔄"}
-                                </button>
-                              );
-                            case "expired":
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={() => handleSendVerification(m)}
-                                  disabled={isSending}
-                                  className="rounded-md border border-amber-400 px-3 py-1 text-xs text-amber-700 transition hover:bg-amber-50 disabled:opacity-50 dark:text-amber-400 dark:hover:bg-amber-950/30"
-                                  title={`Έληξε ${formatRelativeDate(m.email_verification_expires_at)}. Νέα αποστολή;`}
-                                >
-                                  {isSending ? "…" : "⌛"}
-                                </button>
-                              );
-                            case "verified":
-                              return (
-                                <span
-                                  className="inline-flex items-center px-3 py-1 text-xs"
-                                  title={`Επιβεβαιώθηκε ${formatRelativeDate(m.email_verified_at)}`}
-                                >
-                                  ✅
-                                </span>
-                              );
-                          }
-                        })()}
-                        <button
-                          type="button"
-                          onClick={() => openEdit(m)}
-                          className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background"
-                        >
-                          Επεξεργασία
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(m)}
-                          className="rounded-md border border-danger/30 px-3 py-1 text-xs text-danger transition hover:bg-danger/10"
-                        >
-                          Διαγραφή
-                        </button>
-                      </div>
                     </td>
                   </tr>
                 ))
@@ -1371,6 +1328,11 @@ export default function MembersPage() {
           onSubmit={handleSubmit}
           onAddFamilyMember={openCreateLinkedTo}
           onToggleVerification={handleToggleVerification}
+          onDelete={() => editing && handleDelete(editing)}
+          onSendVerification={() =>
+            editing && handleSendVerification(editing)
+          }
+          sendingId={sendingId}
         />
       )}
 
@@ -1402,7 +1364,7 @@ type BulkModalState =
       errors: Array<{ email: string; error: string }>;
     };
 
-type SortColumn = "name" | "age" | "email" | "status" | "departments";
+type SortColumn = "name" | "age" | "email" | "status" | "departments" | "occupation";
 type SortState = { column: SortColumn; direction: "asc" | "desc" };
 
 function SortableHeader({
@@ -1600,6 +1562,9 @@ function MemberModal({
   onSubmit,
   onAddFamilyMember,
   onToggleVerification,
+  onDelete,
+  onSendVerification,
+  sendingId,
 }: {
   editing: Member | null;
   form: FormState;
@@ -1617,6 +1582,9 @@ function MemberModal({
     field: "phone" | "email",
     currentlyVerified: boolean
   ) => void | Promise<void>;
+  onDelete: () => void;
+  onSendVerification: () => void;
+  sendingId: string | null;
 }) {
   function toggleDepartment(deptId: string, checked: boolean) {
     setForm((s) =>
@@ -1799,39 +1767,60 @@ function MemberModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-border p-6">
-          {editing ? (
-            <>
-              <h2 className="inline-flex items-center gap-2 text-xl font-semibold uppercase">
-                <span
-                  title={editing.status === "active" ? "Ενεργό" : "Ανενεργό"}
-                  aria-label={
-                    editing.status === "active" ? "Ενεργό" : "Ανενεργό"
-                  }
-                  className={
-                    "block h-2.5 w-2.5 shrink-0 rounded-full " +
-                    (editing.status === "active"
-                      ? "bg-emerald-500"
-                      : "bg-rose-500")
-                  }
-                />
-                <span>
-                  {`${form.last_name} ${form.first_name}`.trim() ||
-                    "Επεξεργασία μέλους"}
-                </span>
-              </h2>
-              <p className="mt-0.5 text-sm text-muted">
-                {`${form.last_name} ${form.first_name}`.trim()
-                  ? "Επεξεργασία μέλους"
-                  : ""}
-              </p>
-            </>
-          ) : (
-            <>
-              <h2 className="text-xl font-semibold">Νέο Μέλος</h2>
-              <p className="mt-0.5 text-sm text-muted">
-                Συμπληρώστε τα στοιχεία
-              </p>
-            </>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              {editing ? (
+                <>
+                  <h2 className="inline-flex items-center gap-2 text-xl font-semibold uppercase">
+                    <span
+                      title={editing.status === "active" ? "Ενεργό" : "Ανενεργό"}
+                      aria-label={
+                        editing.status === "active" ? "Ενεργό" : "Ανενεργό"
+                      }
+                      className={
+                        "block h-2.5 w-2.5 shrink-0 rounded-full " +
+                        (editing.status === "active"
+                          ? "bg-emerald-500"
+                          : "bg-rose-500")
+                      }
+                    />
+                    <span>
+                      {`${form.last_name} ${form.first_name}`.trim() ||
+                        "Επεξεργασία μέλους"}
+                    </span>
+                  </h2>
+                  <p className="mt-0.5 text-sm text-muted">
+                    {`${form.last_name} ${form.first_name}`.trim()
+                      ? "Επεξεργασία μέλους"
+                      : ""}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-xl font-semibold">Νέο Μέλος</h2>
+                  <p className="mt-0.5 text-sm text-muted">
+                    Συμπληρώστε τα στοιχεία
+                  </p>
+                </>
+              )}
+            </div>
+            {editing && canEditMembers && (
+              <button
+                type="button"
+                onClick={onDelete}
+                className="whitespace-nowrap rounded-md border border-danger/30 px-3 py-1 text-xs text-danger transition hover:bg-danger/10"
+                title="Διαγραφή μέλους"
+              >
+                🗑 Διαγραφή
+              </button>
+            )}
+          </div>
+          {editing && editing.email && (
+            <VerificationStatusBar
+              member={editing}
+              isSending={sendingId === editing.id}
+              onSend={onSendVerification}
+            />
           )}
           <div className="mt-3 inline-flex max-w-full overflow-x-auto rounded-lg border border-border bg-background p-0.5 text-xs">
             <MemberTabBtn
@@ -2457,6 +2446,79 @@ function MemberModal({
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+function VerificationStatusBar({
+  member,
+  isSending,
+  onSend,
+}: {
+  member: Member;
+  isSending: boolean;
+  onSend: () => void;
+}) {
+  const state = getVerificationState(member);
+  if (state === "no_email") return null;
+
+  let icon: string;
+  let text: string;
+  let tone: string;
+  let showButton = false;
+  let buttonLabel = "";
+  let buttonTone = "";
+
+  switch (state) {
+    case "never_sent":
+      icon = "✉️";
+      text = "Email: εκκρεμεί επιβεβαίωση";
+      tone = "text-muted";
+      showButton = true;
+      buttonLabel = "📧 Αποστολή";
+      buttonTone =
+        "border-[#800000] text-[#800000] hover:bg-[#800000]/10";
+      break;
+    case "pending":
+      icon = "⏳";
+      text = `Email: στάλθηκε ${formatRelativeDate(member.email_verification_sent_at)}`;
+      tone = "text-muted";
+      showButton = true;
+      buttonLabel = "🔄 Επανάληψη";
+      buttonTone =
+        "border-border text-foreground hover:bg-background";
+      break;
+    case "expired":
+      icon = "⌛";
+      text = `Email: έληξε ${formatRelativeDate(member.email_verification_expires_at)}`;
+      tone = "text-amber-700 dark:text-amber-400";
+      showButton = true;
+      buttonLabel = "🔄 Επανάληψη";
+      buttonTone =
+        "border-amber-500 text-amber-700 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-950/30";
+      break;
+    case "verified":
+      icon = "✅";
+      text = `Email: επιβεβαιώθηκε ${formatRelativeDate(member.email_verified_at)}`;
+      tone = "text-emerald-700 dark:text-emerald-400";
+      break;
+  }
+
+  return (
+    <div className="mt-2 flex items-center gap-2 text-xs">
+      <span className={tone}>
+        {icon} {text}
+      </span>
+      {showButton && (
+        <button
+          type="button"
+          onClick={onSend}
+          disabled={isSending}
+          className={`rounded-md border px-2 py-1 transition disabled:opacity-50 ${buttonTone}`}
+        >
+          {isSending ? "..." : buttonLabel}
+        </button>
+      )}
     </div>
   );
 }
