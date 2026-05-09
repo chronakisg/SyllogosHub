@@ -845,7 +845,7 @@ export default function MembersPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="mx-auto w-full max-w-7xl">
       <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold tracking-tight">
           Διαχείριση Μελών
@@ -1009,7 +1009,7 @@ export default function MembersPage() {
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Τμήματα</th>
                 <th className="px-4 py-3">Κατάσταση</th>
-                <th className="px-4 py-3 text-right">Ενέργειες</th>
+                <th className="px-4 py-3 text-right whitespace-nowrap">Ενέργειες</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -1111,7 +1111,12 @@ export default function MembersPage() {
                     <td className="px-4 py-3 text-muted">
                       {m.email ? (
                         <span className="inline-flex items-center gap-1">
-                          <span>{m.email}</span>
+                          <span
+                            className="block max-w-[200px] truncate"
+                            title={m.email}
+                          >
+                            {m.email}
+                          </span>
                           <VerifyBadge
                             type="email"
                             verified={m.email_verified}
@@ -1168,7 +1173,7 @@ export default function MembersPage() {
                         <StatusBadge status={m.status} />
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
                       <div className="inline-flex gap-2">
                         {m.email && !m.email_verified && (
                           <button
@@ -1178,7 +1183,7 @@ export default function MembersPage() {
                             className="rounded-md border border-border px-3 py-1 text-xs transition hover:bg-background disabled:opacity-50"
                             title="Αποστολή email verification"
                           >
-                            {sendingId === m.id ? "…" : "📧 Verify"}
+                            {sendingId === m.id ? "…" : "📧"}
                           </button>
                         )}
                         <button
