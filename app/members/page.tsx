@@ -137,7 +137,7 @@ export default function MembersPage() {
   const [unverifiedOnly, setUnverifiedOnly] = useState(false);
   const [missingField, setMissingField] = useState<string>("");
   const [sortBy, setSortBy] = useState<{
-    column: "name" | "age" | "email" | "status";
+    column: "name" | "age" | "email" | "status" | "departments";
     direction: "asc" | "desc";
   }>({ column: "name", direction: "asc" });
 
@@ -471,6 +471,16 @@ export default function MembersPage() {
           const rank = (s: string) => (s === "active" ? 0 : 1);
           return (rank(a.status) - rank(b.status)) * dir;
         }
+        case "departments": {
+          const aFirst = a.departments[0]?.name ?? null;
+          const bFirst = b.departments[0]?.name ?? null;
+          if (aFirst === null && bFirst === null) return 0;
+          if (aFirst === null) return 1;
+          if (bFirst === null) return -1;
+          return (
+            aFirst.localeCompare(bFirst, "el", { sensitivity: "base" }) * dir
+          );
+        }
       }
     });
     return sorted;
@@ -487,7 +497,7 @@ export default function MembersPage() {
     sortBy,
   ]);
 
-  function handleSort(column: "name" | "age" | "email" | "status") {
+  function handleSort(column: SortColumn) {
     setSortBy((prev) =>
       prev.column === column
         ? { column, direction: prev.direction === "asc" ? "desc" : "asc" }
@@ -1091,7 +1101,12 @@ export default function MembersPage() {
                   current={sortBy}
                   onSort={handleSort}
                 />
-                <th className="px-4 py-3">Τμήματα</th>
+                <SortableHeader
+                  label="Τμήματα"
+                  column="departments"
+                  current={sortBy}
+                  onSort={handleSort}
+                />
                 <SortableHeader
                   label="Κατάσταση"
                   column="status"
@@ -1387,7 +1402,7 @@ type BulkModalState =
       errors: Array<{ email: string; error: string }>;
     };
 
-type SortColumn = "name" | "age" | "email" | "status";
+type SortColumn = "name" | "age" | "email" | "status" | "departments";
 type SortState = { column: SortColumn; direction: "asc" | "desc" };
 
 function SortableHeader({
