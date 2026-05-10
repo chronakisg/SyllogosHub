@@ -5,6 +5,8 @@ import { getCurrentMember } from '@/lib/auth/portalAuth';
 const ALLOWED_FIELDS = [
   'phone',
   'birth_date',
+  'birthplace',
+  'residence',
   'address',
   'occupation',
   'father_name',
