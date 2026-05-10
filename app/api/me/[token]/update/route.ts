@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerClient } from '@/lib/supabase/server';
+import { computeChanges, logChange } from '@/lib/audit/log';
 
 // Whitelist των fields που επιτρέπεται να ενημερώνει το μέλος
 const ALLOWED_FIELDS = [
@@ -34,7 +35,20 @@ export async function POST(
   // 2. Lookup member by token (validate token)
   const { data: member, error: memberError } = await supabase
     .from('members')
-    .select('id, email_verification_expires_at')
+    .select(`
+      id,
+      club_id,
+      email_verification_expires_at,
+      phone,
+      birth_date,
+      birthplace,
+      residence,
+      address,
+      occupation,
+      father_name,
+      mother_name,
+      maiden_name
+    `)
     .eq('email_verification_token', token)
     .maybeSingle();
 
@@ -84,6 +98,26 @@ export async function POST(
       { error: 'Σφάλμα αποθήκευσης: ' + updateError.message },
       { status: 500 }
     );
+  }
+
+  // Audit log: καταγραφή των αλλαγών (fail-soft)
+  if (member.club_id) {
+    const before = member as unknown as Record<string, unknown>;
+    const after = { ...before, ...updates };
+    const changes = computeChanges(
+      before,
+      after,
+      [...ALLOWED_FIELDS],
+    );
+    await logChange({
+      clubId: member.club_id,
+      tableName: 'members',
+      recordId: member.id,
+      action: 'update',
+      actorLabel: 'self_via_token',
+      actorMemberId: member.id,
+      changes,
+    });
   }
 
   return NextResponse.json({ success: true });
