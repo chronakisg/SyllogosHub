@@ -219,6 +219,7 @@ export default function MembersPage() {
         .eq("club_id", clubId);
       if (uErr) throw uErr;
       setStatusModal(null);
+      closeModal();
       await loadMembers();
     } catch (err) {
       setStatusModal((s) =>
@@ -1338,6 +1339,11 @@ export default function MembersPage() {
           onSendVerification={() =>
             editing && handleSendVerification(editing)
           }
+          onChangeStatus={
+            editing && canEditMembers
+              ? () => openStatusModal(editing)
+              : undefined
+          }
           sendingId={sendingId}
         />
       )}
@@ -1570,6 +1576,7 @@ function MemberModal({
   onToggleVerification,
   onDelete,
   onSendVerification,
+  onChangeStatus,
   sendingId,
 }: {
   editing: Member | null;
@@ -1590,6 +1597,7 @@ function MemberModal({
   ) => void | Promise<void>;
   onDelete: () => void;
   onSendVerification: () => void;
+  onChangeStatus?: () => void;
   sendingId: string | null;
 }) {
   function toggleDepartment(deptId: string, checked: boolean) {
@@ -1777,18 +1785,47 @@ function MemberModal({
               {editing ? (
                 <>
                   <h2 className="inline-flex items-center gap-2 text-xl font-semibold uppercase">
-                    <span
-                      title={editing.status === "active" ? "Ενεργό" : "Ανενεργό"}
-                      aria-label={
-                        editing.status === "active" ? "Ενεργό" : "Ανενεργό"
-                      }
-                      className={
-                        "block h-2.5 w-2.5 shrink-0 rounded-full " +
-                        (editing.status === "active"
-                          ? "bg-emerald-500"
-                          : "bg-rose-500")
-                      }
-                    />
+                    {onChangeStatus ? (
+                      <button
+                        type="button"
+                        onClick={onChangeStatus}
+                        title={
+                          editing.status === "active"
+                            ? "Ενεργό μέλος"
+                            : "Ανενεργό μέλος"
+                        }
+                        aria-label={
+                          editing.status === "active"
+                            ? "Ενεργό μέλος"
+                            : "Ανενεργό μέλος"
+                        }
+                        className={
+                          "block h-3 w-3 shrink-0 rounded-full transition hover:scale-125 " +
+                          (editing.status === "active"
+                            ? "bg-emerald-500"
+                            : "bg-rose-500")
+                        }
+                      />
+                    ) : (
+                      <span
+                        title={
+                          editing.status === "active"
+                            ? "Ενεργό μέλος"
+                            : "Ανενεργό μέλος"
+                        }
+                        aria-label={
+                          editing.status === "active"
+                            ? "Ενεργό μέλος"
+                            : "Ανενεργό μέλος"
+                        }
+                        className={
+                          "block h-3 w-3 shrink-0 rounded-full " +
+                          (editing.status === "active"
+                            ? "bg-emerald-500"
+                            : "bg-rose-500")
+                        }
+                      />
+                    )}
                     <span>
                       {`${form.last_name} ${form.first_name}`.trim() ||
                         "Επεξεργασία μέλους"}
