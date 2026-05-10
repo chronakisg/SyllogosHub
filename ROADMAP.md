@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-09 (Members redesign + Member Portal Chunk 2)  
+> Last updated: 2026-05-10 (Audit work: foundation + per-member view + cross-member page)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -32,6 +32,27 @@
 6. 🔜 **Visibility layer** — live attendance dashboard για admin
 
 Κάθε layer έχει standalone value και μπορεί να σταματήσει οπουδήποτε.
+
+### Sidebar topology
+
+Το app sidebar χωρίζεται σε **3 mental zones** που εξυπηρετούν
+διαφορετικά user mindsets:
+
+1. **Daily Operations** — members/events/finances/cashier/seating/calendar
+   - Daily admin work, transaction-oriented
+   - Frequent access, primary working surface
+2. **Monitoring & Admin** (μεταξύ divider lines) — audit-log
+   - Investigative mindset: "ψάχνω τι συνέβη / ποιος έκανε τι"
+   - Future audit features (πληρωμές tracking, permission changes,
+     bulk action logs, system events) μπαίνουν στην ίδια ζώνη
+3. **Configuration** — settings (+ sub-pages)
+   - Setup work, less-frequent access
+   - One-time or rare changes (roles, permissions, club info)
+
+**Implication για design decisions:** Όταν προστεθούν νέα
+audit/monitoring features, δεν χρειάζονται νέα ζώνη του sidebar
+— απλά νέες entries στην ίδια. Audit είναι **standalone domain**,
+όχι sub-feature κάποιου specific module.
 
 ## 🏗️ Architectural Stacks
 
@@ -226,6 +247,84 @@ _(no active branches)_
 
   Estimated: M (responsive design, AppShell rework)
   Priority: High (UX blocker σε field use)
+
+### 🔍 Audit & Monitoring
+
+- [ ] **Audit log filters (Phase 3 part 2)**
+  - Time window dropdown: 7/15/30/90/all (default 15)
+  - Actor type filter: admin / self_via_portal / self_via_token
+  - Click member name στο /audit-log → opens MemberModal
+    με Ιστορικό tab pre-selected (cross-page navigation)
+  - Estimated: M (3-4 commits)
+  - Connects με: PR #51 base
+
+- [ ] **Audit admin coverage**
+  - Refactor admin /members update flow από client-side
+    direct Supabase σε API route + audit hook
+  - Currently admin updates ΔΕΝ καταγράφονται — μόνο
+    self-updates μέσω /me/[token] + /portal/profile
+  - Δεν χρειάζεται schema change
+  - Estimated: M-L (4-5 commits)
+  - Connects με: PR #49 audit foundation
+
+- [ ] **Audit για άλλα tables**
+  - Επέκταση audit hooks σε events/finances/sponsors
+    update routes
+  - Schema είναι ήδη generic (record_id + table_name)
+  - Future PRs ανά domain (1 PR ανά table)
+  - Estimated: L (multi-PR series)
+
+- [ ] **🔔 Bell notification για unread audit changes**
+  - Sidebar bell icon με count των unviewed entries
+  - Click → /audit-log με filter για new only
+  - Σχετίζεται με future audit features
+    (πληρωμές, system events)
+  - Estimated: M (icon + counter + viewed-state tracking)
+
+- [ ] **/audit-log pagination**
+  - "Δες παλαιότερα" button ή scroll-based loading
+    όταν φτάσουν τα 100 entries
+  - Trigger: όταν users αναφέρουν ότι δεν βλέπουν
+    παλαιότερα changes
+  - Estimated: S (offset-based) ή M (cursor-based)
+
+### 📋 Self-update form domain
+
+- [ ] **Address split** (οδός / αριθμός / Τ.Κ.)
+  - Schema migration: 1 column → 3 columns
+  - Data migration για existing 244+ members ΕΚΑ + ΣΚΑ
+    (manual splitting όπου γίνεται, leave-as-is όπου όχι)
+  - Foundation για:
+    - Maps integration (geocoding με ακριβή διεύθυνση)
+    - Τ.Κ.-based queries (statistics, mailing zones)
+    - Online αίτηση schema design
+  - Estimated: M (multi-commit: schema + UI + data migration)
+
+- [ ] **Member photo upload**
+  - Schema: members.photo_url text nullable
+  - Storage bucket: club-assets/photos/{member_id}.{ext}
+  - Reusable <MemberPhotoUpload> component σε:
+    - /portal/profile (self-managed)
+    - /me/[token] (first-time setup)
+    - Admin /members modal
+    - Future: online αίτηση
+  - Estimated: M (component + storage policy + 4 sites)
+
+- [ ] **Section grouping σε self-update forms**
+  - ΠΡΟΣΩΠΙΚΑ / ΕΠΙΚΟΙΝΩΝΙΑ / ΟΙΚΟΓΕΝΕΙΑ visual sections
+  - Mirror της structure στην έντυπη αίτηση μέλους
+    (AITHSH_MELOUS PDF)
+  - Affects: /me/[token] form + /portal/profile ProfileEditForm
+  - Estimated: S (CSS + section headers, no logic change)
+
+- [ ] **Label unification /me/[token] vs /portal/profile**
+  - Drift εντοπισμένη μεταξύ των δύο surfaces:
+    - 'Πατρώνυμο' vs 'Όνομα πατρός'
+    - 'Μητρώνυμο' vs 'Όνομα μητρός'
+    - 'Πατρικό επώνυμο' vs 'Γένος (πατρικό επώνυμο)'
+  - Same data fields, διαφορετικά labels — confusing UX
+    για member που χρησιμοποιεί και τις δύο surfaces
+  - Estimated: S (decide source of truth + label sync)
 
 ## 🟣 Member Portal — Επίπεδο 4 (Future Stack)
 
@@ -664,6 +763,149 @@ _(no active branches)_
 
 ## ✅ Recently Done
 
+### feat/audit-log-page (merged 2026-05-10) — PR #51
+
+Phase 3 part 1: standalone /audit-log page για cross-member 
+audit visibility. 6 commits — foundation work + page basic 
+structure χωρίς advanced filters.
+
+**Permission infrastructure (3 commits):**
+- [x] Migration 0022: audit module permission
+  - CHECK constraint expansion: 8 → 9 modules
+  - Auto-grant για Πρόεδρο ΔΣ + Γραμματέα ανά club
+  - Snapshot table member_role_permissions_backup_20260510
+- [x] types.ts + useRole.ts sync (4 sites: PermissionModule 
+  union, Permission union, ALL_PERMISSIONS array, 
+  MODULE_TO_PERMISSION record)
+- [x] PermissionMatrix UI: 'Ιστορικό αλλαγών' label
+
+**Foundation (1 commit):**
+- [x] lib/utils/greekSearch.ts — normalizeGreek() helper
+  - Final-sigma normalization (ς → σ)
+  - Diacritics stripping (NFD + \p{M}/gu Mark category)
+  - Reusable σε όλα τα search inputs του project
+
+**Page (2 commits):**
+- [x] app/audit-log/page.tsx (304 lines)
+  - Permission gate: audit module
+  - Default 15-day window, max 100 entries
+  - Two-query member resolution (audit_log + members)
+  - Member-grouped display, alphabetical by last_name 
+    με Greek collation
+  - Greek-aware name search με normalizeGreek
+  - 5 status states: loading/error/empty/ready/denied
+- [x] AppShell sidebar nav entry
+  - Position: monitoring zone (μετά divider, πάνω από Settings)
+  - Permission-gated με audit module
+
+**Strategic decisions:**
+- **Audit είναι standalone monitoring domain**, όχι member 
+  feature → future audit features (πληρωμές, system events, 
+  permission changes) μπαίνουν στην ίδια ζώνη του sidebar
+- **Two-query resolution αντί FK join** — generic audit_log 
+  schema (record_id είναι uuid pointer χωρίς FK), supports 
+  any table_name μελλοντικά
+- **Card duplication (Option Y)** από MemberHistoryTab — 
+  refactor σε shared component μόνο αν εμφανιστούν 3+ usage 
+  sites
+
+Production-verified browser smoke test: 5/5 tests passed.
+
+### feat/audit-log-history-tab (merged 2026-05-10) — PR #50
+
+Phase 2 part 2: visibility loop κλείνει — audit data γράφονται 
+(PR #49) και τώρα εμφανίζονται στο /members modal.
+
+- [x] lib/audit/labels.ts (58 lines)
+  - MEMBER_FIELD_LABELS με 13 entries (9 self-update + 4 admin)
+  - ACTOR_LABELS με 4 actor types (Γραμματεία/Από email link/
+    Από portal/Σύστημα)
+  - Helper functions με fallback στο raw value
+- [x] app/members/MemberHistoryTab.tsx (146 lines)
+  - Direct client-side Supabase fetch (όχι API route)
+  - 4 status states: loading/error/empty/ready
+  - Limit 20 entries, newest first
+  - Combo timestamps: relative + absolute on hover
+  - FIELD_ORDER sorting για consistent UX
+  - Empty value display ως '(κενό)'
+- [x] /members modal integration:
+  - Hoist MemberTab type σε file scope (DRY refactor)
+  - 5η tab button 'Ιστορικό' (hidden σε create mode)
+  - MemberTabBtn props refactor
+
+Pioneers extraction pattern για member modal tab content — 
+future PRs μπορούν να ακολουθήσουν.
+
+### feat/audit-log-foundation (merged 2026-05-10) — PR #49
+
+Phase 2 part 1: foundation για audit logging σε member 
+self-updates. Απαντά στο visibility gap που εντοπίστηκε μετά 
+το bulk verification send (8 emails ΕΚΑ).
+
+**Schema (Migration 0021):**
+- [x] audit_log table — 11 columns με 2 CHECK constraints + 3 FKs
+  - id, club_id, table_name, record_id, action, actor_label, 
+    actor_user_id, actor_member_id, changes (jsonb), notes, 
+    created_at
+  - 2 indexes: per-club timeline + per-record history
+  - RLS off (consistent με project pattern)
+
+**Types (hand-crafted):**
+- [x] AuditAction + AuditActorLabel + AuditLogChanges types
+- [x] AuditLog Row/Insert/Update + Database entry με Relationships
+
+**Foundation (lib/audit/log.ts):**
+- [x] computeChanges<T>(before, after, fields) → diff utility
+- [x] logChange(entry) → fail-soft async writer
+- [x] Empty diff = no-op (αποφεύγει spurious entries)
+
+**API hooks:**
+- [x] /api/me/[token]/update integration
+  - actor_label='self_via_token', actor_user_id=null
+- [x] /api/portal/profile/update integration
+  - actor_label='self_via_portal', actor_user_id=auth user id
+
+**Architectural decisions:**
+- **Generic audit_log table** (όχι member-specific) — μελλοντικά 
+  events/finances/sponsors θα reuse το ίδιο schema
+- **Application-layer hooks** (όχι DB triggers) — semantic actor 
+  identification possible
+- **Fail-soft pattern** — audit failure δεν μπλοκάρει user save
+- **Pre-computed diff pattern** — caller controls scope μέσω 
+  ALLOWED_FIELDS array
+
+Production-verified: 2 real audit entries γράφτηκαν 
+(self_via_portal για ΧΡΟΝΑΚΗ + self_via_token για ΑΚΟΥΜΙΑΝΑΚΗ).
+
+### feat/self-update-whitelist-expansion (merged 2026-05-10) — PR #48
+
+6 commits, επέκταση του self-update whitelist από 7 σε 9 
+fields (birthplace + residence). Foundation για online αίτηση 
+που θα έρθει σε επόμενες sessions.
+
+**Backend (3 commits):**
+- [x] GET /api/me/[token] returns birthplace + residence
+- [x] POST /api/me/[token]/update accepts birthplace + residence
+- [x] POST /api/portal/profile/update accepts birthplace + residence
+
+**Frontend (3 commits):**
+- [x] /me/[token] form: type + state + prefill + submit + 
+  2 input fields + address label clarity
+- [x] /portal/profile: pass 2 νέα fields στο initialData prop
+- [x] ProfileEditForm: FormData type + 2 νέα <label> blocks
+
+**UX details:**
+- **Address label rename**: 'Διεύθυνση' → 'Διεύθυνση 
+  (οδός, αριθμός)' ώστε να μη μπερδεύεται με νέο 'Τόπος κατοικίας'
+- Layout στο portal: τα 2 νέα fields half-width, address 
+  παραμένει full-width
+- Διατήρηση υπάρχουσας σειράς (section grouping σε future PR)
+
+**Strategic context:** Στην έντυπη αίτηση μέλους 
+(AITHSH_MELOUS) τα 2 fields είναι core identity data. 
+Σύλλογοι Κρητών — birthplace είναι ΣΗΜΑΝΤΙΚΟ (πατρίδα), 
+αξίζει να το διαχειρίζονται οι ίδιοι.
+
 ### feat/members-row-redesign (merged 2026-05-09) — PR #46
 
 5-commit redesign του /members admin page βάσει beta feedback.
@@ -827,407 +1069,6 @@ Foundation για multi-tenant SaaS με differentiated module access.
 - Modules = additional gate πάνω από permissions
 - Standalone-able principle preserved: σύλλογος με μόνο members/events/calendar = MVP
 - Foundation για billing tier differentiation (μελλοντικά)
-
-### feat/super-admin-panel (merged 2026-05-07) — PR #31 + #32
-
-- [x] Migration 0014: super_admins table + clubs.plan/is_active columns
-- [x] lib/admin/seedClub.ts — seed defaults για νέο σύλλογο
-      (6 roles + permissions, 2 ticket categories,
-       8 expense categories, club_settings)
-- [x] lib/auth/requireSuperAdmin.ts — server-side guard
-- [x] POST /api/admin/clubs — create club + seed + auth user +
-      member + role assignment end-to-end
-- [x] proxy.ts: redirect /admin/* → /login αν no session
-- [x] app/admin/layout.tsx — super-admin guard + isolated layout
-- [x] app/admin/clubs/page.tsx — λίστα συλλόγων με plan/status badges
-- [x] app/admin/clubs/new/page.tsx — form δημιουργίας νέου συλλόγου
-- [x] app/admin/clubs/[id]/page.tsx — club detail με stats + billing
-- [x] app/AppShell.tsx — skip render για /admin/* (hooks-safe)
-- [x] fix: logout redirect → /login?redirect=/admin/clubs (PR #32)
-
-### feat/cashier-schema + feat/cashier-page (2026-05-06) — PR1 + PR2
-
-Two-PR stacked feature για Cashier Interface Phase 1.
-Comprehensive planning session με 26 locked decisions
-στο docs/CASHIER_PLAN.md, 8 internal commits στο PR2,
-real mutation tested in production.
-
-**PR1: feat/cashier-schema (1 commit)**
-- [x] Migration 0013: per-attendee payment fields
-  - paid_at timestamptz NULL
-  - paid_amount numeric(10,2) NULL
-  - paid_by_user_id uuid NULL → auth.users(id) ON DELETE SET NULL
-  - CHECK constraint: paid_amount required if paid_at
-  - Partial index idx_attendees_unpaid (WHERE paid_at IS NULL)
-  - Snapshot table reservation_attendees_backup_20260506 πριν τη migration
-- [x] types.ts: ReservationAttendee Row + Insert types
-  (Update auto-derived μέσω Partial<Omit>)
-- [x] docs/CASHIER_PLAN.md: 117 lines comprehensive plan doc
-- [x] RESERVATION_SELECT στο shared lib/utils/attendees.ts
-  ενημερώθηκε με τα 3 νέα payment columns (μετά από bug fix:
-  undefined !== null εμφάνιζε όλους ως πληρωμένους)
-
-**PR2: feat/cashier-page (7 commits)**
-- [x] Skeleton route + permission gate (cashier permission)
-  στο top-level /cashier/[eventId]
-- [x] Reservation cards list με 3 status states
-  (⚠️ pending / 🟡 partial / ✅ complete) + age breakdown
-  + KPIs (X/Y πληρωμένοι · Z/Y παρόντες)
-- [x] Open-party modal με named attendees lista,
-  3 close mechanisms (backdrop, ×, Esc), bottom-sheet
-  σε mobile / centered σε desktop
-- [x] Anonymous buckets (Ενήλικες/Παιδιά) με ± counter
-  selection logic
-- [x] Sticky footer με selection totals + 3-line modal header
-  (composition / status / X€ από Y€)
-- [x] Atomic payment + check-in mutation:
-  - Group selected attendees by price → 1 UPDATE per
-    unique amount (Promise.all parallel)
-  - Single UPDATE sets paid_at + paid_amount + paid_by_user_id
-    + presence_status='present' + checked_in_at
-  - isPaying state για double-tap protection
-  - reloadKey για refetch trigger
-  - Error handling με existing error banner
-- [x] Entry button «💰 Ταμείο →» στο event dashboard
-  (/finances?tab=dashboard) δίπλα στο event picker
-  - Permission-gated visibility
-  - Conditional on selectedEventId truthy
-- [x] Back link στο cashier /finances?tab=dashboard
-  (αντί / που ήταν safe default)
-
-**Architectural decisions:**
-- Per-attendee data, party-level UX
-- Refund = never (constitutionally)
-- Standalone-able principle preserved (cashier route ξεχωριστό
-  από /seating, mobile-first, focused tool)
-- Permission segmentation: payment editing μόνο για όσους
-  έχουν cashier permission. Group-based via roles
-  (Ταμίας/Πρόεδρος/Διαχειριστής)
-- Architectural correction mid-flow: entry point μετακινήθηκε
-  από /events (δημόσιο) → /finances (financial-permission-gated)
-- One-shot atomic mutation: payment + check-in σε ένα SQL UPDATE
-
-**Production verification:**
-- Real payment flow tested με 1 attendee (ΧΡΟΝΑΚΗΣ ΓΙΩΡΓΟΣ)
-- All 5 fields updated atomically στη DB
-- UI refresh-άρει σωστά μετά mutation
-- Partial status emerged correctly (1/9 paid)
-
-**Phase 2 deferred items**: see Cashier Interface entry στα
-High Priority sections.
-
-### feat/event-dashboard-phase1 (merged 2026-05-05) — PR #22
-
-Major PR με 31 commits — Event Dashboard ολόκληρο
-με Έσοδα/Έξοδα/Χορηγοί sub-tabs + sponsor financial
-architecture.
-
-**Phase 1 — Έσοδα Dashboard:**
-- [x] lib/utils/eventRevenue.ts — pure functions για
-  revenue calculations με category_kind matching
-- [x] EventDashboardTab.tsx component split (628 lines)
-- [x] Layout: ΣΥΜΜΕΤΟΧΗ → ΟΙΚΟΝΟΜΙΚΑ (3 cards) →
-  ΛΕΠΤΟΜΕΡΕΙΕΣ → ΧΟΡΗΓΟΙ
-- [x] ΣΥΝΟΛΟ card real-time view (Τώρα / Εκκρεμή έσοδα /
-  Εκκρεμή έξοδα / Τελικό)
-- [x] /finances tab routing με query param
-
-**Phase 2 — Έξοδα Catalog + /finances integration:**
-- [x] Migration 0009: event_expenses table
-- [x] Migration 0010: expense_categories table
-  (per-club catalog, 8 default seeds)
-- [x] Migration 0011: event_expenses category_id FK refactor
-- [x] /settings/club/expense-categories CRUD page (699 lines)
-- [x] ExpensesPanel.tsx με replace-all DELETE+INSERT save
-- [x] Dashboard sub-tabs Έσοδα / Έξοδα
-
-**Phase 3 — Sponsor Financial Architecture:**
-- [x] Migration 0012: event_sponsors.received_at column
-  (promised vs received distinction)
-- [x] types.ts: EventSponsor.received_at field
-- [x] Event modal Χορηγοί tab → info-only
-  (drop financial editing fields)
-- [x] SponsorsPanel.tsx — financial editing component
-  στο /finances με 3o sub-tab
-- [x] AddSponsorshipDialog: link existing sponsors
-  από master registry, filter already-linked
-- [x] Filter members ήδη χορηγοί από Νέος Χορηγός
-  modal (bug fix)
-- [x] Drop SponsorPicker από event modal (~314 lines)
-  για strict info-only alignment
-
-**Architectural decisions:**
-- Events page = info-focused (δημόσιο info window)
-- /finances = financial editing (permission-gated)
-- Sponsors entity creation στο master Χορηγοί tab
-  (persists across events)
-- Per-event sponsorship linking στο SponsorsPanel
-- Sponsors money δεν μπαίνει στα Έσοδα μέχρι
-  received_at != null
-- Pending sponsors NOT στα Εκκρεμή Έσοδα
-  (uncertain receivable, διαφορετικό από pending
-  reservations)
-
-**Polish (μέρος του ίδιου PR):**
-- [x] Settings header unification σε 7 sub-pages
-  (clickable title με ← arrow)
-- [x] ExpensesPanel layout fix (table-fixed +
-  column widths + w-full inputs)
-- [x] SponsorsPanel UI symmetry με ExpensesPanel
-  (trash button column, disabled-input για
-  non-money rows)
-
-### feat/ticket-categories (merged 2026-05-04) — PR #?
-
-Per-club catalog για κατηγορίες προσκλήσεων. Source of truth για labels,
-αντικαθιστά το freeform input στο event modal. Foundation για consistent
-multi-tenant labels και kind-based matching σε downstream features.
-
-**Schema (3 migrations):**
-- [x] Migration 0006: ticket_categories table
-      (id, club_id, name, short_label, default_price,
-      display_order, is_archived, category_kind enum,
-      notes) + 2 default seeds ανά club
-      (Ενήλικας/adult, Παιδί/child)
-- [x] Migration 0007: event_ticket_prices.category_id
-      nullable FK + index
-- [x] Migration 0008: category_id NOT NULL + drop label
-      column
-
-**Code:**
-- [x] types.ts: TicketCategory + TicketCategoryKind
-      ('adult'|'child'|'other') + constants
-- [x] /settings/club/ticket-categories CRUD page με
-      optimistic updates + reorderingId safeguard
-      κατά rapid clicks
-- [x] /settings dashboard: card "Κατηγορίες Προσκλήσεων"
-- [x] Event modal "Τιμές" tab: replace freeform label
-      input με dropdown από catalog
-- [x] Auto-fill price από category.default_price σε
-      κάθε category change (overwrite για consistency)
-- [x] Inline shortcut "+ Νέα κατηγορία στον κατάλογο"
-      → minimal modal με 3 fields (name, kind,
-      default_price)
-- [x] Filter των already-selected categories per event
-- [x] Empty catalog state με link στο settings
-- [x] EventSummaryPanel display via category join
-      (replaces removed label column)
-- [x] Friendly error για 23505 unique constraint
-      violation στα names
-- [x] Permission gate: settings (consistent με
-      departments pattern)
-
-### feat/role-based-permissions (merged 2026-05-04) — PR #?
-
-Major foundation + complete UI για role-based permission system
-σε ένα PR. Η μεγαλύτερη single-PR δουλειά της session.
-
-**Schema (migration 0005, idempotent):**
-- [x] 3 new tables: member_roles, member_role_permissions,
-  member_role_assignments (FKs, unique constraints, RLS off)
-- [x] cashier module added στο permission CHECK constraint
-  + types.ts + ALL_PERMISSIONS + MODULE_TO_PERMISSION
-- [x] 6 default roles seeded ανά club:
-  Πρόεδρος ΔΣ (32 perms), Αντιπρόεδρος (17), Ταμίας (9),
-  Γραμματέας (9), Μέλος ΔΣ (4), Απλό Μέλος (2)
-- [x] Auto-assignment: members με board_position →
-  corresponding role; rest → "Απλό Μέλος"
-- [x] Snapshot: members_predates_roles_20260504
-
-**useRole hook refactor:**
-- [x] legacyBoardPositionPermissions removed (-28 lines)
-- [x] computePermissions: priority 1 admin/president → ALL,
-  priority 2 union(rolePermissions, customPermissions),
-  priority 3 default ['calendar']
-- [x] 4 queries instead of 3 (added joined role+permissions)
-- [x] State includes assignedRoles + rolePermissions
-
-**Server foundation:**
-- [x] lib/supabase/admin.ts — service role client (cached)
-- [x] lib/auth/requireAdmin.ts — server guard με AdminContext
-- [x] SUPABASE_SERVICE_ROLE_KEY documented στο .env.local.example
-
-**API routes — Users (12 endpoints total):**
-- [x] /api/admin/users/[id]/login — POST/GET/PATCH/DELETE
-- [x] /api/admin/users/[id]/login/enable — POST
-- [x] /api/admin/users/[id]/roles — POST
-- [x] /api/admin/users/[id]/roles/[roleId] — DELETE
-
-**API routes — Roles CRUD:**
-- [x] /api/admin/roles — GET (list + counts), POST (create)
-- [x] /api/admin/roles/[id] — PATCH (rename), DELETE
-- [x] /api/admin/roles/[id]/permissions — GET, PATCH (replace)
-
-**UI — Unified single page:**
-- [x] /settings/users — "Χρήστες & Δικαιώματα" με 2 tabs:
-  * Tab "Άτομα": login mgmt + role chips per member
-  * Tab "Ομάδες": role list + matrix per role + create custom
-- [x] PermissionMatrix.tsx — reusable component (8 modules × 4)
-- [x] /settings dashboard: card "Χρήστες & Δικαιώματα"
-  (αφαιρέθηκε το παλιό card "Δικαιώματα")
-- [x] /permissions route → redirect σε /settings/users
-  (graceful for old bookmarks)
-- [x] AppShell sidebar activePaths updated
-
-**Bug fixes:**
-- [x] /calendar infinite loading για anonymous/missing-clubId
-  users (3 unguarded early returns σε useCallback functions)
-
-**Live verification (πολλαπλά smoke tests):**
-- [x] Auth gate: anonymous → 401
-- [x] Role assign/remove via API + UI
-- [x] Login create: real auth user, verified στο Supabase Dashboard
-- [x] Custom role create/delete via UI
-- [x] Permission edit per role + save
-- [x] Tab switching (Άτομα ↔ Ομάδες)
-- [x] /permissions redirect verified
-- [x] Calendar loading recovered after fix
-- [x] tsc clean throughout
-
-**Critical for production deployment:**
-- [ ] **Add SUPABASE_SERVICE_ROLE_KEY στο Vercel env vars
-  ΠΡΙΝ το merge** — αλλιώς admin API routes σπάνε σε production
-
-### feat/venue-max-capacity (merged 2026-05-03) — PR #16
-
-- [x] `events.venue_max_capacity` smallint nullable column
-- [x] EventInsert / EventUpdate types στο hand-crafted types.ts
-- [x] Input field στο /events EventModal (DetailsTab)
-- [x] /seating header counter με color thresholds
-      (text-red-600 σε overflow)
-- [x] AddEventModal στο seating page συμπεριλαμβάνει το field
-
-### feat/presence-cleanup (merged 2026-05-02) — PR #11
-
-- [x] Αφαίρεση του "Καθάρισε ανώνυμους απόντες" feature
-      (~175 lines από entrance-list)
-- [x] Anti-pattern για παραδοσιακούς συλλόγους —
-      αντικαθίσταται από manual lock (μελλοντικά)
-
-### feat/presence-3state-ui (merged 2026-05-02) — PR #10
-
-Μεγάλο PR, 9 files, multi-feature:
-
-- [x] AttendeesEditor 3-state presence UI
-      (expected/present/no_show counters + badges)
-- [x] /events page tabs (Επερχόμενες/Παλαιότερες/Όλες) με
-      tabCounts
-- [x] AddReservationModal rewrite
-- [x] Seating sidebar cleanup
-- [x] "Δεν ήρθε" badge → "Αναμένεται" rename
-
-### fix/pwa-orientation (merged 2026-05-02) — PR #9
-
-- [x] manifest.ts orientation 'portrait' → 'any'
-- [x] Tablet landscape support για /seating wide layouts
-
-### feat/presence-3state-quickfix (merged 2026-05-02) — PR #7
-
-- [x] Schema: is_present boolean → presence_status enum
-      (expected | present | no_show)
-- [x] Backfill existing data → "expected"
-- [x] Type updates σε 5 files (hand-crafted types.ts)
-
-### chore/cleanup-and-quick-edit (merged 2026-05-03) — PR #15
-
-7 commits, comprehensive cleanup + seating UX revamp:
-
-- [x] `.gitignore` — `.claude/scheduled_tasks.lock` (cd293c0)
-- [x] **Display name helpers consolidation** — 3 file-locals →
-  shared `formatMemberName` (aa7023a)
-- [x] **Greek collation sensitivity** — `{ sensitivity: "base" }`
-  σε 12 localeCompare calls (7 files) (7f0b93f)
-- [x] **GuestsPanel deprecation** — αφαίρεση legacy feature
-  (~291 lines), preparation για column drop (b28d0d6)
-- [x] **Quick-edit modal για μετονομασία παρέας** — pencil icon
-  inline στο ReservationChip, single-field rename (8e83cc0)
-- [x] **Capacity-aware drag feedback** — yellow border όταν
-  drag-over over-capacity table + ConfirmOverCapacityModal με
-  amber accent (4856119)
-- [x] **Reserved tables = hard block** — ConfirmAssignReservedModal
-  removed (~91 lines), 🔒/🔓 toggle είναι το override mechanism
-  (dd3fbe5)
-- [x] **Color legend strip** πάνω από tables grid — 3 entries
-  (Διαθέσιμο/Δεν χωράει/Πιασμένο) (dd3fbe5)
-- [x] **Header counters update** — `πληρωμένες/εκκρεμείς` →
-  `παρόντες/αναμένονται` — seating focus on presence/identity,
-  not payments (dd3fbe5)
-- [x] **4-state assignmentMode chain cleanup** — collapse
-  occupiedByOther + isReserved branches (dd3fbe5)
-
-Bonus fixes εντοπισμένα κατά τη διάρκεια:
-- presence semantic separation στο ReservationChip
-- onDragLeave child-element flicker fix (relatedTarget pattern)
-
-### feat/seating-unified-list (merged 2026-05-03) — PR #13
-
-8 commits, /seating sidebar restructure + table popover:
-
-- [x] Sidebar split σε 2 sections — Παρέες χωρίς Τραπέζι +
-  Παρέες σε Τραπέζια (4883b35)
-- [x] Rounded "Νο N" badge στο ReservationChip (6c25e09)
-- [x] Reposition badge κάτω από avatar για compact card height
-  (8f56e46)
-- [x] TableCard middle text cleanup — generic "Κατειλημμένο"
-  αντί group_name (cf6ead9)
-- [x] TablePopover (desktop hover, occupied tables only) (04831f9)
-- [x] Touch fallback + click-outside-to-close (691f676)
-- [x] Smart positioning above/below + Esc to close (dc9806a)
-- [x] TableCard cleanup — free seats chip + remove catering line
-  (d9721fe)
-
-### feat/age-categorization (merged 2026-05-02) — PR #12
-
-12 commits, full age-categorization feature + bonus fixes:
-
-- [x] Schema migration: `clubs.child_age_threshold` +
-  `reservation_attendees.is_child_override` (425cfc3)
-- [x] `resolveIsChild` helper utility (7c045f1)
-- [x] AttendeesEditor child toggle (👶/🧑/⚪) + counter (5c99881)
-- [x] AddReservationModal με Ενήλικες + Παιδιά inputs (4b7c138)
-- [x] TableCard catering breakdown (c29752e)
-- [x] ReservationChip sidebar breakdown (901f7db)
-- [x] /settings/club child age threshold input (021be2b)
-- [x] fix: hydration race condition στο /settings/club —
-  useCurrentClub double-call coordination (538f637)
-- [x] AttendeesEditor bulk-add παιδιών checkbox (357ba3d)
-- [x] Cultural fit — ΕΠΩΝΥΜΟ Όνομα display fix σε 7 sites
-  (3c63bf8)
-- [x] Split inputs Ενήλικες/Παιδιά στο anonymous-add mode
-  (d7cc04d)
-- [x] fix: presence semantic split στο ReservationChip — pre-existing
-  bug όπου presentCount περιελάμβανε expected (fc7119e)
-
-### feat/reserved-tables (merged 2026-05-01) — PR #5
-
-13 commits, comprehensive seating UX iteration:
-
-- [x] Reserved tables με VIP labels (cfbc289)
-- [x] Universal label override pattern — custom labels universally
-  εμφανίζονται, sticky across changes (ab93469)
-- [x] TableCard polish: 4-corner button symmetry, shape toggle
-  inversion, unassign as corner icon (058a416-37a40b0, 0ffc070)
-- [x] Smart visual feedback during assignment — 4-state
-  (πράσινο/κίτρινο/reserved/disabled) με capacity awareness (4416d84)
-- [x] Sidebar reservation card με ⭐ Lead member display +
-  conditional παρόντες counter (4987a3f)
-- [x] AttendeesEditor title cleanup (αφαίρεση "Άτομα:" prefix)
-- [x] Compact page headers global — 50% λιγότερο vertical space
-  σε όλες τις main pages (3f2a64b, 6569ed7)
-- [x] Sponsors → tab στα Οικονομικά consolidation (c108802)
-- [x] Sidebar section labels removal + thin divider
-
-### feat/presence-checkin (merged 2026-05-01) — PR #3
-
-- [x] Schema: reservation_attendees.is_present + checked_in_at
-  (commit 0ca10fe)
-- [x] AttendeesEditor: tap-to-toggle is_present με optimistic UI
-  + "Δεν ήρθε" badge + "X · Y παρόντες" counter (eadfa29)
-- [x] Entrance list (app/seating/entrance-list/page.tsx):
-  full mobile-first rewrite με capacity warnings +
-  "Καθάρισε ανώνυμους απόντες" cleanup action
-- [x] Sidebar button "📋 Λίστα Εισόδου & Check-in"
-- [x] Connection με is_present για live attendance tracking
 
 ---
 
