@@ -6,6 +6,8 @@ import { DateInput } from "@/components/DateInput";
 type FormData = {
   phone: string | null;
   birth_date: string | null;
+  birthplace: string | null;
+  residence: string | null;
   address: string | null;
   occupation: string | null;
   father_name: string | null;
@@ -80,14 +82,38 @@ export function ProfileEditForm({ initialData }: { initialData: FormData }) {
           />
         </label>
 
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-muted">
+            Τόπος γέννησης
+          </span>
+          <input
+            type="text"
+            value={data.birthplace ?? ""}
+            onChange={(e) => setField("birthplace", e.target.value || null)}
+            className={inputClass}
+          />
+        </label>
+
         <label className="block sm:col-span-2">
           <span className="mb-1 block text-xs font-medium text-muted">
-            Διεύθυνση
+            Διεύθυνση (οδός, αριθμός)
           </span>
           <input
             type="text"
             value={data.address ?? ""}
             onChange={(e) => setField("address", e.target.value || null)}
+            className={inputClass}
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-muted">
+            Τόπος κατοικίας
+          </span>
+          <input
+            type="text"
+            value={data.residence ?? ""}
+            onChange={(e) => setField("residence", e.target.value || null)}
             className={inputClass}
           />
         </label>
