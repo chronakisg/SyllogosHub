@@ -5,6 +5,8 @@ import { getServerClient } from '@/lib/supabase/server';
 const ALLOWED_FIELDS = [
   'phone',
   'birth_date',
+  'birthplace',
+  'residence',
   'address',
   'occupation',
   'father_name',
