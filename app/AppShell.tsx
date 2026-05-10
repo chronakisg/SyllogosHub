@@ -31,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/events", label: "Εκδηλώσεις", permission: "events", section: "daily", module: "events" },
   { href: "/seating", label: "Πλάνο Τραπεζιών", permission: "seating", section: "daily", module: "seating" },
   { href: "/finances", label: "Οικονομικά", permission: "finances", section: "daily", module: "finances" },
+  { href: "/audit-log", label: "Ιστορικό αλλαγών", permission: "audit", section: "config" },
   {
     href: "/settings",
     label: "Ρυθμίσεις",

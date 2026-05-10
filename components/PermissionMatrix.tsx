@@ -37,6 +37,7 @@ export const MODULES: Array<{ id: PermissionModule; label: string }> = [
   { id: "events", label: "Εκδηλώσεις" },
   { id: "dashboard", label: "Dashboard" },
   { id: "settings", label: "Ρυθμίσεις" },
+  { id: "audit", label: "Ιστορικό αλλαγών" },
 ];
 
 export const ACTIONS: Array<{ id: PermissionAction; label: string }> = [
