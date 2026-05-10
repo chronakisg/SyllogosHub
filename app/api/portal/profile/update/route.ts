@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerClient } from '@/lib/supabase/server';
 import { getCurrentMember } from '@/lib/auth/portalAuth';
+import { computeChanges, logChange } from '@/lib/audit/log';
 
 const ALLOWED_FIELDS = [
   'phone',
@@ -70,6 +71,27 @@ export async function POST(request: Request) {
       { error: 'Σφάλμα αποθήκευσης' },
       { status: 500 }
     );
+  }
+
+  // Audit log: καταγραφή των αλλαγών (fail-soft)
+  if (member.club_id) {
+    const before = member as unknown as Record<string, unknown>;
+    const after = updated as unknown as Record<string, unknown>;
+    const changes = computeChanges(
+      before,
+      after,
+      [...ALLOWED_FIELDS],
+    );
+    await logChange({
+      clubId: member.club_id,
+      tableName: 'members',
+      recordId: member.id,
+      action: 'update',
+      actorLabel: 'self_via_portal',
+      actorUserId: member.user_id,
+      actorMemberId: member.id,
+      changes,
+    });
   }
 
   return NextResponse.json({ success: true, member: updated });
