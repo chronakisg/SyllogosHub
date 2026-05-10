@@ -26,6 +26,9 @@ import {
   type MemberStatus,
   type MemberUpdate,
 } from "@/lib/supabase/types";
+import { MemberHistoryTab } from "./MemberHistoryTab";
+
+type MemberTab = "info" | "family" | "departments" | "role" | "history";
 
 type MemberDeptAssignment = {
   department_id: string;
@@ -1747,8 +1750,7 @@ function MemberModal({
 
   const age = calculateAge(form.birth_date || null);
 
-  type Tab = "info" | "family" | "departments" | "role";
-  const [tab, setTab] = useState<Tab>("info");
+  const [tab, setTab] = useState<MemberTab>("info");
 
   const infoMissing =
     !form.first_name.trim() || !form.last_name.trim();
@@ -1849,6 +1851,11 @@ function MemberModal({
             <MemberTabBtn current={tab} value="role" onSelect={setTab}>
               Ρόλος
             </MemberTabBtn>
+            {editing && (
+              <MemberTabBtn current={tab} value="history" onSelect={setTab}>
+                Ιστορικό
+              </MemberTabBtn>
+            )}
           </div>
         </div>
 
@@ -2414,6 +2421,10 @@ function MemberModal({
                 </div>
               </>
             )}
+
+            {tab === "history" && editing && (
+              <MemberHistoryTab memberId={editing.id} />
+            )}
           </div>
 
           <div className="border-t border-border p-6">
@@ -2530,9 +2541,9 @@ function MemberTabBtn({
   hasError,
   children,
 }: {
-  current: "info" | "family" | "departments" | "role";
-  value: "info" | "family" | "departments" | "role";
-  onSelect: (v: "info" | "family" | "departments" | "role") => void;
+  current: MemberTab;
+  value: MemberTab;
+  onSelect: (v: MemberTab) => void;
   hasError?: boolean;
   children: React.ReactNode;
 }) {
