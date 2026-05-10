@@ -140,7 +140,7 @@ export default function MembersPage() {
   const [unverifiedOnly, setUnverifiedOnly] = useState(false);
   const [missingField, setMissingField] = useState<string>("");
   const [sortBy, setSortBy] = useState<{
-    column: "name" | "age" | "email" | "status" | "departments" | "occupation";
+    column: "name" | "age" | "email" | "departments" | "occupation";
     direction: "asc" | "desc";
   }>({ column: "name", direction: "asc" });
 
@@ -469,10 +469,6 @@ export default function MembersPage() {
           return (
             aEmail.localeCompare(bEmail, "el", { sensitivity: "base" }) * dir
           );
-        }
-        case "status": {
-          const rank = (s: string) => (s === "active" ? 0 : 1);
-          return (rank(a.status) - rank(b.status)) * dir;
         }
         case "departments": {
           const aFirst = a.departments[0]?.name ?? null;
@@ -1125,24 +1121,18 @@ export default function MembersPage() {
                   current={sortBy}
                   onSort={handleSort}
                 />
-                <SortableHeader
-                  label="Κατάσταση"
-                  column="status"
-                  current={sortBy}
-                  onSort={handleSort}
-                />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted">
                     Φόρτωση…
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted">
                     {members.length === 0
                       ? "Δεν υπάρχουν ακόμη μέλη. Πατήστε «Νέο Μέλος» για να ξεκινήσετε."
                       : "Δεν βρέθηκαν αποτελέσματα για τα φίλτρα."}
@@ -1158,20 +1148,50 @@ export default function MembersPage() {
                     <td className="px-4 py-3 font-medium">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="inline-flex items-center gap-2">
-                          <span
-                            title={
-                              m.status === "active" ? "Ενεργό" : "Ανενεργό"
-                            }
-                            aria-label={
-                              m.status === "active" ? "Ενεργό" : "Ανενεργό"
-                            }
-                            className={
-                              "block h-2.5 w-2.5 shrink-0 rounded-full " +
-                              (m.status === "active"
-                                ? "bg-emerald-500"
-                                : "bg-rose-500")
-                            }
-                          />
+                          {canEditMembers ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openStatusModal(m);
+                              }}
+                              title={
+                                m.status === "active"
+                                  ? "Ενεργό μέλος"
+                                  : "Ανενεργό μέλος"
+                              }
+                              aria-label={
+                                m.status === "active"
+                                  ? "Ενεργό μέλος"
+                                  : "Ανενεργό μέλος"
+                              }
+                              className={
+                                "block h-2.5 w-2.5 shrink-0 rounded-full transition hover:scale-125 " +
+                                (m.status === "active"
+                                  ? "bg-emerald-500"
+                                  : "bg-rose-500")
+                              }
+                            />
+                          ) : (
+                            <span
+                              title={
+                                m.status === "active"
+                                  ? "Ενεργό μέλος"
+                                  : "Ανενεργό μέλος"
+                              }
+                              aria-label={
+                                m.status === "active"
+                                  ? "Ενεργό μέλος"
+                                  : "Ανενεργό μέλος"
+                              }
+                              className={
+                                "block h-2.5 w-2.5 shrink-0 rounded-full " +
+                                (m.status === "active"
+                                  ? "bg-emerald-500"
+                                  : "bg-rose-500")
+                              }
+                            />
+                          )}
                           <span>{formatMemberName(m)}</span>
                         </span>
                         {m.is_board_member && (
@@ -1291,23 +1311,6 @@ export default function MembersPage() {
                         )}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      {canEditMembers ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openStatusModal(m);
-                          }}
-                          className="rounded-full transition hover:opacity-80"
-                          title="Αλλαγή κατάστασης"
-                        >
-                          <StatusBadge status={m.status} />
-                        </button>
-                      ) : (
-                        <StatusBadge status={m.status} />
-                      )}
-                    </td>
                   </tr>
                 ))
               )}
@@ -1367,8 +1370,30 @@ type BulkModalState =
       errors: Array<{ email: string; error: string }>;
     };
 
-type SortColumn = "name" | "age" | "email" | "status" | "departments" | "occupation";
+type SortColumn = "name" | "age" | "email" | "departments" | "occupation";
 type SortState = { column: SortColumn; direction: "asc" | "desc" };
+
+function StatusBadge({ status }: { status: MemberStatus }) {
+  const isActive = status === "active";
+  return (
+    <span
+      className={
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium " +
+        (isActive
+          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+          : "bg-rose-500/10 text-rose-600 dark:text-rose-400")
+      }
+    >
+      <span
+        className={
+          "h-1.5 w-1.5 rounded-full " +
+          (isActive ? "bg-emerald-500" : "bg-rose-500")
+        }
+      />
+      {isActive ? "Ενεργό" : "Ανενεργό"}
+    </span>
+  );
+}
 
 function SortableHeader({
   label,
@@ -1402,28 +1427,6 @@ function SortableHeader({
     >
       {label} <span>{arrow}</span>
     </th>
-  );
-}
-
-function StatusBadge({ status }: { status: MemberStatus }) {
-  const isActive = status === "active";
-  return (
-    <span
-      className={
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium " +
-        (isActive
-          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-          : "bg-rose-500/10 text-rose-600 dark:text-rose-400")
-      }
-    >
-      <span
-        className={
-          "h-1.5 w-1.5 rounded-full " +
-          (isActive ? "bg-emerald-500" : "bg-rose-500")
-        }
-      />
-      {isActive ? "Ενεργό" : "Ανενεργό"}
-    </span>
   );
 }
 
