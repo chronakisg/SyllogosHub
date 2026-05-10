@@ -50,3 +50,10 @@ public/swe-worker-*.js
 
 .claude/settings.local.json
 supabase/.temp/
+
+# Sales / marketing artifacts (kept local, not in repo)
+SyllogosHub_Presentation*.pdf
+
+# Windows temp filename artifacts (escaping bugs)
+C:UserschronAppDataLocal*
+*.tmp
