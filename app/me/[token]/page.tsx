@@ -14,6 +14,8 @@ type MemberData = {
   father_name: string | null;
   mother_name: string | null;
   maiden_name: string | null;
+  birthplace: string | null;
+  residence: string | null;
 };
 
 type ClubData = {
@@ -61,6 +63,8 @@ export default function MeTokenPage() {
   const [fatherName, setFatherName] = useState("");
   const [motherName, setMotherName] = useState("");
   const [maidenName, setMaidenName] = useState("");
+  const [birthplace, setBirthplace] = useState("");
+  const [residence, setResidence] = useState("");
 
   // Fetch member by token
   useEffect(() => {
@@ -87,6 +91,8 @@ export default function MeTokenPage() {
           setFatherName(data.member.father_name ?? "");
           setMotherName(data.member.mother_name ?? "");
           setMaidenName(data.member.maiden_name ?? "");
+          setBirthplace(data.member.birthplace ?? "");
+          setResidence(data.member.residence ?? "");
           setLoading(false);
         }
       } catch (e) {
@@ -117,6 +123,8 @@ export default function MeTokenPage() {
           father_name: fatherName.trim() || null,
           mother_name: motherName.trim() || null,
           maiden_name: maidenName.trim() || null,
+          birthplace: birthplace.trim() || null,
+          residence: residence.trim() || null,
         }),
       });
       if (!res.ok) {
@@ -269,11 +277,29 @@ export default function MeTokenPage() {
               />
             </Field>
 
-            <Field label="Διεύθυνση">
+            <Field label="Τόπος γέννησης">
+              <input
+                type="text"
+                value={birthplace}
+                onChange={(e) => setBirthplace(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+
+            <Field label="Διεύθυνση (οδός, αριθμός)">
               <input
                 type="text"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+
+            <Field label="Τόπος κατοικίας">
+              <input
+                type="text"
+                value={residence}
+                onChange={(e) => setResidence(e.target.value)}
                 className={inputClass}
               />
             </Field>

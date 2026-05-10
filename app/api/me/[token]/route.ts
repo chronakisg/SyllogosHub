@@ -23,6 +23,8 @@ export async function GET(
       father_name,
       mother_name,
       maiden_name,
+      birthplace,
+      residence,
       email_verification_expires_at,
       club_id
     `)
@@ -76,6 +78,8 @@ export async function GET(
       father_name: member.father_name,
       mother_name: member.mother_name,
       maiden_name: member.maiden_name,
+      birthplace: member.birthplace,
+      residence: member.residence,
     },
     club: clubResult.data ? {
       name: clubResult.data.name,

@@ -131,6 +131,8 @@ export default async function ProfilePage() {
           initialData={{
             phone: member.phone,
             birth_date: member.birth_date,
+            birthplace: member.birthplace,
+            residence: member.residence,
             address: member.address,
             occupation: member.occupation,
             father_name: member.father_name,
