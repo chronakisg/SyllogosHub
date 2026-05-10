@@ -11,6 +11,7 @@ import Link from "next/link";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { formatMemberName } from "@/lib/utils/attendees";
 import { generatePassword } from "@/lib/utils/password";
+import { normalizeGreek } from "@/lib/utils/greekSearch";
 import type { Member, MemberRole } from "@/lib/supabase/types";
 
 // ─────────── Types ───────────
@@ -86,12 +87,12 @@ export function PeopleTab({ clubId }: { clubId: string }) {
   }, [clubId]);
 
   const filteredMembers = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeGreek(search.trim());
     if (!q) return members;
     return members.filter((m) =>
-      `${m.last_name ?? ""} ${m.first_name ?? ""} ${m.email ?? ""}`
-        .toLowerCase()
-        .includes(q)
+      normalizeGreek(
+        `${m.last_name ?? ""} ${m.first_name ?? ""} ${m.email ?? ""}`
+      ).includes(q)
     );
   }, [members, search]);
 
