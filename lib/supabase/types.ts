@@ -876,6 +876,46 @@ export type SuperAdmin = {
   created_at: string;
 };
 
+export type AuditAction = "insert" | "update" | "delete";
+
+export type AuditActorLabel =
+  | "admin"
+  | "self_via_token"
+  | "self_via_portal"
+  | "system";
+
+export type AuditLogChanges = Record<string, { from: unknown; to: unknown }>;
+
+export type AuditLog = {
+  id: string;
+  club_id: string;
+  table_name: string;
+  record_id: string;
+  action: AuditAction;
+  actor_label: AuditActorLabel;
+  actor_user_id: string | null;
+  actor_member_id: string | null;
+  changes: AuditLogChanges;
+  notes: string | null;
+  created_at: string;
+};
+
+export type AuditLogInsert = {
+  id?: string;
+  club_id: string;
+  table_name: string;
+  record_id: string;
+  action: AuditAction;
+  actor_label: AuditActorLabel;
+  actor_user_id?: string | null;
+  actor_member_id?: string | null;
+  changes: AuditLogChanges;
+  notes?: string | null;
+  created_at?: string;
+};
+
+export type AuditLogUpdate = Partial<Omit<AuditLog, "id" | "created_at">>;
+
 export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "12";
@@ -1408,6 +1448,27 @@ export type Database = {
         Insert: { user_id: string; created_at?: string };
         Update: { created_at?: string };
         Relationships: [];
+      };
+      audit_log: {
+        Row: AuditLog;
+        Insert: AuditLogInsert;
+        Update: AuditLogUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "audit_log_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "audit_log_actor_member_id_fkey";
+            columns: ["actor_member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          },
+        ];
       };
     };
     Views: Record<string, never>;
