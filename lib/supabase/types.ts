@@ -703,7 +703,8 @@ export type PermissionModule =
   | "events"
   | "dashboard"
   | "settings"
-  | "cashier";
+  | "cashier"
+  | "audit";
 
 export type PermissionAction = "read" | "create" | "edit" | "delete";
 

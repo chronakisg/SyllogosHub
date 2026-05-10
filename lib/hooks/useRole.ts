@@ -18,7 +18,8 @@ export type Permission =
   | "calendar"
   | "settings"
   | "dashboard"
-  | "cashier";
+  | "cashier"
+  | "audit";
 
 export type RoleState = {
   loading: boolean;
@@ -67,6 +68,7 @@ const ALL_PERMISSIONS: Permission[] = [
   "settings",
   "dashboard",
   "cashier",
+  "audit",
 ];
 
 const MODULE_TO_PERMISSION: Record<PermissionModule, Permission> = {
@@ -78,6 +80,7 @@ const MODULE_TO_PERMISSION: Record<PermissionModule, Permission> = {
   dashboard: "dashboard",
   settings: "settings",
   cashier: "cashier",
+  audit: "audit",
 };
 
 function computePermissions(input: {
