@@ -300,6 +300,70 @@ _(no active branches)_
 
 ### 🔍 Audit & Monitoring
 
+- [ ] **🔍 Cross-table audit foundation (multi-PR program)**
+
+  Stack: 📊 Διαχειριστικό · Priority: HIGH
+
+  Strategic context: Audit subsystem ολοκληρώθηκε για members table
+  (PRs #49/50/51/56/57/58). Generic schema (audit_log.table_name)
+  είναι έτοιμο για επέκταση σε όλα τα domains.
+
+  **Blocker εντοπίστηκε στο PR #59 attempt (2026-05-11):**
+  Πολλά admin domains (events, reservations, finances, sponsors,
+  departments) **δεν έχουν API update routes** — mutations γίνονται
+  client-side direct μέσω Supabase. Άρα audit hooks ΔΕΝ μπορούν
+  να μπουν χωρίς refactor.
+
+  **Anti-pattern να αποφύγουμε:** Client-side audit calls — actor
+  identity + service role bypass δεν είναι safe από browser.
+
+  **Sequential rollout plan (ένα PR ανά domain):**
+
+  Phase A: events
+  - app/api/events/[id]/route.ts (PUT/PATCH) + audit hook
+  - Migrate 8 client sites που χρησιμοποιούν .from('events'):
+    - app/events/page.tsx (main admin)
+    - app/seating/page.tsx + app/seating/entrance-list/page.tsx
+    - app/calendar/page.tsx
+    - app/cashier/[eventId]/page.tsx
+    - app/finances/EventDashboardTab.tsx
+    - app/admin/clubs/[id]/page.tsx
+    - components/EventSummaryPanel.tsx
+  - Smoke test σε όλα τα sites
+  - EVENT_FIELD_LABELS στο lib/audit/labels.ts
+  - Estimated: L (~4-6 ώρες, multi-commit)
+
+  Phase B: finances (transactions)
+  - app/api/finances/transactions/[id]/route.ts (or similar)
+  - Migrate client sites
+  - TRANSACTION_FIELD_LABELS
+  - Estimated: L
+
+  Phase C: reservations + attendees
+  - Similar pattern, attention σε real-time mutations από
+    seating page (multiple concurrent edits)
+  - Estimated: L
+
+  Phase D: sponsors + departments + clubs settings
+  - Lower frequency, smaller surface
+  - Estimated: M per domain
+
+  **Pattern reference (από PR #56/#58):**
+  - logChange με tableName + record_id + action + actor_label
+  - actor_label='admin' για admin context (αντί 'self_via_token')
+  - Smarter idempotency guard για field-diff scenarios
+  - Per-table FIELD_LABELS module (πιθανώς νέα structure
+    σε lib/audit/labels/<table>.ts)
+
+  **Architectural decision pending:** Single FIELD_LABELS map
+  (collision risk) ή per-table modules (scalable). Decide όταν
+  ξεκινήσει Phase A.
+
+  Connects με: PR #44 RLS overhaul (production blocker — RLS
+  policies needed πριν multi-table audit goes live).
+
+  Estimated total program: XL (8-15 PRs ανάλογα με rollout cadence)
+
 - [ ] **📅 Audit log date grouping refactor**
 
   Stack: 📊 Διαχειριστικό
