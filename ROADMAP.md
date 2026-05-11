@@ -111,56 +111,6 @@ _(no active branches)_
 
 ## 🔴 Critical / Production Blockers
 
-- [ ] **🐛 Audit hook guard fix για backfilled members**
-
-  Stack: 📊 Διαχειριστικό · Priority: HIGH
-
-  Bug εντοπίστηκε στο PR #57 smoke test:
-  - Members με email_verified=true λόγω pre-hook era (πριν PR #49)
-    ή backfill (PR #56) δεν καταγράφουν real verification events
-  - Hook guard '!member.email_verified' κάνει SKIP όταν boolean
-    είναι ήδη true, ανεξάρτητα αν υπάρχει πραγματική audit entry
-  - Άρα σημερινή ενέργεια από user (όπως ΚΑΡΟΥΣΟΥ) χάνεται από
-    το audit timeline
-
-  Affected:
-  - 5 backfilled members στο kriton-aigaleo (PR #56 list)
-  - Όποιος έκανε verification πριν τη deployment του PR #49
-    audit foundation
-
-  Solution: Smarter idempotency guard στο
-  /api/me/[token]/update/route.ts:
-
-  // Αντί:
-  if (!member.email_verified) {
-    await logEmailVerified({ ... });
-  }
-
-  // Νέο:
-  const { data: existingRealEntry } = await admin
-    .from('audit_log')
-    .select('id')
-    .eq('record_id', member.id)
-    .eq('action', 'email_verified')
-    .neq('actor_label', 'system')  // ignore backfill
-    .limit(1)
-    .maybeSingle();
-
-  if (!existingRealEntry) {
-    await logEmailVerified({ ... });
-  }
-
-  Trade-off: +1 DB query ανά self-update submission. Mitigated από
-  το ότι το /api/me/[token]/update είναι low-frequency endpoint
-  (per-member usage).
-
-  Recovery για 5 affected: Μετά το PR #58 deploy, η ίδια re-submission
-  θα γράψει νέα real entry. Backfill entry παραμένει ως historical
-  reference (Σύστημα actor distinguishes).
-
-  Estimated: S (1 file, ~12 lines + smoke test με ΧΡΟΝΑΚΗ + 1 backfilled
-  member όπως ΚΑΡΟΥΣΟΥ)
-
 - [ ] **RLS overhaul για όλα τα tables**
   - Pre-existing 'RLS production blocker' ξεκαθαρίστηκε στο PR #44
     review: 20 admin sites εξαρτώνται από browser/session queries
@@ -300,27 +250,69 @@ _(no active branches)_
 
 ### 🔍 Audit & Monitoring
 
-- [ ] **📅 Audit log date grouping refactor**
+- [ ] **🔍 Cross-table audit foundation (multi-PR program)**
 
-  Stack: 📊 Διαχειριστικό
+  Stack: 📊 Διαχειριστικό · Priority: HIGH
 
-  Σήμερα το /audit-log group-άρει by member. UX issue: όταν ένας 
-  member κάνει activity σήμερα και άλλοι έχουν παλαιότερες entries, 
-  ο πιο "ζωντανός" εμφανίζεται με βάση alphabetical position αντί 
-  τη χρονικη proximity.
+  Strategic context: Audit subsystem ολοκληρώθηκε για members table
+  (PRs #49/50/51/56/57/58). Generic schema (audit_log.table_name)
+  είναι έτοιμο για επέκταση σε όλα τα domains.
 
-  Στόχος refactor:
-  - Date-grouped sections (Σήμερα/Χθες/DD-MM-YYYY για older)
-  - Within section: alphabetical by last_name (Greek collation)
-  - Member-level sub-grouping όταν >1 entry στην ίδια μέρα
+  **Blocker εντοπίστηκε στο PR #59 attempt (2026-05-11):**
+  Πολλά admin domains (events, reservations, finances, sponsors,
+  departments) **δεν έχουν API update routes** — mutations γίνονται
+  client-side direct μέσω Supabase. Άρα audit hooks ΔΕΝ μπορούν
+  να μπουν χωρίς refactor.
 
-  Connects με: PR #56 (audit work foundation), PR #51 
-  (greekSearch helper για name search), Greek collation patterns 
-  established στο /members + /seating
+  **Anti-pattern να αποφύγουμε:** Client-side audit calls — actor
+  identity + service role bypass δεν είναι safe από browser.
 
-  Estimated: M (3-4 commits — data restructure + UI refactor + 
-  date label formatting + sort tests)
-  Priority: HIGH (UX issue confirmed στο PR #56 smoke testing)
+  **Sequential rollout plan (ένα PR ανά domain):**
+
+  Phase A: events
+  - app/api/events/[id]/route.ts (PUT/PATCH) + audit hook
+  - Migrate 8 client sites που χρησιμοποιούν .from('events'):
+    - app/events/page.tsx (main admin)
+    - app/seating/page.tsx + app/seating/entrance-list/page.tsx
+    - app/calendar/page.tsx
+    - app/cashier/[eventId]/page.tsx
+    - app/finances/EventDashboardTab.tsx
+    - app/admin/clubs/[id]/page.tsx
+    - components/EventSummaryPanel.tsx
+  - Smoke test σε όλα τα sites
+  - EVENT_FIELD_LABELS στο lib/audit/labels.ts
+  - Estimated: L (~4-6 ώρες, multi-commit)
+
+  Phase B: finances (transactions)
+  - app/api/finances/transactions/[id]/route.ts (or similar)
+  - Migrate client sites
+  - TRANSACTION_FIELD_LABELS
+  - Estimated: L
+
+  Phase C: reservations + attendees
+  - Similar pattern, attention σε real-time mutations από
+    seating page (multiple concurrent edits)
+  - Estimated: L
+
+  Phase D: sponsors + departments + clubs settings
+  - Lower frequency, smaller surface
+  - Estimated: M per domain
+
+  **Pattern reference (από PR #56/#58):**
+  - logChange με tableName + record_id + action + actor_label
+  - actor_label='admin' για admin context (αντί 'self_via_token')
+  - Smarter idempotency guard για field-diff scenarios
+  - Per-table FIELD_LABELS module (πιθανώς νέα structure
+    σε lib/audit/labels/<table>.ts)
+
+  **Architectural decision pending:** Single FIELD_LABELS map
+  (collision risk) ή per-table modules (scalable). Decide όταν
+  ξεκινήσει Phase A.
+
+  Connects με: PR #44 RLS overhaul (production blocker — RLS
+  policies needed πριν multi-table audit goes live).
+
+  Estimated total program: XL (8-15 PRs ανάλογα με rollout cadence)
 
 - [ ] **Audit log filters (Phase 3 part 2)**
   - Time window dropdown: 7/15/30/90/all (default 15)
@@ -850,6 +842,101 @@ _(no active branches)_
   Estimated: process note
 
 ## ✅ Recently Done
+
+### feat/members-url-state (merged 2026-05-11) — PR #59
+
+URL state persistence για το /members admin page — filters, sort,
+και search επιβιώνουν σε refresh, browser back/forward, και shareable
+URLs. Pivot από αρχικό cross-table audit attempt (που εντόπισε
+missing API routes ως blocker — documented στο cross-table audit
+ROADMAP entry).
+
+**Foundation (1 commit):**
+- [x] Suspense boundary για useSearchParams (App Router requirement)
+- [x] MembersPageContent internal component + MembersPage default
+  export με Suspense wrapper
+- [x] MembersUrlState type + DEFAULT_URL_STATE constant
+- [x] buildMembersQueryString(state) — serialize με omit-on-default
+- [x] parseMembersUrlState(searchParams) — defensive fallback για
+  invalid/missing params
+- [x] sortColumn narrowed σε SortColumn union (type fidelity με
+  existing handleSort + child component SortState props)
+- [x] Validated sort param με validSortColumns array (mirror
+  validStatuses defensive pattern)
+
+**Wire-up (1 commit):**
+- [x] 9 useState declarations → URL-derived state
+- [x] Setter shims preserve existing call signatures (0 αλλαγές
+  σε JSX call sites)
+- [x] Local searchInput state για controlled input UX
+- [x] 2 sync useEffects:
+  * searchInput → URL (300ms debounce)
+  * URL.q → searchInput (back button, shared links)
+- [x] setSortBy shim supports object + callback forms
+  (handleSort toggle logic preserved)
+- [x] clearFilters simplified: 8 setters → 1 updateUrl, sort
+  preserved (existing UX behavior)
+
+**URL schema:**
+- ?q=κλεισ&dept=χορωδια&status=active&board=1&age=child
+  &family=1&unverified=1&missing=email&sort=age&order=desc
+- Defaults omitted για clean URLs (no noise όταν view είναι default)
+
+**Pattern reference:** app/finances/page.tsx — established
+bidirectional URL ↔ state sync με { scroll: false } replace.
+
+**Smoke tested (8/8 scenarios):**
+- Initial clean URL ✓
+- Filter changes update URL immediately ✓
+- Search debounce (300ms idle) ✓
+- Refresh persists all filters ✓
+- Clear filters preserves sort ✓
+- Sort header toggle works ✓
+- Browser back restores previous state ✓
+- Manual URL paste applies filters ✓
+
+### fix/audit-hook-guard-backfill (merged 2026-05-11) — PR #58
+
+Bug fix για audit hook guard που έπεφτε σε silent drop όταν member
+είχε email_verified=true λόγω backfill (PR #56) ή pre-PR #49 era.
+
+**Bug discovery context:**
+Εντοπίστηκε στο PR #57 production smoke test:
+- ΚΑΡΟΥΣΟΥ ΕΥΑΓΓΕΛΙΑ έκανε real verification σήμερα
+- Audit log εμφάνιζε ΜΟΝΟ την backfill entry από 09/05
+- Η σημερινή ενέργεια έπρεπε να γράφει νέα entry — δεν γράφτηκε
+
+**Root cause:**
+Παλιός guard '!member.email_verified' λάθος υπόθεση: 'αν
+email_verified=true, έχει ήδη γραφτεί audit entry'. Πραγματικότητα:
+boolean μπορεί να γίνει true από pre-hook era ή backfill — χωρίς
+αντίστοιχη audit entry.
+
+**Fix (1 commit, app/api/me/[token]/update/route.ts):**
+- [x] Smarter guard που queries audit_log για existing real entries
+- [x] WHERE action='email_verified' AND actor_label != 'system'
+- [x] Backfill entries (system actor) ignored — δεν εμποδίζουν την
+  καταγραφή πραγματικής verification
+
+**Behavior matrix:**
+| Scenario | Old guard | New guard |
+|----------|-----------|-----------|
+| First-time verify (no prior) | LOG ✓ | LOG ✓ |
+| Re-submit post-real | SKIP ✓ | SKIP ✓ |
+| Real verify post-backfill | SKIP (BUG) | LOG ✓ |
+| Re-submit post-real+backfill | SKIP ✓ | SKIP ✓ |
+
+**Production smoke-tested (3 scenarios):**
+- ΚΑΡΟΥΣΟΥ (backfill scenario): real verify → 2 audit rows ✓
+- ΚΑΡΟΥΣΟΥ idempotent re-submit: still 2 rows ✓
+- ΧΡΟΝΑΚΗΣ (existing real entries): re-submit → still 2 rows ✓
+
+**Recovery για 5 affected backfilled members:** Η επόμενη φορά που
+θα κάνουν submit στο /me/[token], θα γραφτεί proper real verification
+entry. Backfill παραμένει ως historical reference.
+
+Trade-off: +1 DB query ανά self-update POST. Mitigated από
+low-frequency endpoint.
 
 ### feat/audit-log-date-grouping (merged 2026-05-11) — PR #57
 
