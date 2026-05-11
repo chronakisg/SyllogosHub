@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-11 (Greek search broader rollout)  
+> Last updated: 2026-05-11 (Audit verification events + Greek search broader rollout)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -249,6 +249,28 @@ _(no active branches)_
   Priority: High (UX blocker σε field use)
 
 ### 🔍 Audit & Monitoring
+
+- [ ] **📅 Audit log date grouping refactor**
+
+  Stack: 📊 Διαχειριστικό
+
+  Σήμερα το /audit-log group-άρει by member. UX issue: όταν ένας 
+  member κάνει activity σήμερα και άλλοι έχουν παλαιότερες entries, 
+  ο πιο "ζωντανός" εμφανίζεται με βάση alphabetical position αντί 
+  τη χρονικη proximity.
+
+  Στόχος refactor:
+  - Date-grouped sections (Σήμερα/Χθες/DD-MM-YYYY για older)
+  - Within section: alphabetical by last_name (Greek collation)
+  - Member-level sub-grouping όταν >1 entry στην ίδια μέρα
+
+  Connects με: PR #56 (audit work foundation), PR #51 
+  (greekSearch helper για name search), Greek collation patterns 
+  established στο /members + /seating
+
+  Estimated: M (3-4 commits — data restructure + UI refactor + 
+  date label formatting + sort tests)
+  Priority: HIGH (UX issue confirmed στο PR #56 smoke testing)
 
 - [ ] **Audit log filters (Phase 3 part 2)**
   - Time window dropdown: 7/15/30/90/all (default 15)
@@ -778,6 +800,66 @@ _(no active branches)_
   Estimated: process note
 
 ## ✅ Recently Done
+
+### fix/audit-email-verification (merged 2026-05-11) — PR #56
+
+Discriminated 'email_verified' audit action για visibility του verification 
+event που έπεφτε σε empty diff στο generic update audit hook (PR #49).
+
+Original trigger: ΚΑΡΟΥΣΟΥ ΕΥΑΓΓΕΛΙΑ verified χωρίς history entry στο 
+modal — discovered στο /members modal smoke test μετά το PR #54 merge.
+
+**Schema (Migration 0023):**
+- audit_log.action CHECK constraint expanded: + 'email_verified'
+- Discriminated event pattern για future verification types
+  (phone_verified, identity_verified, payment_verified, member_approved)
+- Backup snapshot: audit_log_backup_20260511
+
+**Types:**
+- AuditAction union extended με 'email_verified'
+- Auto-propagates σε LogChangeEntry + AuditLog Row/Insert/Update
+
+**Code foundation:**
+- New helper: logEmailVerified(args) σε lib/audit/log.ts
+  - Wraps logChange με defaults: action, table, changes payload
+  - previousValue parameter (boolean | null) normalized internally
+  - Fail-soft inherited
+- AUDIT_ACTION_LABELS: Record<AuditAction, string> exhaustive
+  στο lib/audit/labels.ts (TS-enforced future-proofing)
+- getActionLabel helper με ?? action fallback
+- MEMBER_FIELD_LABELS extended με 'email_verified' (UI consistency
+  μεταξύ action label + field diff display)
+
+**API hook:**
+- /api/me/[token]/update integrated με logEmailVerified
+- SELECT expanded με email_verified column
+- Guard: !member.email_verified (idempotency — re-submissions
+  δεν δημιουργούν duplicate entries)
+- Co-exists με existing logChange (update entries για field diffs)
+- /api/portal/profile/update ΔΕΝ touched (different flow, magic
+  link auth tracked via Supabase Auth layer)
+
+**Backfill (5 affected members στο kriton-aigaleo):**
+- Retroactive entries για verifications πριν το audit hook
+- created_at = email_verification_sent_at (best-effort lower bound)
+- actor_label = 'system' (distinguished από real user actions)
+- New convention: supabase/scripts/backfill/ directory για data
+  fixups διακριτές από schema migrations
+- Idempotent (NOT EXISTS guard)
+
+**Production smoke-tested (3 scenarios):**
+- Fresh verify, no field changes → 1 email_verified entry only
+- Idempotent re-submission → 0 new entries (guard works)
+- Combined: phone change + first verification → 2 entries
+  (update + email_verified, σωστή timestamp ordering)
+
+**Architectural pattern established:**
+- Path 1 (diff-style payload): changes = {field: {from, to}}
+- vs Path 2/3 (event-style, sentinel, etc.) — rejected για 
+  consistency με existing rendering
+- Single source of truth για verification events στη DB
+- Future verifications follow same pattern: migration + type +
+  helper + hook + label
 
 ### feat/greek-search-broader (merged 2026-05-11) — PR #55
 
