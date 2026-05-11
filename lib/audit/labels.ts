@@ -79,3 +79,22 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
 export function getActionLabel(action: AuditAction): string {
   return AUDIT_ACTION_LABELS[action] ?? action;
 }
+
+// ────────────────────────────────────────────────────────────────────
+// Event field labels
+// ────────────────────────────────────────────────────────────────────
+
+/**
+ * Greek translations για audit-able fields του events table.
+ *
+ * Whitelist (Phase A.1): primary metadata fields. venue_map_config
+ * (jsonb) deliberately excluded — complex diff, low audit signal value.
+ * Future: αν χρειαστεί floor plan audit, σχεδιάζεται με semantic
+ * events αντί raw jsonb diff.
+ */
+export const EVENT_FIELD_LABELS: Record<string, string> = {
+  event_name: "Ονομασία εκδήλωσης",
+  event_date: "Ημερομηνία εκδήλωσης",
+  location: "Τοποθεσία",
+  venue_max_capacity: "Μέγιστη χωρητικότητα",
+};
