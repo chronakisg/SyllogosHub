@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerClient } from '@/lib/supabase/server';
-import { computeChanges, logChange } from '@/lib/audit/log';
+import { computeChanges, logChange, logEmailVerified } from '@/lib/audit/log';
 
 // Whitelist των fields που επιτρέπεται να ενημερώνει το μέλος
 const ALLOWED_FIELDS = [
@@ -39,6 +39,7 @@ export async function POST(
       id,
       club_id,
       email_verification_expires_at,
+      email_verified,
       phone,
       birth_date,
       birthplace,
@@ -118,6 +119,21 @@ export async function POST(
       actorMemberId: member.id,
       changes,
     });
+
+    // Email verification audit (discriminated event)
+    // Triggers μόνο σε true transition (από false/null σε true) —
+    // re-submissions όπου member ήταν ήδη verified δεν δημιουργούν
+    // duplicate entries.
+    if (!member.email_verified) {
+      await logEmailVerified({
+        clubId: member.club_id,
+        memberId: member.id,
+        actorLabel: 'self_via_token',
+        actorMemberId: member.id,
+        previousValue: member.email_verified,
+        notes: null,
+      });
+    }
   }
 
   return NextResponse.json({ success: true });
