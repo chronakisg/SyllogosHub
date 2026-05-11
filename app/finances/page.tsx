@@ -31,6 +31,7 @@ import type {
 } from "@/lib/supabase/types";
 import { calculateDiscount, generateUuid } from "@/lib/utils/discounts";
 import { formatMemberName } from "@/lib/utils/attendees";
+import { normalizeGreek } from "@/lib/utils/greekSearch";
 import EventDashboardTab from "./EventDashboardTab";
 
 type Tab = "payments" | "dashboard";
@@ -1493,12 +1494,12 @@ function BulkChargeModal({
 }) {
   const [search, setSearch] = useState("");
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeGreek(search.trim());
     if (!q) return members;
     return members.filter((m) =>
-      `${m.last_name} ${m.first_name} ${m.email ?? ""}`
-        .toLowerCase()
-        .includes(q)
+      normalizeGreek(
+        `${m.last_name} ${m.first_name} ${m.email ?? ""}`
+      ).includes(q)
     );
   }, [members, search]);
   const allFilteredSelected =

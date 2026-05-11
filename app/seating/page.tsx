@@ -29,6 +29,7 @@ import {
   type IsChildResolution,
   type ReservationWithAttendees,
 } from "@/lib/utils/attendees";
+import { normalizeGreek } from "@/lib/utils/greekSearch";
 import { AttendeesEditor } from "@/components/AttendeesEditor";
 import { QuickEditReservationModal } from "@/components/QuickEditReservationModal";
 
@@ -194,18 +195,18 @@ function SeatingView() {
   } | null>(null);
 
   const unassigned = useMemo(() => {
-    const q = groupSearch.trim().toLowerCase();
+    const q = normalizeGreek(groupSearch.trim());
     return reservations
       .filter((r) => r.table_number == null)
-      .filter((r) => !q || r.group_name.toLowerCase().includes(q))
+      .filter((r) => !q || normalizeGreek(r.group_name).includes(q))
       .sort((a, b) => a.group_name.localeCompare(b.group_name, "el", { sensitivity: "base" }));
   }, [reservations, groupSearch]);
 
   const assigned = useMemo(() => {
-    const q = groupSearch.trim().toLowerCase();
+    const q = normalizeGreek(groupSearch.trim());
     return reservations
       .filter((r) => r.table_number != null)
-      .filter((r) => !q || r.group_name.toLowerCase().includes(q))
+      .filter((r) => !q || normalizeGreek(r.group_name).includes(q))
       .sort((a, b) => {
         const aT = a.table_number ?? Number.MAX_SAFE_INTEGER;
         const bT = b.table_number ?? Number.MAX_SAFE_INTEGER;

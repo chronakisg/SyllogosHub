@@ -10,6 +10,7 @@ import { AccessDenied } from "@/lib/auth/AccessDenied";
 import { DateInput } from "@/components/DateInput";
 import { calculateAge, generateUuid } from "@/lib/utils/discounts";
 import { formatMemberName } from "@/lib/utils/attendees";
+import { normalizeGreek } from "@/lib/utils/greekSearch";
 import {
   formatRelativeDate,
   getVerificationState,
@@ -391,7 +392,7 @@ export default function MembersPage() {
   }
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeGreek(search.trim());
     const result = members.filter((m) => {
       if (statusFilter !== "all" && m.status !== statusFilter) return false;
       if (boardOnly && !m.is_board_member) return false;
@@ -427,17 +428,18 @@ export default function MembersPage() {
         if (!checks[missingField]) return false;
       }
       if (q) {
-        const hay = [
-          m.first_name,
-          m.last_name,
-          m.phone,
-          m.email,
-          m.board_position,
-          ...m.departments.map((d) => d.name),
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
+        const hay = normalizeGreek(
+          [
+            m.first_name,
+            m.last_name,
+            m.phone,
+            m.email,
+            m.board_position,
+            ...m.departments.map((d) => d.name),
+          ]
+            .filter(Boolean)
+            .join(" ")
+        );
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -1638,12 +1640,12 @@ function MemberModal({
   }, [familySearch]);
 
   const familyMatches = useMemo(() => {
-    const q = familySearchDebounced.toLowerCase();
+    const q = normalizeGreek(familySearchDebounced);
     if (!q) return [] as MemberWithDepartments[];
     return members
       .filter((m) => m.id !== editing?.id)
       .filter((m) =>
-        `${m.last_name} ${m.first_name}`.toLowerCase().includes(q)
+        normalizeGreek(`${m.last_name} ${m.first_name}`).includes(q)
       )
       .slice(0, 8);
   }, [members, familySearchDebounced, editing?.id]);

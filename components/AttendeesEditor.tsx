@@ -22,6 +22,7 @@ import {
   type IsChildResolution,
   type ReservationWithAttendees,
 } from "@/lib/utils/attendees";
+import { normalizeGreek } from "@/lib/utils/greekSearch";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { ConfirmDeleteReservationModal } from "@/components/ConfirmDeleteReservationModal";
 
@@ -127,25 +128,25 @@ export function AttendeesEditor({
   );
 
   const filteredMembers = useMemo(() => {
-    const q = debouncedQuery.toLowerCase();
+    const q = normalizeGreek(debouncedQuery);
     if (q.length < 2) return [] as Member[];
     return members
       .filter((m) => {
-        const name = `${m.first_name} ${m.last_name}`.toLowerCase();
-        const reverse = `${m.last_name} ${m.first_name}`.toLowerCase();
+        const name = normalizeGreek(`${m.first_name} ${m.last_name}`);
+        const reverse = normalizeGreek(`${m.last_name} ${m.first_name}`);
         return name.includes(q) || reverse.includes(q);
       })
       .slice(0, 10);
   }, [members, debouncedQuery]);
 
   const promotionFilteredMembers = useMemo(() => {
-    const q = promotionSearch.trim().toLowerCase();
+    const q = normalizeGreek(promotionSearch.trim());
     if (q.length < 2) return [] as Member[];
     return members
       .filter((m) => {
         if (existingMemberIds.has(m.id)) return false;
-        const name = `${m.first_name} ${m.last_name}`.toLowerCase();
-        const reverse = `${m.last_name} ${m.first_name}`.toLowerCase();
+        const name = normalizeGreek(`${m.first_name} ${m.last_name}`);
+        const reverse = normalizeGreek(`${m.last_name} ${m.first_name}`);
         return name.includes(q) || reverse.includes(q);
       })
       .slice(0, 10);

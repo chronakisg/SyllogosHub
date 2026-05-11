@@ -14,6 +14,7 @@ import {
   type AttendeeWithMember,
   type ReservationWithAttendees,
 } from "@/lib/utils/attendees";
+import { normalizeGreek } from "@/lib/utils/greekSearch";
 import {
   resolveAttendeeCategory,
   matchTicketPrice,
@@ -214,9 +215,10 @@ export default function CashierPage() {
       complete: 2,
     };
 
-    const filtered = search.trim()
+    const q = normalizeGreek(search.trim());
+    const filtered = q
       ? reservationRows.filter((r) =>
-          r.group_name.toLowerCase().includes(search.toLowerCase().trim())
+          normalizeGreek(r.group_name).includes(q)
         )
       : reservationRows;
 
