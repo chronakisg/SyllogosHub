@@ -269,19 +269,32 @@ _(no active branches)_
 
   **Sequential rollout plan (ένα PR ανά domain):**
 
-  Phase A: events
-  - app/api/events/[id]/route.ts (PUT/PATCH) + audit hook
-  - Migrate 8 client sites που χρησιμοποιούν .from('events'):
-    - app/events/page.tsx (main admin)
-    - app/seating/page.tsx + app/seating/entrance-list/page.tsx
-    - app/calendar/page.tsx
-    - app/cashier/[eventId]/page.tsx
-    - app/finances/EventDashboardTab.tsx
-    - app/admin/clubs/[id]/page.tsx
-    - components/EventSummaryPanel.tsx
-  - Smoke test σε όλα τα sites
-  - EVENT_FIELD_LABELS στο lib/audit/labels.ts
-  - Estimated: L (~4-6 ώρες, multi-commit)
+  Phase A.1 ✅ DONE (PR #60, merged 2026-05-11):
+  - app/api/events/[id]/route.ts (PATCH) + audit hook
+  - EVENT_FIELD_LABELS, requirePermission helper, foundation modules
+  - Pattern established για όλες τις επόμενες φάσεις
+
+  Phase A.2 PENDING (separate PR, ~2-3 ώρες):
+  - Migrate 8 client sites από .from('events').update(...) σε
+    fetch('/api/events/[id]', { method: 'PATCH', ... }):
+    * app/events/page.tsx (main admin)
+    * app/seating/page.tsx
+    * app/seating/entrance-list/page.tsx
+    * app/calendar/page.tsx
+    * app/cashier/[eventId]/page.tsx
+    * app/finances/EventDashboardTab.tsx
+    * app/admin/clubs/[id]/page.tsx
+    * components/EventSummaryPanel.tsx
+  - Smoke test ανά site
+  - Verify audit entries γράφονται σε κάθε mutation
+  - Estimated: M (~2-3 ώρες, multi-commit, client-only changes)
+
+  Phase A.3 PENDING (cross-table audit UI):
+  - Επεκταση /audit-log page να εμφανίζει events audit entries
+    (όχι μόνο members)
+  - Table filter dropdown
+  - Field labels dispatcher (getFieldLabel(tableName, field))
+  - Estimated: M
 
   Phase B: finances (transactions)
   - app/api/finances/transactions/[id]/route.ts (or similar)
@@ -702,6 +715,31 @@ _(no active branches)_
 
 ### Tech Debt & Cleanup
 
+- [ ] **🧹 requireSuperAdmin parity refactor**
+
+  Stack: 📊 Cross-cutting auth
+
+  Strategic context: PR #60 εγκαθίδρυσε pattern errorResponse
+  helper που standardizes JSON error envelope για όλα τα auth
+  helpers. resolveAuthMember + requireAdmin + requirePermission
+  το χρησιμοποιούν.
+
+  Gap: requireSuperAdmin.ts διατηρεί 3 raw 'throw new Response'
+  calls (lines 31, 45, 52). Inconsistent με υπόλοιπη auth layer.
+
+  Refactor:
+  - Add import errorResponse from './errorResponse'
+  - Replace 3 throws με errorResponse() calls
+  - Verify με grep ότι 0 raw 'throw new Response' παραμένουν στο
+    lib/auth/
+
+  Trade-off: Minor consistency improvement. Παραμένει functional
+  ως έχει — δεν έχει user-facing impact. Worth doing όταν επόμενη
+  φορά αγγίξουμε super admin paths.
+
+  Estimated: XS (10 λεπτά)
+  Connects με: PR #60 errorResponse helper
+
 - [ ] **Family search reverse-name consistency**
   - app/members/page.tsx:1640-1649 ελέγχει μόνο "last first",
     όχι reverse "first last"
@@ -842,6 +880,56 @@ _(no active branches)_
   Estimated: process note
 
 ## ✅ Recently Done
+
+### feat/api-events-update (merged 2026-05-11) — PR #60
+
+Cross-table audit foundation — Phase A.1 (events endpoint).
+Πρώτο API route που establishes το pattern για cross-table audit:
+auth + permission gate + tenant scoping + per-field validation +
+audit hook. Foundation για 4 φάσεις rollout (A → D) σε όλα τα
+admin domains.
+
+**Foundation modules (4 commits):**
+- [x] EVENT_FIELD_LABELS στο lib/audit/labels.ts (Greek translations
+  για audit-able event fields, jsonb excluded)
+- [x] lib/auth/permissions.ts — extracted από useRole.ts, pure
+  server/client shareable logic (Permission union, ALL_PERMISSIONS,
+  MODULE_TO_PERMISSION, computePermissions)
+- [x] lib/auth/resolveAuthMember.ts + errorResponse.ts — auth +
+  member resolution + JSON error envelope (preserves client
+  contract για 20 existing admin route consumers)
+- [x] lib/auth/requirePermission.ts — variadic OR permission gate
+  με short-circuit για admin/president, throws Response μέσω
+  errorResponse, surfaces DB errors as 500 (vs useRole silent ignore)
+
+**Endpoint (1 commit):**
+- [x] app/api/events/[id]/route.ts — PATCH method
+  * Auth: requirePermission('events')
+  * Multi-tenant: tenant scoping σε ΟΛΕΣ τις queries (id + club_id)
+  * Whitelist: event_name, event_date, location, venue_max_capacity
+    (venue_map_config jsonb excluded — Phase A.1 scope)
+  * Per-field validation με Greek error messages
+  * Audit hook: actor_label='admin', actor_user_id + actor_member_id
+    populated, field-level diff, fail-soft, empty-diff skip
+  * Next.js 16 async params pattern
+
+**Smoke tested production-grade (5/5):**
+- Happy path PATCH (null → string location): 200 + audit row με
+  correct actor identity (Γιώργος ΧΡΟΝΑΚΗΣ)
+- Validation error (negative capacity): 400 + Greek field-level message
+- Whitelist enforcement: 400 + complete allowed list
+- Non-existent event ID: 404
+- Audit count post-tests: 1 (μόνο happy path γράφτηκε)
+
+**Pivot context:** Original session goal ήταν direct cross-table
+audit implementation. Στο pre-flight ανακαλύφθηκε ότι events δεν
+έχει API update routes — όλες οι mutations γίνονται client-side
+direct. Pivoted σε proper API endpoint creation + audit foundation,
+χωρίς client migration (Phase A.2).
+
+**Phase A.2 deferred:** Client migration σε 8 sites που σήμερα
+κάνουν .from('events').update(...) απευθείας στο client. Tracked
+στο cross-table audit ROADMAP entry. Estimated 2-3 ώρες, separate PR.
 
 ### feat/members-url-state (merged 2026-05-11) — PR #59
 
