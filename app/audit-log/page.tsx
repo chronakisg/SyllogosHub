@@ -8,6 +8,7 @@ import type { AuditLog } from "@/lib/supabase/types";
 import { getFieldLabel, getActorLabel } from "@/lib/audit/labels";
 import { formatRelativeDate } from "@/lib/utils/verificationState";
 import { normalizeGreek } from "@/lib/utils/greekSearch";
+import { toAthensDateKey, formatDateBucketLabel } from "@/lib/utils/dateBuckets";
 
 type MemberInfo = {
   id: string;
@@ -121,37 +122,59 @@ export default function AuditLogPage() {
     };
   }, [permissions, roleLoading, status]);
 
-  // Group entries by member, then sort members by last name
-  const groupedMembers = useMemo(() => {
-    const grouped = new Map<string, AuditLog[]>();
-    for (const entry of entries) {
-      const list = grouped.get(entry.record_id) ?? [];
-      list.push(entry);
-      grouped.set(entry.record_id, list);
-    }
-
-    // Filter by search
+  // Group entries by Athens-local date, then by member within each date
+  const dateSections = useMemo(() => {
     const normalizedSearch = normalizeGreek(search.trim());
 
-    const filtered = [...grouped.entries()].filter(([memberId]) => {
-      if (!normalizedSearch) return true;
-      const member = memberMap.get(memberId);
-      if (!member) return false;
-      const haystack = normalizeGreek(`${member.last_name} ${member.first_name}`);
-      return haystack.includes(normalizedSearch);
-    });
+    // Step A: Filter entries by member name search (member-level filter)
+    const filteredEntries = !normalizedSearch
+      ? entries
+      : entries.filter((entry) => {
+          const member = memberMap.get(entry.record_id);
+          if (!member) return false;
+          const haystack = normalizeGreek(
+            `${member.last_name} ${member.first_name}`
+          );
+          return haystack.includes(normalizedSearch);
+        });
 
-    // Sort alphabetically by last_name (Greek collation)
-    filtered.sort(([idA], [idB]) => {
-      const a = memberMap.get(idA);
-      const b = memberMap.get(idB);
-      if (!a || !b) return 0;
-      return a.last_name.localeCompare(b.last_name, "el", {
-        sensitivity: "base",
+    // Step B: Group by Athens-local date key
+    const byDate = new Map<string, AuditLog[]>();
+    for (const entry of filteredEntries) {
+      const dateKey = toAthensDateKey(entry.created_at);
+      const list = byDate.get(dateKey) ?? [];
+      list.push(entry);
+      byDate.set(dateKey, list);
+    }
+
+    // Step C: Within each date bucket, sub-group by member
+    // (preserve existing newest-first ordering of entries — από server)
+    const sections = [...byDate.entries()].map(([dateKey, dateEntries]) => {
+      const byMember = new Map<string, AuditLog[]>();
+      for (const entry of dateEntries) {
+        const list = byMember.get(entry.record_id) ?? [];
+        list.push(entry);
+        byMember.set(entry.record_id, list);
+      }
+
+      // Sort members within bucket: alphabetical by last_name (Greek)
+      const members = [...byMember.entries()].sort(([idA], [idB]) => {
+        const a = memberMap.get(idA);
+        const b = memberMap.get(idB);
+        if (!a || !b) return 0;
+        return a.last_name.localeCompare(b.last_name, "el", {
+          sensitivity: "base",
+        });
       });
+
+      return { dateKey, members };
     });
 
-    return filtered;
+    // Step D: Sort date buckets — newest date first
+    // (YYYY-MM-DD strings sort chronologically, reverse for descending)
+    sections.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+
+    return sections;
   }, [entries, memberMap, search]);
 
   // Permission denied
@@ -196,25 +219,32 @@ export default function AuditLogPage() {
         </p>
       )}
 
-      {status === "ready" && groupedMembers.length === 0 && (
+      {status === "ready" && dateSections.length === 0 && (
         <p className="py-8 text-center text-sm text-muted">
           Δεν υπάρχει ιστορικό αλλαγών
         </p>
       )}
 
-      {status === "ready" && groupedMembers.length > 0 && (
-        <div className="space-y-4">
-          {groupedMembers.map(([memberId, memberEntries]) => {
-            const member = memberMap.get(memberId);
-            if (!member) return null;
-            return (
-              <MemberAuditGroup
-                key={memberId}
-                member={member}
-                entries={memberEntries}
-              />
-            );
-          })}
+      {status === "ready" && dateSections.length > 0 && (
+        <div className="space-y-8">
+          {dateSections.map(({ dateKey, members }) => (
+            <section key={dateKey} className="space-y-4">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+                {formatDateBucketLabel(dateKey)}
+              </h2>
+              {members.map(([memberId, memberEntries]) => {
+                const member = memberMap.get(memberId);
+                if (!member) return null;
+                return (
+                  <MemberAuditGroup
+                    key={`${dateKey}-${memberId}`}
+                    member={member}
+                    entries={memberEntries}
+                  />
+                );
+              })}
+            </section>
+          ))}
         </div>
       )}
     </div>
@@ -230,14 +260,14 @@ function MemberAuditGroup({
 }) {
   return (
     <div className="rounded-lg border border-border bg-surface p-4">
-      <h2 className="mb-3 flex items-baseline gap-2 font-semibold">
+      <h3 className="mb-3 flex items-baseline gap-2 font-semibold">
         <span>
           {member.last_name} {member.first_name}
         </span>
         <span className="text-xs font-normal text-muted">
           ({entries.length} {entries.length === 1 ? "αλλαγή" : "αλλαγές"})
         </span>
-      </h2>
+      </h3>
       <div className="space-y-2">
         {entries.map((entry) => (
           <AuditEntryRow key={entry.id} entry={entry} />
