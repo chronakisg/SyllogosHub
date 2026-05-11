@@ -114,3 +114,50 @@ export async function logChange(entry: LogChangeEntry): Promise<void> {
     console.error("[audit_log] unexpected error:", err);
   }
 }
+
+// ──────────────────────────────────────────────────────────────────
+// logEmailVerified — discriminated email verification event
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Helper για το discriminated 'email_verified' audit event.
+ *
+ * Wraps logChange με σωστά defaults για το email verification flow:
+ * - action: 'email_verified'
+ * - changes: { email_verified: { from: false, to: true } }
+ * - table_name: 'members'
+ *
+ * Καλείται όταν εντοπίζεται transition του email_verified column από
+ * false/null σε true. Existing field-update audit (action: 'update')
+ * συνεχίζει να γράφεται ξεχωριστά για τα whitelisted self-update fields.
+ *
+ * Fail-soft: τυχόν errors logged αλλά δεν propagate.
+ *
+ * @param args - Audit entry parameters
+ */
+export async function logEmailVerified(args: {
+  clubId: string;
+  memberId: string;
+  actorLabel: AuditActorLabel;
+  actorUserId?: string | null;
+  actorMemberId?: string | null;
+  previousValue?: boolean | null;
+  notes?: string | null;
+}): Promise<void> {
+  await logChange({
+    clubId: args.clubId,
+    tableName: "members",
+    recordId: args.memberId,
+    action: "email_verified",
+    actorLabel: args.actorLabel,
+    actorUserId: args.actorUserId ?? null,
+    actorMemberId: args.actorMemberId ?? null,
+    changes: {
+      email_verified: {
+        from: args.previousValue ?? false,
+        to: true,
+      },
+    },
+    notes: args.notes ?? null,
+  });
+}

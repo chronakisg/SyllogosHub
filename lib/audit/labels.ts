@@ -4,7 +4,7 @@
 // Καλύπτει field names + actor labels για το members table audit.
 // Foundation για future expansion (events, finances, sponsors).
 
-import type { AuditActorLabel } from "@/lib/supabase/types";
+import type { AuditAction, AuditActorLabel } from "@/lib/supabase/types";
 
 // ──────────────────────────────────────────────────────────────────
 // Field labels — members table
@@ -29,6 +29,7 @@ export const MEMBER_FIELD_LABELS: Record<string, string> = {
   first_name: "Όνομα",
   last_name: "Επώνυμο",
   status: "Κατάσταση",
+  email_verified: "Επιβεβαίωση email",
 };
 
 /**
@@ -55,4 +56,26 @@ export const ACTOR_LABELS: Record<AuditActorLabel, string> = {
 
 export function getActorLabel(label: AuditActorLabel): string {
   return ACTOR_LABELS[label] ?? label;
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Audit action labels
+// ────────────────────────────────────────────────────────────────────
+
+/**
+ * Greek translations των AuditAction values.
+ *
+ * Typed exhaustive Record — νέες AuditAction expansions στο
+ * lib/supabase/types.ts θα προκαλέσουν TS error εδώ μέχρι να
+ * προστεθεί το αντίστοιχο label.
+ */
+export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
+  insert: "Δημιουργία",
+  update: "Ενημέρωση",
+  delete: "Διαγραφή",
+  email_verified: "Επιβεβαίωση email",
+};
+
+export function getActionLabel(action: AuditAction): string {
+  return AUDIT_ACTION_LABELS[action] ?? action;
 }
