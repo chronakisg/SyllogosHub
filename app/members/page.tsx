@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import * as XLSX from "xlsx";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
@@ -123,8 +124,94 @@ function defaultFamilyRole(birthDate: string | null): FamilyRole {
 const inputClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
 
+// ────────────────────────────────────────────────────────────
+// URL state helpers
+// ────────────────────────────────────────────────────────────
 
-export default function MembersPage() {
+type MembersUrlState = {
+  q: string;
+  dept: string;
+  status: "all" | MemberStatus;
+  board: boolean;
+  age: "all" | "child" | "adult";
+  family: boolean;
+  unverified: boolean;
+  missing: string;
+  sortColumn: string;
+  sortDirection: "asc" | "desc";
+};
+
+const DEFAULT_URL_STATE: MembersUrlState = {
+  q: "",
+  dept: "",
+  status: "all",
+  board: false,
+  age: "all",
+  family: false,
+  unverified: false,
+  missing: "",
+  sortColumn: "name",
+  sortDirection: "asc",
+};
+
+/**
+ * Build a URL query string from the current filter/sort state.
+ * Omits any param that matches the default — keeps URLs clean.
+ *
+ * Example output:
+ *   "?status=active&board=1"
+ *   ""  (αν όλα είναι default)
+ */
+function buildMembersQueryString(state: MembersUrlState): string {
+  const params = new URLSearchParams();
+
+  if (state.q.trim()) params.set("q", state.q.trim());
+  if (state.dept) params.set("dept", state.dept);
+  if (state.status !== DEFAULT_URL_STATE.status) params.set("status", state.status);
+  if (state.board) params.set("board", "1");
+  if (state.age !== DEFAULT_URL_STATE.age) params.set("age", state.age);
+  if (state.family) params.set("family", "1");
+  if (state.unverified) params.set("unverified", "1");
+  if (state.missing) params.set("missing", state.missing);
+  if (state.sortColumn !== DEFAULT_URL_STATE.sortColumn) params.set("sort", state.sortColumn);
+  if (state.sortDirection !== DEFAULT_URL_STATE.sortDirection) params.set("order", state.sortDirection);
+
+  const queryString = params.toString();
+  return queryString ? `?${queryString}` : "";
+}
+
+/**
+ * Parse current state από URLSearchParams.
+ * Falls back σε defaults για missing/invalid values.
+ */
+function parseMembersUrlState(searchParams: URLSearchParams): MembersUrlState {
+  const rawStatus = searchParams.get("status");
+  const validStatuses: Array<MembersUrlState["status"]> = [
+    "all",
+    "active",
+    "inactive",
+  ];
+
+  const rawAge = searchParams.get("age");
+  const rawSortDir = searchParams.get("order");
+
+  return {
+    q: searchParams.get("q") ?? "",
+    dept: searchParams.get("dept") ?? "",
+    status: validStatuses.includes(rawStatus as MembersUrlState["status"])
+      ? (rawStatus as MembersUrlState["status"])
+      : DEFAULT_URL_STATE.status,
+    board: searchParams.get("board") === "1",
+    age: rawAge === "child" || rawAge === "adult" ? rawAge : DEFAULT_URL_STATE.age,
+    family: searchParams.get("family") === "1",
+    unverified: searchParams.get("unverified") === "1",
+    missing: searchParams.get("missing") ?? "",
+    sortColumn: searchParams.get("sort") ?? DEFAULT_URL_STATE.sortColumn,
+    sortDirection: rawSortDir === "desc" ? "desc" : DEFAULT_URL_STATE.sortDirection,
+  };
+}
+
+function MembersPageContent() {
   const role = useRole();
   const { clubId, loading: clubLoading } = useCurrentClub();
   const [members, setMembers] = useState<MemberWithDepartments[]>([]);
@@ -2833,5 +2920,19 @@ function VerifyBadge({
     >
       {icon}
     </button>
+  );
+}
+
+export default function MembersPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="px-4 py-8 text-sm text-muted">
+          Φόρτωση...
+        </div>
+      }
+    >
+      <MembersPageContent />
+    </Suspense>
   );
 }
