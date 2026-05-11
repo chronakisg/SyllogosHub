@@ -20,6 +20,7 @@ import type {
   CalendarEventUpdate,
   Member,
 } from "@/lib/supabase/types";
+import { normalizeGreek } from "@/lib/utils/greekSearch";
 
 type CalendarItem = {
   key: string;
@@ -1632,12 +1633,12 @@ function CoordinatorPicker({
   );
 
   const matches = useMemo(() => {
-    const q = debounced.toLowerCase();
+    const q = normalizeGreek(debounced);
     if (!q) return members.slice(0, 8);
     return members
       .filter((m) =>
-        `${m.last_name} ${m.first_name}`.toLowerCase().includes(q) ||
-        `${m.first_name} ${m.last_name}`.toLowerCase().includes(q)
+        normalizeGreek(`${m.last_name} ${m.first_name}`).includes(q) ||
+        normalizeGreek(`${m.first_name} ${m.last_name}`).includes(q)
       )
       .slice(0, 8);
   }, [members, debounced]);
