@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-11 (Audit verification events + Greek search broader rollout)  
+> Last updated: 2026-05-11 (Audit work expansion: events + date grouping + guard fix pending)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -110,6 +110,56 @@ audit/monitoring features, δεν χρειάζονται νέα ζώνη του 
 _(no active branches)_
 
 ## 🔴 Critical / Production Blockers
+
+- [ ] **🐛 Audit hook guard fix για backfilled members**
+
+  Stack: 📊 Διαχειριστικό · Priority: HIGH
+
+  Bug εντοπίστηκε στο PR #57 smoke test:
+  - Members με email_verified=true λόγω pre-hook era (πριν PR #49)
+    ή backfill (PR #56) δεν καταγράφουν real verification events
+  - Hook guard '!member.email_verified' κάνει SKIP όταν boolean
+    είναι ήδη true, ανεξάρτητα αν υπάρχει πραγματική audit entry
+  - Άρα σημερινή ενέργεια από user (όπως ΚΑΡΟΥΣΟΥ) χάνεται από
+    το audit timeline
+
+  Affected:
+  - 5 backfilled members στο kriton-aigaleo (PR #56 list)
+  - Όποιος έκανε verification πριν τη deployment του PR #49
+    audit foundation
+
+  Solution: Smarter idempotency guard στο
+  /api/me/[token]/update/route.ts:
+
+  // Αντί:
+  if (!member.email_verified) {
+    await logEmailVerified({ ... });
+  }
+
+  // Νέο:
+  const { data: existingRealEntry } = await admin
+    .from('audit_log')
+    .select('id')
+    .eq('record_id', member.id)
+    .eq('action', 'email_verified')
+    .neq('actor_label', 'system')  // ignore backfill
+    .limit(1)
+    .maybeSingle();
+
+  if (!existingRealEntry) {
+    await logEmailVerified({ ... });
+  }
+
+  Trade-off: +1 DB query ανά self-update submission. Mitigated από
+  το ότι το /api/me/[token]/update είναι low-frequency endpoint
+  (per-member usage).
+
+  Recovery για 5 affected: Μετά το PR #58 deploy, η ίδια re-submission
+  θα γράψει νέα real entry. Backfill entry παραμένει ως historical
+  reference (Σύστημα actor distinguishes).
+
+  Estimated: S (1 file, ~12 lines + smoke test με ΧΡΟΝΑΚΗ + 1 backfilled
+  member όπως ΚΑΡΟΥΣΟΥ)
 
 - [ ] **RLS overhaul για όλα τα tables**
   - Pre-existing 'RLS production blocker' ξεκαθαρίστηκε στο PR #44
@@ -800,6 +850,50 @@ _(no active branches)_
   Estimated: process note
 
 ## ✅ Recently Done
+
+### feat/audit-log-date-grouping (merged 2026-05-11) — PR #57
+
+UX refactor του /audit-log page: από member-grouped σε date-grouped
+sections με member sub-grouping εντός.
+
+**Πρόβλημα που λύθηκε:**
+- /audit-log group-άρει by member αλφαβητικά
+- Member με σημερινή entry έπεφτε στο τέλος όταν last_name ήταν
+  στο τέλος του αλφαβήτου
+- 5 backfill entries (PR #56) από 09/05 + 1 σημερινή ΧΡΟΝΑΚΗ →
+  η πιο 'ζωντανή' entry εμφανιζόταν χαμηλά
+
+**Foundation (1 commit):**
+- [x] lib/utils/dateBuckets.ts — Athens-timezone-aware date helpers
+  - toAthensDateKey(isoTimestamp) → YYYY-MM-DD σε Athens local
+  - formatDateBucketLabel(dateKey) → Σήμερα/Χθες/DD-MM-YYYY
+  - sv-SE locale trick για stable ISO date output
+  - Pure functions, no side effects, reusable σε future timeline UIs
+
+**Page refactor (1 commit):**
+- [x] app/audit-log/page.tsx — date-grouped data structure
+  - Rename groupedMembers → dateSections (clearer intent)
+  - Outer: date buckets (newest first via lexicographic sort)
+  - Inner: members alphabetical με Greek collation (preserved)
+  - Entries within member: server order preserved (newest first)
+- [x] JSX restructure: νέο <section> wrapper με date header
+- [x] Heading hierarchy: h2 για date sections, h3 για member groups
+  (a11y proper nesting από page <h1>)
+- [x] Spacing: space-y-8 outer, space-y-4 inner (visual breathing)
+- [x] Empty state guard updated (dateSections.length === 0)
+- [x] Type safety: explicit member guard για non-optional prop signature
+
+**Smoke tested με real production data:**
+- 3 date sections render (Σήμερα/Χθες/09-05-2026)
+- Search 'ΚΟΥΡΟΥΓ' isolates 09/05 με 2 members alphabetical
+- Empty search restores όλες οι sections
+- TypeScript clean (npx tsc --noEmit)
+
+**Bug εντοπίστηκε στο smoke test (→ PR #58):**
+ΚΑΡΟΥΣΟΥ έκανε real verification σήμερα αλλά δεν καταγράφηκε
+λόγω του guard '!member.email_verified' στο PR #56 hook. Affected
+οι 5 backfilled members + όποιος verified σε pre-PR #49 era.
+Fix με smarter audit query check σε επόμενο PR.
 
 ### fix/audit-email-verification (merged 2026-05-11) — PR #56
 
