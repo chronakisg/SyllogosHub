@@ -137,7 +137,7 @@ type MembersUrlState = {
   family: boolean;
   unverified: boolean;
   missing: string;
-  sortColumn: string;
+  sortColumn: SortColumn;
   sortDirection: "asc" | "desc";
 };
 
@@ -195,6 +195,18 @@ function parseMembersUrlState(searchParams: URLSearchParams): MembersUrlState {
   const rawAge = searchParams.get("age");
   const rawSortDir = searchParams.get("order");
 
+  const rawSort = searchParams.get("sort");
+  const validSortColumns: SortColumn[] = [
+    "name",
+    "age",
+    "email",
+    "departments",
+    "occupation",
+  ];
+  const sortColumn: SortColumn = validSortColumns.includes(rawSort as SortColumn)
+    ? (rawSort as SortColumn)
+    : DEFAULT_URL_STATE.sortColumn;
+
   return {
     q: searchParams.get("q") ?? "",
     dept: searchParams.get("dept") ?? "",
@@ -206,7 +218,7 @@ function parseMembersUrlState(searchParams: URLSearchParams): MembersUrlState {
     family: searchParams.get("family") === "1",
     unverified: searchParams.get("unverified") === "1",
     missing: searchParams.get("missing") ?? "",
-    sortColumn: searchParams.get("sort") ?? DEFAULT_URL_STATE.sortColumn,
+    sortColumn,
     sortDirection: rawSortDir === "desc" ? "desc" : DEFAULT_URL_STATE.sortDirection,
   };
 }
@@ -219,18 +231,90 @@ function MembersPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [departmentFilter, setDepartmentFilter] = useState<string>("");
-  const [statusFilter, setStatusFilter] = useState<"all" | MemberStatus>("all");
-  const [boardOnly, setBoardOnly] = useState(false);
-  const [ageFilter, setAgeFilter] = useState<"all" | "child" | "adult">("all");
-  const [familyOnly, setFamilyOnly] = useState(false);
-  const [unverifiedOnly, setUnverifiedOnly] = useState(false);
-  const [missingField, setMissingField] = useState<string>("");
-  const [sortBy, setSortBy] = useState<{
-    column: "name" | "age" | "email" | "departments" | "occupation";
-    direction: "asc" | "desc";
-  }>({ column: "name", direction: "asc" });
+  // URL state hooks
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlState = useMemo(
+    () => parseMembersUrlState(searchParams),
+    [searchParams]
+  );
+
+  // Generic URL updater — replace history (no push), no scroll
+  const updateUrl = useCallback(
+    (next: MembersUrlState) => {
+      router.replace(
+        `/members${buildMembersQueryString(next)}`,
+        { scroll: false }
+      );
+    },
+    [router]
+  );
+
+  // Search input — local state για instant typing feedback
+  // (debounced sync to URL via useEffect below)
+  const [searchInput, setSearchInput] = useState(urlState.q);
+
+  // Derived state από URL (single source of truth για discrete filters)
+  const departmentFilter = urlState.dept;
+  const statusFilter = urlState.status;
+  const boardOnly = urlState.board;
+  const ageFilter = urlState.age;
+  const familyOnly = urlState.family;
+  const unverifiedOnly = urlState.unverified;
+  const missingField = urlState.missing;
+  const sortBy = useMemo(
+    () => ({
+      column: urlState.sortColumn,
+      direction: urlState.sortDirection,
+    }),
+    [urlState.sortColumn, urlState.sortDirection]
+  );
+
+  // Setter shims — preserve existing call signatures στα JSX call sites
+  const search = searchInput;
+  const setSearch = setSearchInput;
+  const setDepartmentFilter = (dept: string) =>
+    updateUrl({ ...urlState, dept });
+  const setStatusFilter = (status: typeof urlState.status) =>
+    updateUrl({ ...urlState, status });
+  const setBoardOnly = (board: boolean) =>
+    updateUrl({ ...urlState, board });
+  const setAgeFilter = (age: typeof urlState.age) =>
+    updateUrl({ ...urlState, age });
+  const setFamilyOnly = (family: boolean) =>
+    updateUrl({ ...urlState, family });
+  const setUnverifiedOnly = (unverified: boolean) =>
+    updateUrl({ ...urlState, unverified });
+  const setMissingField = (missing: string) =>
+    updateUrl({ ...urlState, missing });
+  const setSortBy = (next: SortState | ((prev: SortState) => SortState)) => {
+    const current: SortState = {
+      column: urlState.sortColumn,
+      direction: urlState.sortDirection,
+    };
+    const resolved = typeof next === "function" ? next(current) : next;
+    updateUrl({
+      ...urlState,
+      sortColumn: resolved.column,
+      sortDirection: resolved.direction,
+    });
+  };
+
+  // Debounced sync: local searchInput → URL after 300ms idle
+  useEffect(() => {
+    if (searchInput === urlState.q) return;
+    const handle = window.setTimeout(() => {
+      updateUrl({ ...urlState, q: searchInput });
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [searchInput, urlState, updateUrl]);
+
+  // Reverse sync: αν urlState.q αλλάξει εξωτερικά (back button,
+  // shared link, programmatic navigation), reset το local input
+  useEffect(() => {
+    setSearchInput(urlState.q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlState.q]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MemberWithDepartments | null>(null);
@@ -603,14 +687,15 @@ function MembersPageContent() {
   }
 
   function clearFilters() {
-    setSearch("");
-    setDepartmentFilter("");
-    setStatusFilter("all");
-    setBoardOnly(false);
-    setAgeFilter("all");
-    setUnverifiedOnly(false);
-    setFamilyOnly(false);
-    setMissingField("");
+    // Reset filters but PRESERVE sort (existing behavior)
+    // Local input cleared explicitly — useEffect debounce δεν θα
+    // suffice αν user πατάει clearFilters με non-empty search
+    setSearchInput("");
+    updateUrl({
+      ...DEFAULT_URL_STATE,
+      sortColumn: urlState.sortColumn,
+      sortDirection: urlState.sortDirection,
+    });
   }
 
   function openCreate() {
