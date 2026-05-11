@@ -121,10 +121,24 @@ export async function POST(
     });
 
     // Email verification audit (discriminated event)
-    // Triggers μόνο σε true transition (από false/null σε true) —
-    // re-submissions όπου member ήταν ήδη verified δεν δημιουργούν
-    // duplicate entries.
-    if (!member.email_verified) {
+    // Idempotency strategy: αντί να ελέγχουμε το members.email_verified
+    // boolean (which can be true από pre-hook era ή backfill χωρίς
+    // αντίστοιχη audit entry), ψάχνουμε για existing REAL audit entry
+    // (actor_label != 'system') — backfill entries δεν εμποδίζουν τη
+    // καταγραφή πραγματικής verification ενέργειας.
+    //
+    // RLS off στο audit_log table — server client adequate για read.
+    // Αν RLS γίνει aggressive μελλοντικά, switch σε getAdminClient.
+    const { data: existingRealEntry } = await supabase
+      .from('audit_log')
+      .select('id')
+      .eq('record_id', member.id)
+      .eq('action', 'email_verified')
+      .neq('actor_label', 'system')
+      .limit(1)
+      .maybeSingle();
+
+    if (!existingRealEntry) {
       await logEmailVerified({
         clubId: member.club_id,
         memberId: member.id,
