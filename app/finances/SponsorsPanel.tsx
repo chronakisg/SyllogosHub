@@ -9,6 +9,7 @@ import type {
   Sponsor,
 } from "@/lib/supabase/types";
 import { formatEuro } from "@/lib/utils/eventRevenue";
+import { normalizeGreek } from "@/lib/utils/greekSearch";
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -571,10 +572,10 @@ function AddSponsorshipDialog({
   );
 
   const filteredSponsors = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = normalizeGreek(searchQuery.trim());
     if (!q) return availableSponsors;
     return availableSponsors.filter((s) =>
-      sponsorListName(s).toLowerCase().includes(q)
+      normalizeGreek(sponsorListName(s)).includes(q)
     );
   }, [availableSponsors, searchQuery]);
 

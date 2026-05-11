@@ -42,6 +42,7 @@ import {
   TICKET_CATEGORY_KINDS,
   TICKET_CATEGORY_KIND_LABELS,
 } from "@/lib/supabase/types";
+import { normalizeGreek } from "@/lib/utils/greekSearch";
 import { AddReservationModal } from "@/components/AddReservationModal";
 import {
   EventSummaryPanel,
@@ -233,13 +234,13 @@ export default function EventsPage() {
   }, [loadEvents, clubLoading]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeGreek(search.trim());
     const today = todayInAthens();
     return events.filter((e) => {
       const datePart = e.event_date.slice(0, 10);
       if (activeTab === "upcoming" && datePart < today) return false;
       if (activeTab === "past" && datePart >= today) return false;
-      if (q && !e.event_name.toLowerCase().includes(q)) return false;
+      if (q && !normalizeGreek(e.event_name).includes(q)) return false;
       return true;
     });
   }, [events, search, activeTab]);

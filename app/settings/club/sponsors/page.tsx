@@ -19,6 +19,7 @@ import type {
   SponsorInsert,
   SponsorUpdate,
 } from "@/lib/supabase/types";
+import { normalizeGreek } from "@/lib/utils/greekSearch";
 
 type SponsorWithStats = Sponsor & {
   event_count: number;
@@ -128,12 +129,12 @@ export default function SponsorsPage() {
   }, [sponsors]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeGreek(search.trim());
     if (!q) return sponsors;
     return sponsors.filter((s) =>
-      `${displayName(s)} ${s.contact_phone ?? ""} ${s.contact_email ?? ""}`
-        .toLowerCase()
-        .includes(q)
+      normalizeGreek(
+        `${displayName(s)} ${s.contact_phone ?? ""} ${s.contact_email ?? ""}`
+      ).includes(q)
     );
   }, [sponsors, search]);
 
