@@ -877,7 +877,7 @@ export type SuperAdmin = {
   created_at: string;
 };
 
-export type AuditAction = "insert" | "update" | "delete";
+export type AuditAction = "insert" | "update" | "delete" | "email_verified";
 
 export type AuditActorLabel =
   | "admin"
