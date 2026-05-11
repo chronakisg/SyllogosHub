@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-10 (Audit work: foundation + per-member view + cross-member page)  
+> Last updated: 2026-05-11 (Greek search broader rollout)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -638,6 +638,22 @@ _(no active branches)_
 
 ### Tech Debt & Cleanup
 
+- [ ] **Family search reverse-name consistency**
+  - app/members/page.tsx:1640-1649 ελέγχει μόνο "last first",
+    όχι reverse "first last"
+  - Όλα τα άλλα people-search sites (AttendeesEditor, calendar)
+    ελέγχουν και τις 2 κατευθύνσεις
+  - Minor UX inconsistency εντοπισμένη κατά το PR #55 pre-flight
+  - Estimated: XS (1 line edit + smoke test)
+
+- [ ] **Sponsor search helper consolidation**
+  - 2 sponsor sites χρησιμοποιούν διαφορετικά helpers + surfaces:
+    * app/finances/SponsorsPanel.tsx: sponsorListName(s) — name-only
+    * app/settings/club/sponsors/page.tsx: displayName(s) + contact_phone + contact_email
+  - Drift εντοπισμένο στο PR #55 — flag για future single source of truth
+  - Decision needed: unify helpers ή unify search surface (broader)
+  - Estimated: S
+
 - [ ] **Audit /discounts location** (architectural inconsistency)
   - Currently lives at `app/discounts/`, εκτός `app/settings/` tree
   - Should be co-located με τα άλλα settings sub-pages
@@ -762,6 +778,39 @@ _(no active branches)_
   Estimated: process note
 
 ## ✅ Recently Done
+
+### feat/greek-search-broader (merged 2026-05-11) — PR #55
+
+Broader application του greekSearch foundation από PR #51.
+3 commits, 9 files σε 3 logical groups.
+
+**People search (3 sites):**
+- [x] components/AttendeesEditor.tsx — attendee picker (2 filters)
+- [x] app/calendar/page.tsx — CoordinatorPicker member search
+- [x] app/members/page.tsx — main list filter (multi-field haystack
+  με board_position + departments — bonus diacritics support)
+  + family search
+
+**Group/party search (2 sites):**
+- [x] app/seating/page.tsx — unassigned + assigned group filters
+- [x] app/cashier/[eventId]/page.tsx — cashier group search +
+  perf fix (lift normalizeGreek έξω από per-row filter)
+
+**Entity search (4 sites):**
+- [x] app/events/page.tsx — event_name search
+- [x] app/finances/page.tsx — BulkChargeModal member picker
+- [x] app/finances/SponsorsPanel.tsx — sponsor search
+- [x] app/settings/club/sponsors/page.tsx — sponsor search
+
+Edge cases preserved σε όλα: nullable guards (?? ''), early-return
+guards (if (!q)), inline conditional shapes (if (q && ...)),
+sort logic με localeCompare αμετάβλητο.
+
+Now works universally:
+- 'κλεισ' → ΚΛΕΙΣΑΡΧΑΚΗΣ (final-sigma)
+- 'γιωργος' → Γιώργος (diacritics)
+- 'προεδρος' → Πρόεδρος ΔΣ (board_position bonus)
+- 'χορος' → Χορός Πρωτοχρονιάς (event diacritics)
 
 ### feat/audit-log-page (merged 2026-05-10) — PR #51
 
