@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useRole } from "@/lib/hooks/useRole";
+import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { getBrowserClient } from "@/lib/supabase/client";
 import type { AuditLog } from "@/lib/supabase/types";
 import { getFieldLabel, getActorLabel } from "@/lib/audit/labels";
@@ -36,6 +37,7 @@ const FETCH_LIMIT = 100;
 export default function AuditLogPage() {
   const router = useRouter();
   const { permissions, loading: roleLoading } = useRole();
+  const { clubId, loading: clubLoading } = useCurrentClub();
   const [entries, setEntries] = useState<AuditLog[]>([]);
   const [memberMap, setMemberMap] = useState<Map<string, MemberInfo>>(new Map());
   const [status, setStatus] = useState<Status>("loading");
@@ -54,6 +56,11 @@ export default function AuditLogPage() {
     if (status === "denied") return;
     if (roleLoading) return;
     if (!permissions.includes("audit")) return;
+    // Tenant guard: wait for clubId resolution πριν fetch
+    if (clubLoading || !clubId) return;
+    // Capture σε local const ώστε το TS να narrow-άρει string | null → string
+    // εντός της async closure (κανονικά closures κλέβουν by reference).
+    const activeClubId = clubId;
 
     let cancelled = false;
 
@@ -64,10 +71,11 @@ export default function AuditLogPage() {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - DAYS_WINDOW);
 
-      // Query 1: audit_log entries
+      // Query 1: audit_log entries (scoped σε current club — defense-in-depth)
       const { data: auditData, error: auditError } = await supabase
         .from("audit_log")
         .select("*")
+        .eq("club_id", activeClubId)
         .eq("table_name", "members")
         .gte("created_at", cutoff.toISOString())
         .order("created_at", { ascending: false })
@@ -120,7 +128,7 @@ export default function AuditLogPage() {
     return () => {
       cancelled = true;
     };
-  }, [permissions, roleLoading, status]);
+  }, [permissions, roleLoading, status, clubId, clubLoading]);
 
   // Group entries by Athens-local date, then by member within each date
   const dateSections = useMemo(() => {
