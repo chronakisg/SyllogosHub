@@ -8,6 +8,7 @@ import { formatRelativeDate } from "@/lib/utils/verificationState";
 
 type Props = {
   memberId: string;
+  clubId: string;
 };
 
 type Status = "loading" | "ready" | "error";
@@ -24,7 +25,7 @@ const FIELD_ORDER = [
   "maiden_name",
 ];
 
-export function MemberHistoryTab({ memberId }: Props) {
+export function MemberHistoryTab({ memberId, clubId }: Props) {
   const [entries, setEntries] = useState<AuditLog[]>([]);
   const [status, setStatus] = useState<Status>("loading");
 
@@ -36,6 +37,7 @@ export function MemberHistoryTab({ memberId }: Props) {
       const { data, error } = await supabase
         .from("audit_log")
         .select("*")
+        .eq("club_id", clubId)
         .eq("table_name", "members")
         .eq("record_id", memberId)
         .order("created_at", { ascending: false })
@@ -57,7 +59,7 @@ export function MemberHistoryTab({ memberId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [memberId]);
+  }, [memberId, clubId]);
 
   if (status === "loading") {
     return (
