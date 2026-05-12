@@ -178,11 +178,14 @@ export async function POST(req: NextRequest) {
     }
     createdAuthUserId = createdUser.user.id;
 
-    // 7. INSERT members row για τον bootstrap admin
+    // 7. INSERT members row + link σε auth.user (PR #62 fix)
+    // Bootstrap admin πρέπει να έχει user_id linkage από day-1, αλλιώς
+    // δεν μπορεί να κάνει login (proxy + portal flows require linkage).
     const { data: newMember, error: memberInsertError } = await admin
       .from("members")
       .insert({
         club_id: club.id,
+        user_id: createdUser.user.id,
         first_name: adminFirstName,
         last_name: adminLastName,
         email: adminEmail,
