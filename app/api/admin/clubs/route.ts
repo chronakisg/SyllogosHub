@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin } from "@/lib/auth/requireSuperAdmin";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { seedClub } from "@/lib/admin/seedClub";
+import { getResend, getFromEmail } from "@/lib/email/resend";
+import { renderClubWelcomeEmail } from "@/lib/email/templates/clubWelcome";
 import type { ClubCategory, ClubPlan } from "@/lib/supabase/types";
 
 // ─────────── Validation rules ───────────
@@ -223,13 +225,48 @@ export async function POST(req: NextRequest) {
       });
     if (assignError) throw assignError;
 
-    // 10. Success
+    // 10. Welcome email (fail-soft — Resend outage ΔΕΝ blockάρει club creation)
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    let emailSent = false;
+    try {
+      const adminName = `${adminFirstName} ${adminLastName}`.trim();
+      const { subject, html, text } = renderClubWelcomeEmail({
+        clubName: club.name,
+        adminName,
+        adminEmail,
+        appUrl,
+      });
+      const { error: sendError } = await getResend().emails.send({
+        from: getFromEmail(),
+        to: adminEmail,
+        subject,
+        html,
+        text,
+      });
+      if (sendError) {
+        console.warn(
+          "[POST /api/admin/clubs] welcome email Resend error:",
+          sendError,
+        );
+      } else {
+        emailSent = true;
+      }
+    } catch (emailErr) {
+      console.warn(
+        "[POST /api/admin/clubs] welcome email threw:",
+        emailErr,
+      );
+    }
+
+    // 11. Success
     return NextResponse.json(
       {
         club,
         seedResult,
         adminUserId: createdAuthUserId,
         memberId: createdMemberId,
+        emailSent,
       },
       { status: 201 },
     );
