@@ -111,6 +111,66 @@ _(no active branches)_
 
 ## 🔴 Critical / Production Blockers
 
+- [ ] **🔴 Identity model bugs (multi-tenant launch blocker)**
+
+  Discovered: 2026-05-12 morning, attempting test club creation
+  via super admin panel.
+
+  **Bug cluster:**
+
+  1. **Super admin /admin/clubs redirect στο /login παρά τα σωστά
+     data στο super_admins table.**
+     - Verified: super_admins row matches auth.users.id για info@party4u.gr
+     - Verified: RLS disabled στο super_admins
+     - Symptom: 307 redirect στο /login από proxy.ts
+     - HAR shows: cookies=[] στο /admin/* requests
+     - Reproducible σε normal browser + incognito
+     - Hard suspect: PWA service worker intercepts auth cookies
+       για /admin/* paths
+     - Estimated: M (service worker investigation + fix)
+
+  2. **`members.user_id NULL` για existing accounts**
+     - Member portal Chunk 2 (PR #44) έφτιαξε linkAuthUserToMember()
+       αλλά δεν έτρεξε για pre-existing members
+     - Affects: info@party4u.gr + πιθανώς όλα τα kriton members
+     - Implication: Member portal δεν δουλεύει για existing users
+     - Backfill needed: link members.user_id με auth.users.id by email
+     - Estimated: S (backfill SQL + verification)
+
+  3. **Duplicate auth.users με ίδιο email πιθανό**
+     - Κατά το debugging είδαμε διαφορετικά UUIDs να επιστρέφονται
+       για info@party4u.gr σε διαφορετικά queries
+     - Πιθανή αιτία: seedClub.ts creates auth user χωρίς email
+       uniqueness check
+     - Production risk: νέος σύλλογος με email που υπάρχει →
+       undefined behavior, possible orphan users
+     - Fix: seedClub.ts pre-check email existence
+     - Estimated: S (add check) + M (DB cleanup script αν χρειαστεί)
+
+  4. **Defense-in-depth κενό στο proxy.ts για super admin**
+     - Σήμερα: proxy.ts κάνει auth check μόνο (έχει user ή όχι)
+     - Δεν κάνει super admin check για /admin/* paths
+     - Λειτουργεί σήμερα επειδή layout.tsx κάνει redirect,
+       αλλά νέα admin route handlers χωρίς guard θα είναι εκτεθειμένα
+     - Estimated: S (add super admin check στο middleware)
+
+  5. **Silent redirect στο admin layout χωρίς logging**
+     - Όλα τα errors (401/403/500) → redirect("/") χωρίς log
+     - Δύσκολο να διαγνώσεις production issues (όπως μόλις είδαμε)
+     - Fix: structured logging + maybe distinct redirect URLs ανά
+       error type
+     - Estimated: S
+
+  **Suggested investigation order (separate session):**
+  1. Service worker theory verification (unregister + retest)
+  2. Session cookie inspection (που point-άρει JWT)
+  3. Backfill members.user_id για 244+ existing members
+  4. seedClub.ts hardening
+  5. Logging + defense-in-depth refactor
+
+  **Required before multi-tenant onboarding.** Δεν προχωρούμε σε
+  νέους συλλόγους πριν λυθούν τα παραπάνω.
+
 - [ ] **RLS overhaul για όλα τα tables**
   - Pre-existing 'RLS production blocker' ξεκαθαρίστηκε στο PR #44
     review: 20 admin sites εξαρτώνται από browser/session queries
