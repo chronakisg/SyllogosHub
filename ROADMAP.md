@@ -500,6 +500,57 @@ _(no active branches)_
 
   Estimated: S (~1 ώρα και τα δύο combined)
 
+- [ ] **🟢 Welcome email follow-ups**
+
+  Discovered: 2026-05-12 (αρχική υλοποίηση welcome email στο
+  POST /api/admin/clubs Step 10).
+
+  Το αρχικό welcome email στέλνεται μετά τη δημιουργία club από
+  το /admin/clubs/new (super admin panel). Fail-soft — Resend
+  outage δεν blockάρει club creation, `emailSent` flag στο response.
+
+  Τρία follow-ups που τα ξεχωρίσαμε για επόμενες PRs:
+
+  **A) Magic link version (post dual-admin)**
+  - Σήμερα: welcome email περιέχει login URL + reminder ότι ο
+    κωδικός έχει ανακοινωθεί χωριστά (security: never plaintext
+    στο email)
+  - Στόχος: passwordless first-login μέσω magic link (mirror του
+    portal flow)
+  - Blocker: εξαρτάται από το dual-admin pattern. Όταν θα υπάρχει
+    backup admin με auto-generated password, το magic link γίνεται
+    proper UX για τον πρόεδρο.
+  - Implementation: νέο `app/admin/auth-callback/page.tsx` ή
+    extend του portal callback με `?next=/admin`
+  - Estimated: S-M
+
+  **B) Resend welcome endpoint (super admin re-trigger)**
+  - Σήμερα: αν ο admin δεν λάβει το email (spam, typo, Resend
+    failure), δεν υπάρχει UI να ξανασταλεί
+  - Στόχος: button στο /admin/clubs/[id]/page.tsx → POST
+    /api/admin/clubs/[id]/resend-welcome
+  - Idempotency: trivial (email μόνο, δεν αλλάζει state)
+  - Estimated: S (small endpoint + button)
+
+  **C) Forgot password flow (general blocker)**
+  - Σήμερα: δεν υπάρχει self-service recovery για admins
+    (verified — κανένα route σε `app/forgot-password`, `app/auth`,
+    ή reference σε `resetPasswordForEmail`)
+  - Στόχος: standard Supabase `resetPasswordForEmail` flow
+    * `/forgot-password` page (email input)
+    * `/reset-password` page (token verification + new password)
+    * Email template via Supabase ή custom Resend
+  - Affects: ολόκληρο το auth model (admins + future portal users)
+  - Σε σχέση με το welcome email: αν υπάρχει forgot-password, το
+    welcome email μπορεί απλά να γράφει "Αν έχεις πρόβλημα σύνδεσης,
+    χρησιμοποίησε το forgot password" αντί για το σημερινό
+    "επικοινώνησε με τον admin"
+  - Estimated: M (2-3 routes + 2 pages + email template)
+  - Connects με: ROADMAP entry 🔴 Dual-admin pattern — backup
+    admin πρέπει να έχει working recovery path
+
+  Estimated combined: M (~1 week dev για όλα τα 3)
+
 ### 🎩 Operational interfaces
 
 - [ ] **💰 Cashier Interface — Phase 2 enhancements**
