@@ -303,32 +303,43 @@ _(no active branches)_
 
   Estimated: S-M (UI scope, no schema change)
 
-- [ ] **🟢 Auto-generate slug από όνομα στο /admin/clubs/new**
+- [ ] **🟢 /admin/clubs/new UX polish (2 quick wins)**
 
   Discovered: 2026-05-12 (test-club-2 onboarding)
 
-  Σήμερα: User πληκτρολογεί name + slug χειροκίνητα. Risk:
-  - Typos στο slug
-  - Inconsistency (π.χ. ΕΚΑ → 'eka' or 'ena-kriton-aigaleo'?)
-  - Friction στο onboarding flow
+  Σήμερα: Form δουλεύει functionally αλλά έχει 2 obvious UX gaps
+  που πιάνεις στην πρώτη χρήση.
 
-  Στόχος: live auto-generate slug ενώ ο user πληκτρολογεί name.
+  **A) Auto-generate slug από όνομα**
+  - Σήμερα: User πληκτρολογεί name + slug χειροκίνητα.
+    Risk: typos, inconsistency, friction.
+  - Στόχος: live auto-generate slug ενώ ο user πληκτρολογεί name.
+  - Implementation:
+    * Greek transliteration: 'ΣΥΛΛΟΓΟΣ ΔΟΚΙΜΗΣ' → 'syllogos-dokimis'
+      (greek-utils, transliteration lib, ή custom map)
+    * Lowercase + alphanumeric + hyphens (matches existing slug regex)
+    * Manual override: dirty flag — αν user editάρει το slug,
+      σταματά το auto-generate
+    * onBlur trigger για σταθερότητα (avoid bouncing real-time)
+    * Bonus: live uniqueness check μέσω debounced API call
 
-  Implementation considerations:
-  - **Greek transliteration:** π.χ. 'ΣΥΛΛΟΓΟΣ ΔΟΚΙΜΗΣ' → 'syllogos-dokimis'
-    - Library candidate: greek-utils, transliteration, ή custom map
-  - **Lowercase + alphanumeric + hyphens** (matches existing slug regex)
-  - **Manual override:** Αν user editάρει το slug field, σταμάτα να
-    auto-generate (set dirty flag)
-  - **Real-time vs onBlur:** Real-time είναι responsive αλλά bouncing.
-    OnBlur είναι σταθερό. Decision pending.
-  - **Uniqueness check:** Server-side check ήδη υπάρχει (Step 4 του
-    route θα γυρίσει 409). UI bonus: live availability check μέσω
-    debounced API call.
+  **B) Password visibility toggle (👁 ματάκι)**
+  - Σήμερα: <input type="password"> κρύβει characters
+    permanently — admin δεν μπορεί να επιβεβαιώσει τι έγραψε
+  - Στόχος: Toggle button (👁/🙈) που flip-άρει type='password'
+    ↔ type='text'
+  - Implementation:
+    * useState για showPassword boolean
+    * Eye icon button στο right side του input
+    * Default state: hidden (security default)
+    * Πρόσβαση accessibility: aria-label "Εμφάνιση κωδικού" /
+      "Απόκρυψη κωδικού"
+    * Mirror του Member Portal login page αν εκεί ήδη υπάρχει
 
-  Affects: app/admin/clubs/new/page.tsx
+  Affects: app/admin/clubs/new/page.tsx (πιθανώς και άλλα forms
+  που έχουν password inputs — audit candidate)
 
-  Estimated: S (μετάφραση + live update logic)
+  Estimated: S (~1 ώρα και τα δύο combined)
 
 ### 🎩 Operational interfaces
 
