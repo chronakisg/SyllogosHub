@@ -114,11 +114,12 @@ export const EVENT_FIELD_LABELS: Record<string, string> = {
  *   ('payment.approved', 'payment.rejected') μέσω RPC endpoints
  * - batch_id, club_id, member_id — tenant/grouping identifiers
  * - id, created_at — immutable
+ * - type — immutable σε edit (αλλαγή semantic). Future: ίσως RPC
+ *   endpoint /payments/[id]/change-type με reason field
  */
 export const PAYMENT_FIELD_LABELS: Record<string, string> = {
   amount: "Ποσό",
   payment_date: "Ημερομηνία πληρωμής",
-  type: "Τύπος",
   period: "Περίοδος",
   original_amount: "Αρχικό ποσό",
 };
