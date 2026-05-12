@@ -1519,6 +1519,7 @@ function MembersPageContent() {
               : undefined
           }
           sendingId={sendingId}
+          clubId={clubId}
         />
       )}
 
@@ -1752,6 +1753,7 @@ function MemberModal({
   onSendVerification,
   onChangeStatus,
   sendingId,
+  clubId,
 }: {
   editing: Member | null;
   form: FormState;
@@ -1773,6 +1775,7 @@ function MemberModal({
   onSendVerification: () => void;
   onChangeStatus?: () => void;
   sendingId: string | null;
+  clubId: string | null;
 }) {
   function toggleDepartment(deptId: string, checked: boolean) {
     setForm((s) =>
@@ -2636,8 +2639,8 @@ function MemberModal({
               </>
             )}
 
-            {tab === "history" && editing && (
-              <MemberHistoryTab memberId={editing.id} />
+            {tab === "history" && editing && clubId && (
+              <MemberHistoryTab memberId={editing.id} clubId={clubId} />
             )}
           </div>
 
