@@ -1,5 +1,6 @@
 import { getAdminClient } from "@/lib/supabase/admin";
 import type {
+  ClubModule,
   PermissionAction,
   PermissionModule,
   PermissionScope,
@@ -11,6 +12,7 @@ export type SeedResult = {
   ticketCategories: number;
   expenseCategories: number;
   clubSettings: boolean;
+  clubModules: number;
 };
 
 // ============================================================
@@ -314,11 +316,41 @@ export async function seedClub(clubId: string): Promise<SeedResult> {
     .select("id");
   if (settingsError) throw settingsError;
 
+  // ----------------------------------------------------
+  // 6. Club modules (7 features, όλα enabled by default)
+  // ----------------------------------------------------
+  // Mirrors το kriton-aigaleo baseline (PR #36). Super admin
+  // disable-άρει modules per-client μέσω /admin/clubs/[id]/modules.
+  // Idempotent με PRIMARY KEY (club_id, module).
+  const ALL_MODULES: ClubModule[] = [
+    "members",
+    "events",
+    "calendar",
+    "seating",
+    "finances",
+    "cashier",
+    "communications",
+  ];
+  const modulesPayload = ALL_MODULES.map((m) => ({
+    club_id: clubId,
+    module: m,
+    enabled: true,
+  }));
+  const { data: insertedModules, error: modulesError } = await supabase
+    .from("club_modules")
+    .upsert(modulesPayload, {
+      onConflict: "club_id,module",
+      ignoreDuplicates: true,
+    })
+    .select("module");
+  if (modulesError) throw modulesError;
+
   return {
     roles: insertedRoles?.length ?? 0,
     permissions: permissionsInserted,
     ticketCategories: insertedTickets?.length ?? 0,
     expenseCategories: insertedExpenses?.length ?? 0,
     clubSettings: (insertedSettings?.length ?? 0) > 0,
+    clubModules: insertedModules?.length ?? 0,
   };
 }
