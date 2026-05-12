@@ -303,6 +303,33 @@ _(no active branches)_
 
   Estimated: S-M (UI scope, no schema change)
 
+- [ ] **🟢 Auto-generate slug από όνομα στο /admin/clubs/new**
+
+  Discovered: 2026-05-12 (test-club-2 onboarding)
+
+  Σήμερα: User πληκτρολογεί name + slug χειροκίνητα. Risk:
+  - Typos στο slug
+  - Inconsistency (π.χ. ΕΚΑ → 'eka' or 'ena-kriton-aigaleo'?)
+  - Friction στο onboarding flow
+
+  Στόχος: live auto-generate slug ενώ ο user πληκτρολογεί name.
+
+  Implementation considerations:
+  - **Greek transliteration:** π.χ. 'ΣΥΛΛΟΓΟΣ ΔΟΚΙΜΗΣ' → 'syllogos-dokimis'
+    - Library candidate: greek-utils, transliteration, ή custom map
+  - **Lowercase + alphanumeric + hyphens** (matches existing slug regex)
+  - **Manual override:** Αν user editάρει το slug field, σταμάτα να
+    auto-generate (set dirty flag)
+  - **Real-time vs onBlur:** Real-time είναι responsive αλλά bouncing.
+    OnBlur είναι σταθερό. Decision pending.
+  - **Uniqueness check:** Server-side check ήδη υπάρχει (Step 4 του
+    route θα γυρίσει 409). UI bonus: live availability check μέσω
+    debounced API call.
+
+  Affects: app/admin/clubs/new/page.tsx
+
+  Estimated: S (μετάφραση + live update logic)
+
 ### 🎩 Operational interfaces
 
 - [ ] **💰 Cashier Interface — Phase 2 enhancements**
