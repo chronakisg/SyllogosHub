@@ -70,10 +70,12 @@ export function getActorLabel(label: AuditActorLabel): string {
  * προστεθεί το αντίστοιχο label.
  */
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
-  insert: "Δημιουργία",
+  create: "Δημιουργία",
   update: "Ενημέρωση",
   delete: "Διαγραφή",
   email_verified: "Επιβεβαίωση email",
+  "payment.approved": "Έγκριση πληρωμής",
+  "payment.rejected": "Απόρριψη πληρωμής",
 };
 
 export function getActionLabel(action: AuditAction): string {
@@ -97,4 +99,27 @@ export const EVENT_FIELD_LABELS: Record<string, string> = {
   event_date: "Ημερομηνία εκδήλωσης",
   location: "Τοποθεσία",
   venue_max_capacity: "Μέγιστη χωρητικότητα",
+};
+
+// ────────────────────────────────────────────────────────────────────
+// Payment field labels
+// ────────────────────────────────────────────────────────────────────
+
+/**
+ * Greek translations για audit-able fields του payments table.
+ *
+ * Whitelist (Phase B.1a): editable fields μέσω PATCH endpoint.
+ * Excluded από whitelist (immutable ή handled με discriminated actions):
+ * - approval_status, approved_by, approved_at — discriminated actions
+ *   ('payment.approved', 'payment.rejected') μέσω RPC endpoints
+ * - batch_id, club_id, member_id — tenant/grouping identifiers
+ * - id, created_at — immutable
+ * - type — immutable σε edit (αλλαγή semantic). Future: ίσως RPC
+ *   endpoint /payments/[id]/change-type με reason field
+ */
+export const PAYMENT_FIELD_LABELS: Record<string, string> = {
+  amount: "Ποσό",
+  payment_date: "Ημερομηνία πληρωμής",
+  period: "Περίοδος",
+  original_amount: "Αρχικό ποσό",
 };

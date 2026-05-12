@@ -183,6 +183,36 @@ _(no active branches)_
   - Required before opening to other clubs beyond beta client
   - Estimated: L (multi-session)
 - [ ] **iOS Safari PWA test** — verify install + auto-update flow
+- [ ] **🔴 lib/supabase/types.ts drift με production schema**
+
+  Discovered: 2026-05-12 (Phase B.1a smoke testing)
+
+  Payments table verified drift:
+  - 'created_at' column listed στο types.ts but ΔΕΝ υπάρχει στη DB
+  - club_id nullability inverse (DB: NOT NULL, TS: nullable)
+  - member_id, payment_date, type, approval_status nullability
+    mismatches (DB: nullable, TS: non-null)
+
+  Implication: TS compile-time guarantees are MISLEADING για το
+  payments domain. Runtime behavior depends on actual DB schema.
+  Code που βασίζεται σε TS non-null assumptions μπορεί να σπάσει
+  σε runtime σε orphan/legacy data.
+
+  Mitigation εν τω μεταξύ: Endpoint design αξιοποιεί Supabase
+  runtime validation αντί TS guarantees — άρα Phase B.1a είναι
+  safe.
+
+  Action plan:
+  1. Audit ΟΛΩΝ των tables στο types.ts vs information_schema.columns
+  2. Document drift per table
+  3. Manual types.ts corrections (preserves hand-crafted constraint
+     από PROJECT_RESUME.md memory)
+  4. Re-verify με tsc + smoke test affected paths
+
+  Estimated: M-L (4-8 ώρες audit + corrections, multi-PR αν χρειαστεί)
+
+  Required before multi-tenant onboarding — δεν θέλουμε σύλλογο να
+  πέσει σε runtime error από schema drift που υπολανθάνει.
 
 ## 🟡 High Priority (post-beta)
 
@@ -248,6 +278,30 @@ _(no active branches)_
   Connects με: 3-state presence + Cashier Phase 2 realtime sync
 
   Estimated: M (μειώθηκε από L μετά την Phase 1 ολοκλήρωση)
+
+- [ ] **🟡 Date format inconsistency στο /finances payment modal**
+
+  Discovered: 2026-05-12 (Phase B.1a smoke testing)
+
+  Symptom: Στο "Νέα Πληρωμή" modal, το date input εμφανίζει
+  '05/12/2026' (Δεκ 5 αν US format MM/DD/YYYY ή Μαϊ 12 αν Greek
+  DD/MM/YYYY).
+
+  Στη DB αποθηκεύεται ως 2026-05-12 — άρα το input είναι σε US
+  format. Πιθανότατα bug για Greek users που περιμένουν
+  DD/MM/YYYY convention.
+
+  Affects:
+  - app/finances/page.tsx (Νέα Πληρωμή modal)
+  - Πιθανώς και άλλα date inputs στο app (events, members
+    birth_date, etc.)
+
+  Fix candidates:
+  - Σήμανση locale="el-GR" σε όλα τα <input type="date">
+  - Ή custom date picker με explicit Greek format
+  - Audit όλων των date inputs cross-app
+
+  Estimated: S-M (UI scope, no schema change)
 
 ### 🎩 Operational interfaces
 
@@ -940,6 +994,56 @@ _(no active branches)_
   Estimated: process note
 
 ## ✅ Recently Done
+
+### feat/payments-audit-patch (merged 2026-05-12)
+
+Phase B.1a — PATCH endpoint για payments table. Mirror του events
+PATCH pattern (PR #60). 3 commits + smoke testing.
+
+**Schema (1 commit):**
+- [x] Migration 0024: audit_log.action CHECK constraint expansion
+  ('payment.approved', 'payment.rejected' added)
+- [x] Defensive snapshot audit_log_backup_20260512_pre_payments
+- [x] Manual SQL execution στο production με 4-block verification
+
+**Types & Labels (1 commit):**
+- [x] AuditAction union expansion: + 'payment.approved' | 'payment.rejected'
+- [x] Pre-existing drift fix: 'insert' (TS) → 'create' (DB alignment).
+  Dead literal — 0 call sites confirmed via grep.
+- [x] AUDIT_ACTION_LABELS: rename 'insert' → 'create', + 2 payment
+  actions (Έγκριση πληρωμής / Απόρριψη πληρωμής)
+- [x] New PAYMENT_FIELD_LABELS export: amount, payment_date, period,
+  original_amount (4 fields, Greek labels)
+- [x] 'type' deliberately excluded από PAYMENT_FIELD_LABELS (D2
+  decision: immutable σε edit semantic change)
+
+**Endpoint (1 commit):**
+- [x] app/api/finances/payments/[id]/route.ts — PATCH method
+  * Auth: requirePermission('finances')
+  * Multi-tenant scoping: .eq('id', id).eq('club_id', ctx.clubId)
+    σε ΟΛΕΣ τις queries (defense-in-depth)
+  * Whitelist: amount, payment_date, period, original_amount
+  * Per-field validation με Greek messages
+  * Validation rules: amount/original_amount finite ≥0 ≤9999999,
+    payment_date parseable ISO, period trimmed ≤50 chars
+  * Audit hook: action='update', actor_label='admin', field diff
+  * Fail-soft audit, empty-diff skip
+  * cast to PaymentUpdate (runtime-built object)
+
+**Production smoke-tested (7/7 ✅):**
+- Happy path PATCH (period change): 200 + audit row με correct
+  actor identity (cfa2bdc8.../info@party4u.gr)
+- Validation error (negative amount): 400 + Greek field-level message
+- Whitelist enforcement (type field): 400 + allowed list
+- Cross-club leakage (random UUID): 404 (defense-in-depth, no 403)
+- Audit row created με correct field diff jsonb
+- Revert successful: full round-trip audit trail (2 rows)
+
+**Discoveries (separate ROADMAP entries):**
+- payments table schema drift εντοπίστηκε vs types.ts
+  → 🔴 Critical entry
+- Date format issue στο /finances Νέα Πληρωμή modal
+  → 🟡 Finances entry
 
 ### feat/api-events-update (merged 2026-05-11) — PR #60
 
