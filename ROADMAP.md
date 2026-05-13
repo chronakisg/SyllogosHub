@@ -118,16 +118,20 @@ _(no active branches)_
 
   **Bug cluster:**
 
-  1. **Super admin /admin/clubs redirect στο /login παρά τα σωστά
-     data στο super_admins table.**
-     - Verified: super_admins row matches auth.users.id για info@party4u.gr
-     - Verified: RLS disabled στο super_admins
-     - Symptom: 307 redirect στο /login από proxy.ts
-     - HAR shows: cookies=[] στο /admin/* requests
-     - Reproducible σε normal browser + incognito
-     - Hard suspect: PWA service worker intercepts auth cookies
-       για /admin/* paths
-     - Estimated: M (service worker investigation + fix)
+  1. **✅ RESOLVED (2026-05-13) — Super admin /admin/clubs redirect
+     στο /login παρά τα σωστά data στο super_admins table.**
+     - Πρωτογενής υποψία (PWA SW intercepts requests) επιβεβαιώθηκε:
+       stale `pages-rsc` / `apis` caches από Serwist `defaultCache`
+       σερβίριζαν παλιές responses για /admin/* paths.
+     - Παράλληλη αιτία: missing `SUPABASE_SERVICE_ROLE_KEY` στο
+       Vercel production env → `getAdminClient()` failed στο
+       `requireSuperAdmin()` lookup, layout threw → redirect.
+     - Fix: PR #68 (app/sw.ts — NetworkOnly για authenticated paths,
+       skipWaiting:true, one-time activate cache cleanup) + Vercel
+       env var addition + redeploy.
+     - Production-verified: /admin/clubs φορτώνει για super admin,
+       club list σωστή (ΣΥΛΛΟΓΟΣ ΚΡΗΤΩΝ ΑΙΓΑΛΕΩ visible).
+     - See Recently Done: fix/sw-exclude-authenticated-paths.
 
   2. **`members.user_id NULL` για existing accounts**
      - Member portal Chunk 2 (PR #44) έφτιαξε linkAuthUserToMember()
@@ -162,11 +166,10 @@ _(no active branches)_
      - Estimated: S
 
   **Suggested investigation order (separate session):**
-  1. Service worker theory verification (unregister + retest)
-  2. Session cookie inspection (που point-άρει JWT)
-  3. Backfill members.user_id για 244+ existing members
-  4. seedClub.ts hardening
-  5. Logging + defense-in-depth refactor
+  1. ✅ Service worker theory verification — DONE (PR #68, 2026-05-13)
+  2. Backfill members.user_id για 244+ existing members
+  3. seedClub.ts hardening (email uniqueness pre-check)
+  4. Logging + defense-in-depth refactor (proxy.ts super admin check)
 
   **Required before multi-tenant onboarding.** Δεν προχωρούμε σε
   νέους συλλόγους πριν λυθούν τα παραπάνω.
@@ -1241,7 +1244,53 @@ _(no active branches)_
   αλλάζεις AppShell guards. Process improvement, όχι code.
   Estimated: process note
 
+- [ ] **uuid validation guard στο /admin/clubs/[id]/page.tsx**
+  Όταν το dynamic `[id]` segment δεν είναι valid uuid, η Postgres
+  γυρνάει 22P02 και ο user βλέπει 500 server error. Σωστή
+  συμπεριφορά: uuid format check στην αρχή του page → `notFound()`
+  για 404. Πιθανώς αξίζει shared helper για όλα τα dynamic
+  `[id]` routes.
+  Estimated: XS
+
+- [ ] **Migrate από legacy Supabase anon/service_role keys σε
+       publishable/secret keys**
+  Supabase recommendation (2026 dashboard notice). Σήμερα
+  χρησιμοποιούμε legacy keys:
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY` → publishable key
+  - `SUPABASE_SERVICE_ROLE_KEY` → secret key
+  Defer μέχρι (α) Supabase ανακοινώσει breaking change ή (β)
+  dedicated tech debt session. Απαιτεί env var rename σε Vercel
+  + local `.env*` + code references + redeploy.
+  Estimated: M
+
 ## ✅ Recently Done
+
+### fix/sw-exclude-authenticated-paths (merged 2026-05-13) — PR #68
+
+Production blocker fix για το super admin /admin/clubs που
+redirect-αρε σε /login από stale SW cache.
+
+**Changes (app/sw.ts):**
+- NetworkOnly handler για /admin, /api/admin, /portal, /api/portal,
+  /me/, /api/me/ (placed first σε runtimeCaching — matching order
+  matters, αλλιώς οι NetworkFirst rules του defaultCache τυλίγουν
+  authenticated responses).
+- skipWaiting: false → true για άμεσο SW update σε existing clients
+  που έχουν installed την παλιά version.
+- One-time activate cleanup των `pages-rsc`, `apis`,
+  `pages-rsc-prefetch` caches που πιθανώς περιείχαν stale
+  authenticated responses από προηγούμενες versions.
+
+**Παράλληλο discovery:** missing `SUPABASE_SERVICE_ROLE_KEY` στο
+Vercel production environment. Καμία αλλαγή κώδικα — μόνο env var
+addition + redeploy. Πιθανές παράπλευρες συνέπειες σε άλλα admin
+paths που εξαρτώνται από `getAdminClient()` — audit pending αν
+εμφανιστούν σιωπηλά issues.
+
+**Production-verified end-to-end:** /admin/clubs φορτώνει σωστά,
+ΣΥΛΛΟΓΟΣ ΚΡΗΤΩΝ ΑΙΓΑΛΕΩ visible στη λίστα.
+
+**Resolves:** 🔴 Identity model bugs — Bug #1 (1 από 5).
 
 ### feat/payments-audit-patch (merged 2026-05-12)
 
