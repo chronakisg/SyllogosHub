@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-13 (Bug #2 reassessed ✅ + duplicate email edge case documented)  
+> Last updated: 2026-05-13 (Portal post-login return-to deferred — documented for future trigger)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -1193,6 +1193,48 @@ _(no active branches)_
 
   Estimated: S (στο Cashier flow ως sub-feature)
   Depends on: Cashier Interface
+
+### 🟣 Member Portal (future)
+
+- [ ] **Member portal post-login return-to (deferred — premature)**
+
+  Stack: 🟣 Member Portal · Tech Debt
+
+  Discovered: 2026-05-13 (post PR #76 follow-up investigation)
+
+  Trigger condition: Όταν προστεθεί 2η+ protected page στο
+  `/portal/*` (e.g., `/portal/payments`, `/portal/events`).
+
+  Σήμερα: μόνο `/portal/profile` είναι protected. Hardcoded redirect
+  σε `/portal/profile` post-magic-link = correct landing σε 100% των
+  cases.
+
+  Investigation (2026-05-13, post PR #76) επιβεβαίωσε ότι:
+  - Δεν υπάρχει security gap (zero `?redirect=` consumption στο
+    portal flow — κανένα component δεν διαβάζει το param)
+  - Δεν υπάρχει UX gap (single protected page → hardcoded landing
+    πάντα σωστό)
+  - Symbolic proxy.ts fix χωρίς downstream propagation = dead code
+
+  Όταν χρειαστεί: 4 file changes required (~M effort):
+  - `proxy.ts`: add `?redirect=` στο /portal/profile anonymous block
+  - `app/portal/login/page.tsx`: read + sanitize + include στο
+    POST body
+  - `app/api/portal/auth/send-magic-link/route.ts`: accept optional
+    `redirect` field, sanitize, append στο `magicLinkUrl`
+  - `app/portal/auth-callback/page.tsx`: read + sanitize + use στο
+    `redirect()` call (αντί hardcoded `/portal/profile`)
+
+  Reuse: `lib/auth/safeRedirect.ts` (PR #76)
+
+  Sanitization στο API layer **απαιτείται** — magic link email
+  είναι attacker-controllable vector (αν attacker αποκτήσει inbox
+  access, μπορεί να craft-άρει redirect σε phishing landing).
+
+  Estimated: M (4 files + API-layer sanitization)
+
+  Connects με: PR #76 (open redirect closure στο /admin flow),
+  Member Portal Chunk 3/4 expansion
 
 ### 🌐 Public Engagement (future)
 
