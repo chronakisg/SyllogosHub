@@ -4,6 +4,8 @@ import { getAdminClient } from "@/lib/supabase/admin";
 import { ClubEditPanel } from "./ClubEditPanel";
 import { ClubModulesPanel } from "./ClubModulesPanel";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const PLAN_BADGE: Record<string, string> = {
   basic: "bg-gray-200 text-gray-800",
   pro: "bg-blue-100 text-blue-800",
@@ -27,6 +29,9 @@ export default async function AdminClubDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  if (!UUID_RE.test(id)) {
+    notFound();
+  }
   const supabase = getAdminClient();
 
   // A. Club info
