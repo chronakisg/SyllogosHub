@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-13 (Bug #2 reassessed ✅ + duplicate email edge case documented)  
+> Last updated: 2026-05-13 (Bug #3 resolved ✅ + listUsers pagination tech debt + uuid-guard entry cleanup)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -202,15 +202,24 @@ _(no active branches)_
        (οικογένεια Κουρουγκιαούρη) → βλ. νέο edge case entry
        στο 🟡 High Priority → 🟣 Member Portal domain.
 
-  3. **Duplicate auth.users με ίδιο email πιθανό**
-     - Κατά το debugging είδαμε διαφορετικά UUIDs να επιστρέφονται
-       για info@party4u.gr σε διαφορετικά queries
-     - Πιθανή αιτία: seedClub.ts creates auth user χωρίς email
-       uniqueness check
-     - Production risk: νέος σύλλογος με email που υπάρχει →
-       undefined behavior, possible orphan users
-     - Fix: seedClub.ts pre-check email existence
-     - Estimated: S (add check) + M (DB cleanup script αν χρειαστεί)
+  3. **✅ RESOLVED (2026-05-13) — Duplicate auth.users με ίδιο email
+     πιθανό** (verified με code inspection)
+     - **Initial assumption:** seedClub.ts creates auth user χωρίς
+       email uniqueness check.
+     - **Πραγματικότητα:**
+       * `createUser` **ΔΕΝ** είναι στο `seedClub.ts` — είναι στο
+         `POST /api/admin/clubs` route handler (Step 6, line 172).
+       * Email collision check **ήδη υπάρχει** στο Step 3 του route
+         (line 124-136) με `listUsers()` + `.toLowerCase()` match +
+         409 response με Greek error message.
+       * Pre-check έρχεται **ΠΡΙΝ** από clubs INSERT (Step 4) —
+         αποτρέπει partial state.
+     - Original ROADMAP entry βασιζόταν σε λάθος υπόθεση για την
+       τοποθεσία του `createUser` call.
+     - Παράλληλο discovery: η `listUsers()` call χρησιμοποιεί
+       default Supabase pagination (first 50 users) — future scale
+       issue όταν `auth.users` φτάσει >50 records. Documented σαν
+       τech debt entry (βλ. 🔧 Tech Debt → listUsers() pagination).
 
   4. **Defense-in-depth κενό στο proxy.ts για super admin**
      - Σήμερα: proxy.ts κάνει auth check μόνο (έχει user ή όχι)
@@ -230,7 +239,8 @@ _(no active branches)_
   1. ✅ Service worker theory verification — DONE (PR #68, 2026-05-13)
   2. ✅ Backfill members.user_id για 244+ existing members —
      DONE/N/A (SQL diagnostic 2026-05-13, βλ. Bug #2 reassessment)
-  3. seedClub.ts hardening (email uniqueness pre-check)
+  3. ✅ seedClub.ts hardening (email uniqueness pre-check) — DONE/N/A
+     (already implemented σε route.ts Step 3, βλ. Bug #3 reassessment)
   4. Logging + defense-in-depth refactor (proxy.ts super admin check)
 
   **Required before multi-tenant onboarding.** Δεν προχωρούμε σε
@@ -1461,14 +1471,6 @@ _(no active branches)_
   αλλάζεις AppShell guards. Process improvement, όχι code.
   Estimated: process note
 
-- [ ] **uuid validation guard στο /admin/clubs/[id]/page.tsx**
-  Όταν το dynamic `[id]` segment δεν είναι valid uuid, η Postgres
-  γυρνάει 22P02 και ο user βλέπει 500 server error. Σωστή
-  συμπεριφορά: uuid format check στην αρχή του page → `notFound()`
-  για 404. Πιθανώς αξίζει shared helper για όλα τα dynamic
-  `[id]` routes.
-  Estimated: XS
-
 - [ ] **Migrate από legacy Supabase anon/service_role keys σε
        publishable/secret keys**
   Supabase recommendation (2026 dashboard notice). Σήμερα
@@ -1479,6 +1481,41 @@ _(no active branches)_
   dedicated tech debt session. Απαιτεί env var rename σε Vercel
   + local `.env*` + code references + redeploy.
   Estimated: M
+
+- [ ] **`listUsers()` pagination — collision check false-negative**
+
+  Stack: 📊 Διαχειριστικό · Tech debt
+
+  Discovered: 2026-05-13 (Bug #3 reassessment code review)
+
+  Σήμερα η email collision check στο `POST /api/admin/clubs:124-136`
+  χρησιμοποιεί `auth.admin.listUsers()` χωρίς pagination params —
+  default Supabase pagination = first 50 users.
+
+  Implication: Όταν το `auth.users` table φτάσει >50 records, η
+  collision check θα γίνει **false-negative** — emails στις σελίδες
+  2+ δεν θα ανιχνεύονται. Δηλαδή μπορεί να δημιουργηθεί duplicate
+  auth user χωρίς warning.
+
+  Same pattern σε 6 sites:
+  - `app/api/admin/clubs/route.ts:124-136`
+  - `app/api/admin/users/[memberId]/login/*.ts` (5 sites)
+  - "mirror του login route pattern" comment establishes convention
+
+  Fix candidates:
+  1. Use Supabase admin filter API αν επιτρέπει email-based query
+     (preferred — single round-trip)
+  2. Manual pagination loop μέχρι να βρεθεί ή να εξαντληθεί η λίστα
+     (fallback — O(n) requests)
+
+  Σήμερα <20 auth users — όχι immediate concern. Αλλά πριν
+  multi-tenant launch (5+ clubs με ~5+ admins each = 25+ users),
+  η pagination edge case θα γίνει real.
+
+  Estimated: M (investigation + 6 sites refactor + tests)
+
+  Connects με: PR #73 (Bug #3 reassessment), seedClub flow,
+  future multi-tenant launch
 
 ## ✅ Recently Done
 
