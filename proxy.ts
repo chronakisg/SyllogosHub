@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { isSafeRedirectPath } from "@/lib/auth/safeRedirect";
 import { logger } from "@/lib/utils/logger";
 
 export async function proxy(request: NextRequest) {
@@ -30,7 +31,16 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (request.nextUrl.pathname.startsWith('/admin') && !user) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    const loginUrl = new URL('/login', request.url);
+    // Πέρναμε το intended path για post-login navigation. Sanitize-άρουμε
+    // ως defense-in-depth ακόμα κι αν τα NextRequest paths είναι internal
+    // by construction.
+    const intendedPath =
+      request.nextUrl.pathname + request.nextUrl.search;
+    if (isSafeRedirectPath(intendedPath)) {
+      loginUrl.searchParams.set('redirect', intendedPath);
+    }
+    return NextResponse.redirect(loginUrl);
   }
 
   // /admin/* defense-in-depth: layout είναι layer 2, εδώ layer 1.
