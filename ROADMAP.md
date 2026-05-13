@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-11 (Audit work expansion: events + date grouping + guard fix pending)  
+> Last updated: 2026-05-13 (Public Engagement stack + Lead Capture 4 phases + Member Portal stack consolidation)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -38,7 +38,7 @@
 Το app sidebar χωρίζεται σε **3 mental zones** που εξυπηρετούν
 διαφορετικά user mindsets:
 
-1. **Daily Operations** — members/events/finances/cashier/seating/calendar
+1. **Daily Operations** — members/events/finances/cashier/seating/calendar/subscribers
    - Daily admin work, transaction-oriented
    - Frequent access, primary working surface
 2. **Monitoring & Admin** (μεταξύ divider lines) — audit-log
@@ -54,12 +54,19 @@ audit/monitoring features, δεν χρειάζονται νέα ζώνη του 
 — απλά νέες entries στην ίδια. Audit είναι **standalone domain**,
 όχι sub-feature κάποιου specific module.
 
+**Public pages εκτός sidebar:** Routes χωρίς auth context
+(`/[clubSlug]/welcome`, `/[clubSlug]/unsubscribe` — βλ. 🌐 Public
+Engagement Stack) **δεν** εμφανίζονται στο sidebar. Sidebar
+απαιτεί logged-in member με permissions.
+
 ## 🏗️ Architectural Stacks
 
-> Το SyllogosHub χωρίζεται σε **δύο διακριτά mental models** που εξυπηρετούν
-> διαφορετικές χρονικές στιγμές και διαφορετικούς χρήστες. Το ίδιο data layer
-> (events, reservations, attendees) τροφοδοτεί και τα δύο, αλλά κάθε stack
-> έχει δικό του UX footprint.
+> Το SyllogosHub χωρίζεται σε **πολλαπλά διακριτά mental models** που
+> εξυπηρετούν διαφορετικές χρονικές στιγμές και διαφορετικούς χρήστες. Το ίδιο
+> data layer (events, reservations, attendees, members) τροφοδοτεί όλα τα
+> stacks, αλλά κάθε stack έχει δικό του **user persona**, **temporal context**,
+> και **UX footprint**. Κάθε stack είναι **standalone-able** — μπορεί να
+> ενεργοποιείται ή να μένει ανενεργό χωρίς να επηρεάζει τα υπόλοιπα.
 
 ### 📊 Διαχειριστικό Stack — admin / planning (πριν την εκδήλωση)
 
@@ -86,6 +93,51 @@ audit/monitoring features, δεν χρειάζονται νέα ζώνη του 
 - Mental model: read-mostly, optimistic UI, mobile-first, low-friction toggles
 - ΟΧΙ νούμερα/ποσά/εκπτώσεις — η hostess χρειάζεται status signal
   (πληρωμένο: ναι/όχι), όχι οικονομικό detail.
+
+### 🟣 Member Portal Stack — member self-service
+
+Χρήστης: logged-in μέλος του συλλόγου (magic link auth).
+Χρονική στιγμή: όποτε — async self-service, ανεξάρτητο από event lifecycle.
+
+- `/portal/login` — magic link request form
+- `/portal/auth-callback` — server-side verifyOtp + linkage
+- `/portal/profile` — read-only identity + self-update whitelist
+- 🔜 `/portal/events` — visibility σε events + reservations history
+- 🔜 `/portal/finances/me` — οφειλές + πληρωμές history (μόνο δικά του)
+- 🔜 `/portal/departments/[id]` — class enrollment + announcements per τμήμα
+- Mental model: read-mostly self-service, mobile-first, family-aware
+  (parent βλέπει παιδιά τους εγγεγραμμένα σε τμήματα/εκδηλώσεις)
+- ΟΧΙ admin-level data (other members' amounts, board info, audit log)
+- Foundation merged: Chunk 2 — Auth + Profile (PR #44, 2026-05-09).
+  Pending Chunks tracked στο 🟡 High Priority → 🟣 Member Portal domain.
+
+### 🌐 Public Engagement Stack — anonymous lead capture
+
+Χρήστης: ανώνυμοι επισκέπτες (φίλοι μελών, παρευρισκόμενοι σε
+εκδηλώσεις, web visitors).
+Χρονική στιγμή: όποτε — δεν εξαρτάται από event lifecycle.
+
+- `/[clubSlug]/welcome` (public, no auth) — branded welcome form
+- `/[clubSlug]/unsubscribe` (public, no auth) — GDPR right
+- `/subscribers` (admin) — lead management + conversion flow
+
+Mental model: **conversion funnel**. Δεν είναι member, δεν είναι
+attendee, είναι **lead**. Φιλικό UI, GDPR-compliant, mobile-first
+(QR scans από smartphones).
+
+Module-gating: σύλλογος μπορεί να ενεργοποιήσει/απενεργοποιήσει το
+module `subscribers` στο `club_modules` table. Φοιτητικοί σύλλογοι
+με κλειστή λίστα δε χρειάζονται lead capture. Business συλλόγοι με
+recruitment focus τo θεωρούν essential.
+
+QR distribution sources (3 από Phase 1):
+
+1. **Per-club generic QR** — αφίσα/banner στον χώρο του συλλόγου
+2. **Per-event QR** — εκτυπώνεται για συγκεκριμένη εκδήλωση
+3. **Per-member QR** — referral system, κάθε μέλος μοιράζεται το δικό του
+
+Όλα οδηγούν στην ίδια welcome page με διαφορετικό `?ref=` parameter
+για source tracking.
 
 ### Standalone-able principle
 
@@ -594,6 +646,157 @@ _(no active branches)_
   Connects με: ολοκληρωμένο Cashier Phase 1, 3-state presence,
   realtime infrastructure, print/PDF generation
 
+### 🌐 Public Engagement domain
+
+- [ ] **🌐 Public Lead Capture — Phase 1 (Foundation)**
+
+  Stack: 🌐 Public Engagement
+
+  Strategic context: Σύλλογοι θέλουν να μαζεύουν στοιχεία επικοινωνίας
+  από outsiders (φίλοι μελών, επισκέπτες εκδηλώσεων, web visitors)
+  για μελλοντικές προσκλήσεις, newsletter, recruitment. Στόχος:
+  ενιαία λύση που υποστηρίζει 3 sources από day-1, με GDPR compliance.
+
+  **Spec — Schema (Migration TBD):**
+  - Νέα table `subscribers` με columns:
+    * `id` (uuid pk)
+    * `club_id` (uuid FK → clubs, NOT NULL)
+    * `first_name`, `last_name` (text)
+    * `email`, `phone` (text)
+    * `source` enum: `'qr_general'` | `'qr_event'` | `'qr_member_referral'` | `'manual_admin'` | `'website'`
+    * `source_event_id` (uuid FK → events, nullable)
+    * `source_member_id` (uuid FK → members, nullable)
+    * `consent_communications` boolean (required)
+    * `consent_newsletter` boolean (optional)
+    * `unsubscribed_at` timestamptz (nullable)
+    * `status` enum: `'new'` | `'contacted'` | `'converted'` | `'unsubscribed'`
+    * `converted_to_member_id` (uuid FK → members, nullable)
+    * `notes` text, `created_at`, `updated_at` (timestamptz)
+  - Νέο module `'subscribers'` στο `club_modules` CHECK constraint
+    (7 modules → 8)
+  - RLS off (consistent με project pattern)
+  - Indexes:
+    * `(club_id, status)` — admin list filtering
+    * `(source)` — source breakdown analytics
+    * `(club_id, email)` partial unique όπου `email IS NOT NULL` —
+      dedup per club
+
+  **Spec — Public flow:**
+  - `/[clubSlug]/welcome` page με club branding (logo + μπορντό CTA)
+  - Form fields: όνομα, επώνυμο, email, τηλέφωνο
+  - 2 consent checkboxes (communications **required**, newsletter
+    optional)
+  - Privacy policy link
+  - Dynamic welcome message based on `?ref=` param:
+    * Generic: "Καλώς ήρθες στον [Σύλλογος]"
+    * Event: "Σε ευχαριστούμε που ήρθες στον [Εκδήλωση]"
+    * Member: "Ο/Η [Όνομα Μέλους] σε καλωσορίζει στον σύλλογο"
+  - `POST /api/public/subscribe` με rate limiting (anti-spam)
+  - Confirmation page μετά submit
+
+  **Spec — Admin flow:**
+  - `/subscribers` page στο Διαχειριστικό zone του sidebar
+  - List με filters: status, source, date range, search
+  - Columns: όνομα, email, τηλέφωνο, source (με referrer name αν
+    member), date, status, actions
+  - Actions: mark contacted, mark converted (opens member create
+    form prefilled), delete
+  - CSV export
+  - Permission gate: νέο `'subscribers'` module permission
+
+  **Spec — Member QR (Portal):**
+  - `/portal/profile` προσθέτει card "Το προσωπικό σου QR"
+  - "Λήψη εικόνας PNG" + "Αντιγραφή link"
+  - QR encodes: `https://<club>.syllogoshub.gr/welcome?ref=member_<uuid>`
+
+  **Spec — Per-club QR (Settings):**
+  - `/settings/club` section "QR Codes"
+  - Download generic QR (no ref param)
+  - Future: download per-event QR (Phase 2)
+
+  **GDPR considerations:**
+  - Privacy policy page per club
+  - Right to unsubscribe (public `/[clubSlug]/unsubscribe` page)
+  - Right to be forgotten (admin delete cascades, audit trail)
+  - Data export (Phase 2 — admin can email user their data)
+
+  Estimated: M-L (multi-session — schema + public page + admin
+  page + portal integration + GDPR pages)
+
+  Connects με: `club_modules`, member portal Chunk 2, audit log
+  foundation, future communications module
+
+- [ ] **🌐 Public Lead Capture — Phase 2 (Member referral + conversion)**
+
+  Stack: 🌐 Public Engagement
+
+  Spec:
+  - Member leaderboard "Top Recruiters" στο `/subscribers` admin page
+  - Per-event QR generator (download/print από event page)
+  - Convert-to-member flow: admin click "Προώθηση σε μέλος" στον
+    subscriber → opens `/members` create form prefilled με data
+    → on member create, `subscriber.status='converted'` +
+    `converted_to_member_id` linkage
+  - Email notification στο μέλος που έκανε το referral όταν ο
+    subscriber γίνει μέλος ("Ευχαριστούμε για το referral!")
+
+  Estimated: M
+
+- [ ] **🌐 Public Lead Capture — Phase 3 (Email campaigns)**
+
+  Stack: 🌐 Public Engagement
+
+  Spec:
+  - Mass email send μέσω Resend (chunked για rate limiting)
+  - Email templates per club
+  - Newsletter list με opt-in segmentation
+  - Unsubscribe link σε κάθε email (one-click)
+  - Send analytics (sent, delivered, opened, clicked)
+  - Connects με `club_modules.communications` που ήδη υπάρχει
+
+  Estimated: L
+
+### 🟣 Member Portal domain
+
+> Stack description βλ. 🏗️ Architectural Stacks → 🟣 Member Portal Stack.
+> Foundation merged: Chunk 2 — Auth + Profile (PR #44, 2026-05-09).
+
+- [ ] **Chunk 3 — Member Events + Finances**
+
+  Stack: 🟣 Member Portal
+
+  Scope: Visibility σε events + financial state του μέλους.
+
+  Spec:
+  - /events public view για member (όλες οι εκδηλώσεις του συλλόγου)
+  - Member's reservations history (μετά + πριν)
+  - /finances/me — οφειλές + πληρωμές history
+  - Status badge (ενεργό/ανενεργό) με reason
+  - Member sees ΟΧΙ amounts of others, μόνο δικά του
+
+  Connects με: events domain, finances domain, RLS policies,
+  Chunk 2 portal foundation (PR #44)
+
+  Estimated: L
+
+- [ ] **Chunk 4 — Departments + Classes + Messages**
+
+  Stack: 🟣 Member Portal
+
+  Scope: Class enrollment + announcements per τμήμα.
+
+  Spec (απαιτείται νέο schema):
+  - classes table (department_id FK, schedule, location, instructor)
+  - class_enrollments table (class_id, member_id, enrolled_at)
+  - department_messages table (department_id, title, body, posted_by, posted_at)
+  - /departments/[id] page για members
+  - Family-wide visibility (parent βλέπει παιδιά τους εγγεγραμμένα)
+  - Push notifications για νέα μηνύματα
+
+  Connects με: departments, family system, push notifications
+
+  Estimated: XL (multi-session — απαιτεί schema design)
+
 ### Schema evolution
 
 ### 📱 Mobile & Cross-cutting
@@ -767,51 +970,6 @@ _(no active branches)_
   - Same data fields, διαφορετικά labels — confusing UX
     για member που χρησιμοποιεί και τις δύο surfaces
   - Estimated: S (decide source of truth + label sync)
-
-## 🟣 Member Portal — Επίπεδο 4 (Future Stack)
-
-> Τρίτο stack παράλληλα με 📊 Διαχειριστικό + 🎩 Operational.
-> Member-facing self-service portal. Standalone-able από τα άλλα stacks.
-
-- [x] **Chunk 2 — Member Auth + Profile** — μετακινήθηκε σε
-  Recently Done (PR #44, merged 2026-05-09). Foundation για
-  Chunks 3-4.
-
-- [ ] **Chunk 3 — Member Events + Finances**
-
-  Stack: 🟣 Member Portal
-
-  Scope: Visibility σε events + financial state του μέλους.
-
-  Spec:
-  - /events public view για member (όλες οι εκδηλώσεις του συλλόγου)
-  - Member's reservations history (μετά + πριν)
-  - /finances/me — οφειλές + πληρωμές history
-  - Status badge (ενεργό/ανενεργό) με reason
-  - Member sees ΟΧΙ amounts of others, μόνο δικά του
-
-  Connects με: events domain, finances domain, RLS policies,
-  Chunk 2 portal foundation (PR #44)
-
-  Estimated: L
-
-- [ ] **Chunk 4 — Departments + Classes + Messages**
-
-  Stack: 🟣 Member Portal
-
-  Scope: Class enrollment + announcements per τμήμα.
-
-  Spec (απαιτείται νέο schema):
-  - classes table (department_id FK, schedule, location, instructor)
-  - class_enrollments table (class_id, member_id, enrolled_at)
-  - department_messages table (department_id, title, body, posted_by, posted_at)
-  - /departments/[id] page για members
-  - Family-wide visibility (parent βλέπει παιδιά τους εγγεγραμμένα)
-  - Push notifications για νέα μηνύματα
-
-  Connects με: departments, family system, push notifications
-
-  Estimated: XL (multi-session — απαιτεί schema design)
 
 ## 🟢 Nice to Have / Future
 
@@ -992,6 +1150,22 @@ _(no active branches)_
 
   Estimated: S (στο Cashier flow ως sub-feature)
   Depends on: Cashier Interface
+
+### 🌐 Public Engagement (future)
+
+- [ ] **🌐 Public Lead Capture — Phase 4 (SMS)**
+
+  Stack: 🌐 Public Engagement
+
+  Spec:
+  - SMS notifications μέσω Greek SMS gateway (TBD provider)
+  - Opt-in consent ξεχωριστό από email
+  - Subset functionality του Phase 3 (announcements, event reminders)
+  - Cost per send → club billing implications
+
+  Estimated: L
+  Defer until: email campaigns (Phase 3) stable σε production +
+  user demand demonstrated
 
 ### Schema evolution (future)
 
