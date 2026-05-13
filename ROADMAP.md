@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-13 (Portal post-login return-to deferred — documented for future trigger)  
+> Last updated: 2026-05-13 (Session cleanup μετά 13 PRs — Identity cluster 5/5 ✅, 3 new Tier 3 tech debt entries, abbreviated session log)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -162,79 +162,6 @@ QR distribution sources (3 από Phase 1):
 _(no active branches)_
 
 ## 🔴 Critical / Production Blockers
-
-- [ ] **🔴 Identity model bugs (multi-tenant launch blocker)**
-
-  Discovered: 2026-05-12 morning, attempting test club creation
-  via super admin panel.
-
-  **Bug cluster:**
-
-  1. **✅ RESOLVED (2026-05-13) — Super admin /admin/clubs redirect
-     στο /login παρά τα σωστά data στο super_admins table.**
-     - Πρωτογενής υποψία (PWA SW intercepts requests) επιβεβαιώθηκε:
-       stale `pages-rsc` / `apis` caches από Serwist `defaultCache`
-       σερβίριζαν παλιές responses για /admin/* paths.
-     - Παράλληλη αιτία: missing `SUPABASE_SERVICE_ROLE_KEY` στο
-       Vercel production env → `getAdminClient()` failed στο
-       `requireSuperAdmin()` lookup, layout threw → redirect.
-     - Fix: PR #68 (app/sw.ts — NetworkOnly για authenticated paths,
-       skipWaiting:true, one-time activate cache cleanup) + Vercel
-       env var addition + redeploy.
-     - Production-verified: /admin/clubs φορτώνει για super admin,
-       club list σωστή (ΣΥΛΛΟΓΟΣ ΚΡΗΤΩΝ ΑΙΓΑΛΕΩ visible).
-     - See Recently Done: fix/sw-exclude-authenticated-paths.
-
-  2. **✅ RESOLVED (2026-05-13) — `members.user_id NULL` για existing
-     accounts** (verified με SQL diagnostic)
-     - **Initial assumption:** 244 kriton members χρειάζονται backfill
-       για να δουλέψει το Member portal.
-     - **Πραγματικότητα:** 234/244 (96%) δεν έχουν καν email — **δεν
-       είναι portal candidates**. Από τα 10 με email, 9 **δεν** έχουν
-       matching auth.users entry (κανείς δεν έχει ενεργοποιήσει portal
-       account ακόμα).
-     - linkAuthUserToMember() από PR #44 είναι **self-healing**: όταν
-       ένας από τους 10 κάνει magic link login, αυτόματα δημιουργείται
-       auth.users entry + αυτόματα linkάρεται με το member row.
-     - **No backfill SQL needed.** Original ROADMAP entry βασιζόταν σε
-       λάθος υπόθεση ότι όλοι οι members έχουν portal accounts.
-     - Παράλληλο discovery: 3 kriton members μοιράζονται 1 email
-       (οικογένεια Κουρουγκιαούρη) → βλ. νέο edge case entry
-       στο 🟡 High Priority → 🟣 Member Portal domain.
-
-  3. **Duplicate auth.users με ίδιο email πιθανό**
-     - Κατά το debugging είδαμε διαφορετικά UUIDs να επιστρέφονται
-       για info@party4u.gr σε διαφορετικά queries
-     - Πιθανή αιτία: seedClub.ts creates auth user χωρίς email
-       uniqueness check
-     - Production risk: νέος σύλλογος με email που υπάρχει →
-       undefined behavior, possible orphan users
-     - Fix: seedClub.ts pre-check email existence
-     - Estimated: S (add check) + M (DB cleanup script αν χρειαστεί)
-
-  4. **Defense-in-depth κενό στο proxy.ts για super admin**
-     - Σήμερα: proxy.ts κάνει auth check μόνο (έχει user ή όχι)
-     - Δεν κάνει super admin check για /admin/* paths
-     - Λειτουργεί σήμερα επειδή layout.tsx κάνει redirect,
-       αλλά νέα admin route handlers χωρίς guard θα είναι εκτεθειμένα
-     - Estimated: S (add super admin check στο middleware)
-
-  5. **Silent redirect στο admin layout χωρίς logging**
-     - Όλα τα errors (401/403/500) → redirect("/") χωρίς log
-     - Δύσκολο να διαγνώσεις production issues (όπως μόλις είδαμε)
-     - Fix: structured logging + maybe distinct redirect URLs ανά
-       error type
-     - Estimated: S
-
-  **Suggested investigation order (separate session):**
-  1. ✅ Service worker theory verification — DONE (PR #68, 2026-05-13)
-  2. ✅ Backfill members.user_id για 244+ existing members —
-     DONE/N/A (SQL diagnostic 2026-05-13, βλ. Bug #2 reassessment)
-  3. seedClub.ts hardening (email uniqueness pre-check)
-  4. Logging + defense-in-depth refactor (proxy.ts super admin check)
-
-  **Required before multi-tenant onboarding.** Δεν προχωρούμε σε
-  νέους συλλόγους πριν λυθούν τα παραπάνω.
 
 - [ ] **RLS overhaul για όλα τα tables**
   - Pre-existing 'RLS production blocker' ξεκαθαρίστηκε στο PR #44
@@ -1030,6 +957,36 @@ _(no active branches)_
   - Warning banner στον σύλλογο πριν τη λήξη
   - Estimated: M
 
+- [ ] **API namespace restructure: `/api/super-admin/*` split**
+
+  Stack: 📊 Διαχειριστικό · Architectural · Tech Debt
+
+  Discovered: 2026-05-13 (PR #75 Option B investigation)
+
+  Σήμερα το `/api/admin/*` namespace είναι **mixed authorization**:
+  - `/api/admin/clubs*` → super_admin only (3 routes)
+  - `/api/admin/roles*`, `/api/admin/users/*` → per-club admin (7 routes)
+
+  Συνέπεια: proxy-level super_admin gate σε ολόκληρο `/api/admin/*`
+  σπάει 7 routes. PR #75 περιορίστηκε σε `/admin/*` pages μόνο για
+  αυτόν τον λόγο.
+
+  Refactor goal: split σε δύο διακριτά namespaces:
+  - `/api/super-admin/*` — platform-level operations (clubs CRUD,
+    modules toggle)
+  - `/api/admin/*` — per-club admin operations (roles, member login
+    management)
+
+  Όταν γίνει, το proxy-level super_admin gate γίνεται straightforward
+  + future developers δεν χρειάζεται να αποφασίζουν per-route ποιο
+  guard να χρησιμοποιήσουν.
+
+  Estimated: M (3 routes να μεταφερθούν + frontend call sites
+  να ενημερωθούν + smoke testing)
+
+  Tier 3 priority — όχι urgent, αλλά καθαρίζει το mental model
+  πριν multi-tenant onboarding.
+
 ### Seating UX
 
 - [ ] **🔴 "Full" visual state για 100% γεμάτα τραπέζια**
@@ -1074,6 +1031,32 @@ _(no active branches)_
   - Estimated: M
 
 ### UX & Polish
+
+- [ ] **`app/admin/layout.tsx` dynamic redirect path**
+
+  Stack: 📊 Διαχειριστικό · Cosmetic · Tech Debt
+
+  Discovered: 2026-05-13 (PR #76 investigation)
+
+  Σήμερα `app/admin/layout.tsx:20` έχει hardcoded
+  `"/login?redirect=/admin"` ως post-auth target σε `auth_required`
+  scenario. Δηλαδή αν layout fires `requireSuperAdmin()` και πέσει σε
+  401, ο user redirect-άρεται σε `/login?redirect=/admin` ανεξάρτητα
+  από το ποιο specific page προσπαθούσε να επισκεφτεί.
+
+  Σήμερα: cosmetic — layout τρέχει σπάνια αφού το proxy (PR #75)
+  καλύπτει σχεδόν όλα τα cases πρώτο. Layout είναι defense-in-depth
+  layer 2 — fires μόνο σε race conditions ή proxy bypass scenarios.
+
+  Fix: read το intended pathname από `headers()` (απαιτεί custom
+  header injection από middleware/proxy) ή από `useSearchParams`
+  (αν είναι client) και χρήση `lib/auth/safeRedirect.ts` (PR #76)
+  για sanitization.
+
+  Estimated: S (custom header injection + safeRedirect reuse)
+
+  Tier 3 priority — proxy fix από PR #76 ήδη καλύπτει το practical
+  case. Worth doing μόνο σε comprehensive polish pass.
 
 - [ ] **🎵 Master `/settings/club/entertainers` page**
 
@@ -1339,6 +1322,40 @@ _(no active branches)_
 
 ### Tech Debt & Cleanup
 
+- [ ] **CI lint check: super_admin API routes χωρίς guard**
+
+  Stack: 📊 Διαχειριστικό · CI/DevOps · Tech Debt
+
+  Discovered: 2026-05-13 (PR #75 follow-up brainstorm)
+
+  Σήμερα `/api/admin/clubs*` routes είναι super_admin-only αλλά
+  rely σε per-handler `await requireSuperAdmin()` call. Αν developer
+  ξεχάσει το call σε νέο route handler, το endpoint γίνεται
+  unguarded. Proxy-level guard (PR #75) **ΔΕΝ** πιάνει `/api/admin/*`
+  paths (mixed authorization model, βλ. inline comment στο proxy.ts).
+
+  Defense-in-depth automation: CI lint check που grep-άρει νέα
+  `app/api/admin/clubs*` route files και verifies presence of
+  `requireSuperAdmin()` call.
+
+  Spec:
+  - grep pattern: `await requireSuperAdmin\(\)` σε ΟΛΟΥΣ τους
+    handlers του `app/api/admin/clubs*` namespace
+  - Run στο CI ως pre-merge check (GitHub Actions ή equivalent)
+  - Failure mode: block PR merge + comment με missing handler list
+  - False-positive handling: allowlist για routes που deliberately
+    χρησιμοποιούν διαφορετικό guard (π.χ. webhooks)
+
+  Estimated: S-M (CI workflow + grep script + test on existing
+  routes + documentation)
+
+  Connects με: PR #75 proxy super_admin defense-in-depth,
+  future `/api/super-admin/*` namespace split (που θα κάνει
+  αυτό το lint trivial)
+
+  Tier 3 priority — current routes είναι όλες σωστά guarded.
+  Value αυξάνεται όταν codebase ή team μεγαλώνουν.
+
 - [ ] **🧹 requireSuperAdmin parity refactor**
 
   Stack: 📊 Cross-cutting auth
@@ -1503,14 +1520,6 @@ _(no active branches)_
   αλλάζεις AppShell guards. Process improvement, όχι code.
   Estimated: process note
 
-- [ ] **uuid validation guard στο /admin/clubs/[id]/page.tsx**
-  Όταν το dynamic `[id]` segment δεν είναι valid uuid, η Postgres
-  γυρνάει 22P02 και ο user βλέπει 500 server error. Σωστή
-  συμπεριφορά: uuid format check στην αρχή του page → `notFound()`
-  για 404. Πιθανώς αξίζει shared helper για όλα τα dynamic
-  `[id]` routes.
-  Estimated: XS
-
 - [ ] **Migrate από legacy Supabase anon/service_role keys σε
        publishable/secret keys**
   Supabase recommendation (2026 dashboard notice). Σήμερα
@@ -1523,6 +1532,85 @@ _(no active branches)_
   Estimated: M
 
 ## ✅ Recently Done
+
+### Identity Model Bugs Cluster — 5/5 RESOLVED (2026-05-13)
+
+Cluster εντοπίστηκε στο pre-test club creation attempt (2026-05-12).
+Ολόκληρο cluster έκλεισε σε μια session (2026-05-13).
+
+**Sub-bugs status:**
+- ✅ Bug #1: Super admin /admin/clubs redirect (PR #68 + SUPABASE_SERVICE_ROLE_KEY env var)
+- ✅ Bug #2: members.user_id NULL backfill (reassessed — phantom, no actual backfill needed, PR #73)
+- ✅ Bug #3: Duplicate auth.users email collision (reassessed — already fixed at route.ts:124, pagination tech debt closed by PR #74)
+- ✅ Bug #4: proxy.ts defense-in-depth gap (PR #75)
+- ✅ Bug #5: Silent admin layout redirect logging (PR #72)
+
+**Key discoveries:**
+- 2 of 5 bugs were "phantom" — written under panic conditions με incomplete understanding
+- Pre-flight inspection methodology καθόρισε ποια bugs ήταν πραγματικά
+- listUsers() pagination 50-user default discovered, helper extracted (PR #74)
+- Pre-existing open redirect vulnerability discovered + closed (PR #76)
+
+**Foundation improvements (cross-PR):**
+- `lib/utils/logger.ts` (structured logging, PR #72)
+- `lib/auth/findAuthUserByEmail.ts` (pagination helper, PR #74)
+- `lib/auth/safeRedirect.ts` (URL sanitization, PR #76)
+- `app/admin/error.tsx` + `app/admin/not-found.tsx` (branded error pages, PR #77)
+
+**Multi-tenant launch unblocking:** Identity model layer foundation
+ready. Επόμενο: dual-admin pattern + RLS overhaul + types.ts drift
+audit (remaining Tier 1 blockers).
+
+### PR #78 — chore/roadmap-portal-redirect-deferred (merged 2026-05-13)
+Doc-only. Member portal post-login return-to deferred (premature).
+Investigation επιβεβαίωσε zero security gap + zero UX gap (single
+protected page = hardcoded landing always correct). Documented
+trigger condition + 4-file change pattern για future implementation.
+
+### PR #77 — feat/admin-branded-error-pages (merged 2026-05-13)
+NEW `app/admin/not-found.tsx` (server) + `app/admin/error.tsx` (client).
+🔍 για 404, ⚠️ για errors. Greek copy + μπορντό button + back-link.
+Layout AdminHeader auto-rendered. Dev-only `error.message` display.
+Closes Tier 2 polish από PR #71 fallout.
+
+### PR #76 — fix/proxy-login-redirect-param (merged 2026-05-13)
+Security fix: open redirect vulnerability στο `app/login/page.tsx`
+closed. NEW `lib/auth/safeRedirect.ts` με `isSafeRedirectPath` +
+`sanitizeRedirect` helpers. Defense-in-depth σε proxy + login.
+Plus UX: post-login return-to via `?redirect=` param. 5/5 smoke tests
+(including phishing `https://evil.com` blocked).
+
+### PR #75 — fix/proxy-super-admin-defense-in-depth (merged 2026-05-13)
+`proxy.ts` gains super_admin check για /admin/* pages (layer 1).
+Service-role lookup σε `super_admins` table + warn/error logging.
+Scope deliberately /admin pages only — /api/admin mixed authorization
+(super_admin + per-club) documented inline. Fixes Identity Bug #4.
+
+### PR #74 — fix/auth-email-collision-helper (merged 2026-05-13)
+NEW `lib/auth/findAuthUserByEmail.ts` (pagination loop, perPage=1000).
+6 sites refactored από `listUsers() + .find()/.some()` σε helper.
+Fixes silent false-negative bug όταν `auth.users > 50` records
+(default Supabase pagination). Plus closes Identity Bug #3.
+2/2 smoke tests + 27-table cascade cleanup verified.
+
+### PR #73 — docs(roadmap): bug #2 reassessment (merged 2026-05-13)
+Doc-only. Bug #2 (members.user_id NULL backfill) reassessed —
+phantom issue. SQL diagnostic έδειξε 234/244 members χωρίς email
+(not portal candidates) + 9/10 with email χωρίς auth.users entry
+(lazy creation self-heals). Νέο edge case entry για 3-member shared
+email family (οικογένεια Κουρουγκιαούρη).
+
+### PR #72 — fix/admin-layout-structured-logging (merged 2026-05-13)
+NEW `lib/utils/logger.ts` με `logger.error/warn/info`, tagged format
+`"[timestamp] [LEVEL] [tag] message {meta}"`. `app/admin/layout.tsx`
+catch block rewritten με `statusToReason()` + `reasonToUrl()` mappings.
+Fixes Identity Bug #5 (silent redirects without context).
+
+### PR #71 — fix/admin-clubs-uuid-validation (merged 2026-05-13)
+uuid validation guard στο `/admin/clubs/[id]/page.tsx`. Top-level
+`UUID_RE` regex + 3-line guard καλεί `notFound()` αν invalid uuid.
+Fix για `22P02` → 500 error από accidental `/admin/clubs/admin` URL.
+4/4 manual smoke tests passed.
 
 ### fix/sw-exclude-authenticated-paths (merged 2026-05-13) — PR #68
 
