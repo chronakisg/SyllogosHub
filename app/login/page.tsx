@@ -3,6 +3,7 @@
 import { Suspense, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
+import { sanitizeRedirect } from "@/lib/auth/safeRedirect";
 
 export default function LoginPage() {
   return (
@@ -21,7 +22,7 @@ export default function LoginPage() {
 function LoginView() {
   const router = useRouter();
   const params = useSearchParams();
-  const redirect = params.get("redirect") || "/";
+  const redirect = sanitizeRedirect(params.get("redirect"), "/");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
