@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
+import { findAuthUserByEmail } from "@/lib/auth/findAuthUserByEmail";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getServerClient } from "@/lib/supabase/server";
 
@@ -26,10 +27,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     }
 
     const admin = getAdminClient();
-    const { data: list } = await admin.auth.admin.listUsers();
-    const authUser = list?.users.find(
-      (u) => u.email?.toLowerCase() === member.email!.toLowerCase()
-    );
+    const authUser = await findAuthUserByEmail(member.email);
 
     if (!authUser) {
       return NextResponse.json(
