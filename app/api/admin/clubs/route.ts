@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin } from "@/lib/auth/requireSuperAdmin";
+import { authEmailExists } from "@/lib/auth/findAuthUserByEmail";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { seedClub } from "@/lib/admin/seedClub";
 import { getResend, getFromEmail } from "@/lib/email/resend";
@@ -121,14 +122,9 @@ export async function POST(req: NextRequest) {
 
     const admin = getAdminClient();
 
-    // 3. Email collision check (mirror του login route pattern)
-    const emailLower = adminEmail.toLowerCase();
-    const { data: usersList, error: listError } =
-      await admin.auth.admin.listUsers();
-    if (listError) throw listError;
-    if (
-      usersList?.users.some((u) => u.email?.toLowerCase() === emailLower)
-    ) {
+    // 3. Email collision check via paginated helper (αντικαθιστά το
+    //    παλιό listUsers() χωρίς pagination — βλ. lib/auth/findAuthUserByEmail.ts)
+    if (await authEmailExists(adminEmail)) {
       return NextResponse.json(
         { error: "Email ήδη υπάρχει" },
         { status: 409 },

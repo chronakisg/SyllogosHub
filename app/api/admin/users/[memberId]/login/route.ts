@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
+import {
+  authEmailExists,
+  findAuthUserByEmail,
+} from "@/lib/auth/findAuthUserByEmail";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getServerClient } from "@/lib/supabase/server";
 
@@ -29,11 +33,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ hasLogin: false, banned: false, lastSignIn: null });
     }
 
-    const admin = getAdminClient();
-    const { data: list } = await admin.auth.admin.listUsers();
-    const authUser = list?.users.find(
-      (u) => u.email?.toLowerCase() === member.email!.toLowerCase()
-    );
+    const authUser = await findAuthUserByEmail(member.email);
 
     if (!authUser) {
       return NextResponse.json({ hasLogin: false, banned: false, lastSignIn: null });
@@ -82,12 +82,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const admin = getAdminClient();
 
-    const { data: existingList } = await admin.auth.admin.listUsers();
-    const existing = existingList?.users.find(
-      (u) => u.email?.toLowerCase() === email.toLowerCase()
-    );
-
-    if (existing) {
+    if (await authEmailExists(email)) {
       return NextResponse.json(
         { error: "Υπάρχει ήδη auth account με αυτό το email" },
         { status: 409 }
@@ -153,10 +148,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     const admin = getAdminClient();
-    const { data: list } = await admin.auth.admin.listUsers();
-    const authUser = list?.users.find(
-      (u) => u.email?.toLowerCase() === member.email!.toLowerCase()
-    );
+    const authUser = await findAuthUserByEmail(member.email);
 
     if (!authUser) {
       return NextResponse.json(
@@ -202,10 +194,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     }
 
     const admin = getAdminClient();
-    const { data: list } = await admin.auth.admin.listUsers();
-    const authUser = list?.users.find(
-      (u) => u.email?.toLowerCase() === member.email!.toLowerCase()
-    );
+    const authUser = await findAuthUserByEmail(member.email);
 
     if (!authUser) {
       return NextResponse.json(
