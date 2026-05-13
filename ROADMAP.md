@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-13 (Public Engagement stack + Lead Capture 4 phases + Member Portal stack consolidation)  
+> Last updated: 2026-05-13 (Bug #2 reassessed ✅ + duplicate email edge case documented)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -185,13 +185,22 @@ _(no active branches)_
        club list σωστή (ΣΥΛΛΟΓΟΣ ΚΡΗΤΩΝ ΑΙΓΑΛΕΩ visible).
      - See Recently Done: fix/sw-exclude-authenticated-paths.
 
-  2. **`members.user_id NULL` για existing accounts**
-     - Member portal Chunk 2 (PR #44) έφτιαξε linkAuthUserToMember()
-       αλλά δεν έτρεξε για pre-existing members
-     - Affects: info@party4u.gr + πιθανώς όλα τα kriton members
-     - Implication: Member portal δεν δουλεύει για existing users
-     - Backfill needed: link members.user_id με auth.users.id by email
-     - Estimated: S (backfill SQL + verification)
+  2. **✅ RESOLVED (2026-05-13) — `members.user_id NULL` για existing
+     accounts** (verified με SQL diagnostic)
+     - **Initial assumption:** 244 kriton members χρειάζονται backfill
+       για να δουλέψει το Member portal.
+     - **Πραγματικότητα:** 234/244 (96%) δεν έχουν καν email — **δεν
+       είναι portal candidates**. Από τα 10 με email, 9 **δεν** έχουν
+       matching auth.users entry (κανείς δεν έχει ενεργοποιήσει portal
+       account ακόμα).
+     - linkAuthUserToMember() από PR #44 είναι **self-healing**: όταν
+       ένας από τους 10 κάνει magic link login, αυτόματα δημιουργείται
+       auth.users entry + αυτόματα linkάρεται με το member row.
+     - **No backfill SQL needed.** Original ROADMAP entry βασιζόταν σε
+       λάθος υπόθεση ότι όλοι οι members έχουν portal accounts.
+     - Παράλληλο discovery: 3 kriton members μοιράζονται 1 email
+       (οικογένεια Κουρουγκιαούρη) → βλ. νέο edge case entry
+       στο 🟡 High Priority → 🟣 Member Portal domain.
 
   3. **Duplicate auth.users με ίδιο email πιθανό**
      - Κατά το debugging είδαμε διαφορετικά UUIDs να επιστρέφονται
@@ -219,7 +228,8 @@ _(no active branches)_
 
   **Suggested investigation order (separate session):**
   1. ✅ Service worker theory verification — DONE (PR #68, 2026-05-13)
-  2. Backfill members.user_id για 244+ existing members
+  2. ✅ Backfill members.user_id για 244+ existing members —
+     DONE/N/A (SQL diagnostic 2026-05-13, βλ. Bug #2 reassessment)
   3. seedClub.ts hardening (email uniqueness pre-check)
   4. Logging + defense-in-depth refactor (proxy.ts super admin check)
 
@@ -796,6 +806,39 @@ _(no active branches)_
   Connects με: departments, family system, push notifications
 
   Estimated: XL (multi-session — απαιτεί schema design)
+
+- [ ] **🟣 Duplicate email στο members table — portal linkage edge case**
+
+  Stack: 🟣 Member Portal · Edge case
+
+  Discovered: 2026-05-13 (SQL diagnostic για Bug #2 backfill task)
+
+  Real example στο kriton-aigaleo: 3 members
+  (ΕΜΜΑΝΟΥΗΛ ΚΟΥΡΟΥΓΚΙΑΟΥΡΗΣ, ΓΕΩΡΓΙΑ ΚΟΥΡΟΥΓΚΙΑΟΥΡΗ,
+  ΙΩΑΝΝΗΣ ΚΟΥΡΟΥΓΚΙΑΟΥΡΗΣ) μοιράζονται email
+  `manevak@gmail.com`. Κλασικό σε ελληνικές οικογένειες όπου ένα
+  email είναι shared μεταξύ συγγενών χωρίς ατομικό account.
+
+  **Behavior gap:**
+  - Σήμερα `linkAuthUserToMember()` (από PR #44) δεν είναι ξεκάθαρο
+    πώς αντιμετωπίζει duplicate emails — πιθανώς picks first match
+    ή throws error.
+  - Όταν μέλος της οικογένειας κάνει `/portal/login` με το shared
+    email, undefined behavior.
+
+  **Required investigation:**
+  1. Read `lib/auth/portalAuth.ts` → `linkAuthUserToMember()` logic
+  2. Decide: error, pick-first, ή "choose which member" UI flow
+  3. Implement chosen approach με fallback safety
+
+  Estimated: M (investigation + decision + implementation)
+
+  Connects με: Member Portal Chunk 2 (PR #44), PR #39 email
+  verification, family domain
+
+  **Low frequency edge case** — δεν θα εμφανιστεί μέχρι κάποιος
+  της οικογένειας Κουρουγκιαούρη ενεργοποιήσει portal. Defer μέχρι
+  user demand demonstrated ή πριν multi-tenant launch.
 
 ### Schema evolution
 
