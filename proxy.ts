@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { getAdminClient } from "@/lib/supabase/admin";
+import { logger } from "@/lib/utils/logger";
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -29,6 +31,43 @@ export async function proxy(request: NextRequest) {
 
   if (request.nextUrl.pathname.startsWith('/admin') && !user) {
     return NextResponse.redirect(new URL('/login', request.url));
+  }
+
+  // /admin/* defense-in-depth: layout είναι layer 2, εδώ layer 1.
+  //
+  // ΓΙΑΤΙ ΟΧΙ ΓΙΑ /api/admin/*:
+  // Το /api/admin namespace είναι mixed authorization model:
+  // - /api/admin/clubs* → super_admin only (3 routes)
+  // - /api/admin/roles*, /api/admin/users/* → per-club admin (7 routes)
+  // Proxy-level super_admin gate σε ολόκληρο namespace θα σπάσει το
+  // per-club admin functionality. Authoritative auth gates ζουν per-
+  // route μέσω requireSuperAdmin() / requireAdmin() στους handlers.
+  //
+  // Service-role lookup bypasses RLS — ίδιο pattern με requireSuperAdmin.
+  if (request.nextUrl.pathname.startsWith('/admin') && user) {
+    const admin = getAdminClient();
+    const { data: superAdmin, error: lookupError } = await admin
+      .from("super_admins")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (lookupError) {
+      logger.error("proxy/admin-guard", "Super admin lookup failed", {
+        userId: user.id,
+        path: request.nextUrl.pathname,
+        errorMessage: lookupError.message,
+      });
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+
+    if (!superAdmin) {
+      logger.warn("proxy/admin-guard", "Non-super-admin blocked from /admin", {
+        userId: user.id,
+        path: request.nextUrl.pathname,
+      });
+      return NextResponse.redirect(new URL('/', request.url));
+    }
   }
 
   if (request.nextUrl.pathname.startsWith('/portal/profile') && !user) {
