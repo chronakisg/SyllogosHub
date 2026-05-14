@@ -624,43 +624,6 @@ _(no active branches)_
 
   Estimated: S-M (UI scope, no schema change)
 
-- [ ] **🟢 /admin/clubs/new UX polish (2 quick wins)**
-
-  Discovered: 2026-05-12 (test-club-2 onboarding)
-
-  Σήμερα: Form δουλεύει functionally αλλά έχει 2 obvious UX gaps
-  που πιάνεις στην πρώτη χρήση.
-
-  **A) Auto-generate slug από όνομα**
-  - Σήμερα: User πληκτρολογεί name + slug χειροκίνητα.
-    Risk: typos, inconsistency, friction.
-  - Στόχος: live auto-generate slug ενώ ο user πληκτρολογεί name.
-  - Implementation:
-    * Greek transliteration: 'ΣΥΛΛΟΓΟΣ ΔΟΚΙΜΗΣ' → 'syllogos-dokimis'
-      (greek-utils, transliteration lib, ή custom map)
-    * Lowercase + alphanumeric + hyphens (matches existing slug regex)
-    * Manual override: dirty flag — αν user editάρει το slug,
-      σταματά το auto-generate
-    * onBlur trigger για σταθερότητα (avoid bouncing real-time)
-    * Bonus: live uniqueness check μέσω debounced API call
-
-  **B) Password visibility toggle (👁 ματάκι)**
-  - Σήμερα: <input type="password"> κρύβει characters
-    permanently — admin δεν μπορεί να επιβεβαιώσει τι έγραψε
-  - Στόχος: Toggle button (👁/🙈) που flip-άρει type='password'
-    ↔ type='text'
-  - Implementation:
-    * useState για showPassword boolean
-    * Eye icon button στο right side του input
-    * Default state: hidden (security default)
-    * Πρόσβαση accessibility: aria-label "Εμφάνιση κωδικού" /
-      "Απόκρυψη κωδικού"
-    * Mirror του Member Portal login page αν εκεί ήδη υπάρχει
-
-  Affects: app/admin/clubs/new/page.tsx (πιθανώς και άλλα forms
-  που έχουν password inputs — audit candidate)
-
-  Estimated: S (~1 ώρα και τα δύο combined)
 
 - [ ] **🟢 Welcome email follow-ups**
 
@@ -1482,30 +1445,6 @@ _(no active branches)_
 
 ### Tech Debt & Cleanup
 
-- [ ] **🧹 requireSuperAdmin parity refactor**
-
-  Stack: 📊 Cross-cutting auth
-
-  Strategic context: PR #60 εγκαθίδρυσε pattern errorResponse
-  helper που standardizes JSON error envelope για όλα τα auth
-  helpers. resolveAuthMember + requireAdmin + requirePermission
-  το χρησιμοποιούν.
-
-  Gap: requireSuperAdmin.ts διατηρεί 3 raw 'throw new Response'
-  calls (lines 31, 45, 52). Inconsistent με υπόλοιπη auth layer.
-
-  Refactor:
-  - Add import errorResponse from './errorResponse'
-  - Replace 3 throws με errorResponse() calls
-  - Verify με grep ότι 0 raw 'throw new Response' παραμένουν στο
-    lib/auth/
-
-  Trade-off: Minor consistency improvement. Παραμένει functional
-  ως έχει — δεν έχει user-facing impact. Worth doing όταν επόμενη
-  φορά αγγίξουμε super admin paths.
-
-  Estimated: XS (10 λεπτά)
-  Connects με: PR #60 errorResponse helper
 
 - [ ] **Family search reverse-name consistency**
   - app/members/page.tsx:1640-1649 ελέγχει μόνο "last first",
@@ -1580,14 +1519,6 @@ _(no active branches)_
   - `members_backup_20260514_pre_hub_admin` (PR #80 safety net)
   - Παραμένουν ως safety net για το beta — drop όταν συγχωνευθεί feature
     + production stable για ~1 εβδομάδα
-- [ ] **Drop `user_roles` table (dead code)**
-  - Defined σε `lib/supabase/types.ts` αλλά δεν χρησιμοποιείται
-  - `useRole` διαβάζει αλλά δεν επηρεάζει permission computation
-  - Replaced από proper role-based system (PR pending)
-  - Drop μετά το merge: `drop table public.user_roles;`
-  - Καθάρισμα: `getCurrentUserRole()` σε `lib/supabase/server.ts`
-    + state field στο `useRole`
-  - Estimated: XS (single SQL + 2 small code edits)
 
 - [ ] **Server-side permission checks στα verification endpoints**
   - PR #39 endpoints έχουν μόνο auth.getUser() check (όχι permission)
@@ -1668,7 +1599,7 @@ _(no active branches)_
 
 ## ✅ Recently Done
 
-### chore/cleanup-batch-2026-05-14 (merged 2026-05-14) — PR #?
+### chore/cleanup-batch-2026-05-14 (merged 2026-05-14) — PR #83
 
 Strategic cleanup batch με theme "clean foundation πριν Dual-admin 
 PR β'". 3 commits, multi-target cleanup + ROADMAP reframe μετά από 
