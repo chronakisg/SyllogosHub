@@ -6,7 +6,12 @@ import { useRole } from "@/lib/hooks/useRole";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { getBrowserClient } from "@/lib/supabase/client";
 import type { AuditLog } from "@/lib/supabase/types";
-import { getFieldLabel, getActorLabel } from "@/lib/audit/labels";
+import {
+  getFieldLabel,
+  getActorLabel,
+  formatAuditValue,
+  MEMBER_AUDIT_FIELD_ORDER,
+} from "@/lib/audit/labels";
 import { formatRelativeDate } from "@/lib/utils/verificationState";
 import { normalizeGreek } from "@/lib/utils/greekSearch";
 import { toAthensDateKey, formatDateBucketLabel } from "@/lib/utils/dateBuckets";
@@ -18,18 +23,6 @@ type MemberInfo = {
 };
 
 type Status = "loading" | "ready" | "error" | "denied";
-
-const FIELD_ORDER = [
-  "phone",
-  "birth_date",
-  "birthplace",
-  "residence",
-  "address",
-  "occupation",
-  "father_name",
-  "mother_name",
-  "maiden_name",
-];
 
 const DAYS_WINDOW = 15; // hardcoded για skeleton, dropdown σε Commit 6
 const FETCH_LIMIT = 100;
@@ -291,10 +284,10 @@ function AuditEntryRow({ entry }: { entry: AuditLog }) {
   const absoluteLabel = date.toLocaleString("el-GR");
   const actorLabel = getActorLabel(entry.actor_label);
 
-  // Sort changes με FIELD_ORDER
+  // Sort changes με MEMBER_AUDIT_FIELD_ORDER
   const sortedEntries = Object.entries(entry.changes).sort(([a], [b]) => {
-    const indexA = FIELD_ORDER.indexOf(a);
-    const indexB = FIELD_ORDER.indexOf(b);
+    const indexA = MEMBER_AUDIT_FIELD_ORDER.indexOf(a);
+    const indexB = MEMBER_AUDIT_FIELD_ORDER.indexOf(b);
     return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
   });
 
@@ -327,16 +320,9 @@ function FieldChange({
   return (
     <div className="flex flex-wrap items-baseline gap-1">
       <span className="font-medium">{getFieldLabel(field)}:</span>
-      <span className="text-muted">{formatValue(change.from)}</span>
+      <span className="text-muted">{formatAuditValue(change.from)}</span>
       <span className="text-muted">→</span>
-      <span>{formatValue(change.to)}</span>
+      <span>{formatAuditValue(change.to)}</span>
     </div>
   );
-}
-
-function formatValue(val: unknown): string {
-  if (val === null || val === undefined || val === "") {
-    return "(κενό)";
-  }
-  return String(val);
 }

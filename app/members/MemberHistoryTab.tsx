@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react";
 import { getBrowserClient } from "@/lib/supabase/client";
 import type { AuditLog } from "@/lib/supabase/types";
-import { getFieldLabel, getActorLabel } from "@/lib/audit/labels";
+import {
+  getFieldLabel,
+  getActorLabel,
+  formatAuditValue,
+  MEMBER_AUDIT_FIELD_ORDER,
+} from "@/lib/audit/labels";
 import { formatRelativeDate } from "@/lib/utils/verificationState";
 
 type Props = {
@@ -12,18 +17,6 @@ type Props = {
 };
 
 type Status = "loading" | "ready" | "error";
-
-const FIELD_ORDER = [
-  "phone",
-  "birth_date",
-  "birthplace",
-  "residence",
-  "address",
-  "occupation",
-  "father_name",
-  "mother_name",
-  "maiden_name",
-];
 
 export function MemberHistoryTab({ memberId, clubId }: Props) {
   const [entries, setEntries] = useState<AuditLog[]>([]);
@@ -97,10 +90,10 @@ function AuditEntryCard({ entry }: { entry: AuditLog }) {
   const absoluteLabel = new Date(entry.created_at).toLocaleString("el-GR");
   const actorLabel = getActorLabel(entry.actor_label);
 
-  // Sort changes με FIELD_ORDER για consistent UX
+  // Sort changes με MEMBER_AUDIT_FIELD_ORDER για consistent UX
   const sortedEntries = Object.entries(entry.changes).sort(([a], [b]) => {
-    const indexA = FIELD_ORDER.indexOf(a);
-    const indexB = FIELD_ORDER.indexOf(b);
+    const indexA = MEMBER_AUDIT_FIELD_ORDER.indexOf(a);
+    const indexB = MEMBER_AUDIT_FIELD_ORDER.indexOf(b);
     return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
   });
 
@@ -133,16 +126,9 @@ function FieldChange({
   return (
     <div className="flex flex-wrap items-baseline gap-1">
       <span className="font-medium">{getFieldLabel(field)}:</span>
-      <span className="text-muted">{formatValue(change.from)}</span>
+      <span className="text-muted">{formatAuditValue(change.from)}</span>
       <span className="text-muted">→</span>
-      <span>{formatValue(change.to)}</span>
+      <span>{formatAuditValue(change.to)}</span>
     </div>
   );
-}
-
-function formatValue(val: unknown): string {
-  if (val === null || val === undefined || val === "") {
-    return "(κενό)";
-  }
-  return String(val);
 }

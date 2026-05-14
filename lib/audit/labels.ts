@@ -15,6 +15,7 @@ import type { AuditAction, AuditActorLabel } from "@/lib/supabase/types";
  * Ταιριάζει με τα labels των /me/[token] και /portal/profile forms.
  */
 export const MEMBER_FIELD_LABELS: Record<string, string> = {
+  // Self-updateable (via /me/[token] + /portal/profile)
   phone: "Τηλέφωνο",
   birth_date: "Ημερομηνία γέννησης",
   birthplace: "Τόπος γέννησης",
@@ -24,12 +25,18 @@ export const MEMBER_FIELD_LABELS: Record<string, string> = {
   father_name: "Όνομα πατέρα",
   mother_name: "Όνομα μητέρας",
   maiden_name: "Πατρικό επώνυμο",
-  // Read-only fields — εμφανίζονται αν admin τα αλλάξει (future PR)
+  // Admin-editable identity (future audit hook — ROADMAP "Audit admin coverage")
   email: "Email",
   first_name: "Όνομα",
   last_name: "Επώνυμο",
   status: "Κατάσταση",
   email_verified: "Επιβεβαίωση email",
+  // Admin-editable board / SyllogosHub flags
+  is_president: "Πρόεδρος ΔΣ",
+  is_board_member: "Μέλος ΔΣ",
+  board_position: "Θέση στο ΔΣ",
+  is_system_admin: "Διαχειριστής συστήματος",
+  is_hub_admin: "Λογαριασμός SyllogosHub Recovery",
 };
 
 /**
@@ -39,6 +46,44 @@ export const MEMBER_FIELD_LABELS: Record<string, string> = {
 export function getFieldLabel(field: string): string {
   return MEMBER_FIELD_LABELS[field] ?? field;
 }
+
+/**
+ * Display order για member audit field changes.
+ *
+ * Grouped semantic ordering:
+ * 1. Identity (admin-only changes)
+ * 2. Board/admin flags
+ * 3. Verification status
+ * 4. Personal (self-updateable)
+ *
+ * Fields που δεν υπάρχουν στη λίστα ταξινομούνται τελευταία
+ * (καλούμενος καλεί .indexOf() με fallback σε large number).
+ */
+export const MEMBER_AUDIT_FIELD_ORDER = [
+  // Identity
+  "first_name",
+  "last_name",
+  "email",
+  "status",
+  // Board / admin flags
+  "is_president",
+  "board_position",
+  "is_board_member",
+  "is_system_admin",
+  "is_hub_admin",
+  // Verification
+  "email_verified",
+  // Personal
+  "phone",
+  "birth_date",
+  "birthplace",
+  "residence",
+  "address",
+  "occupation",
+  "father_name",
+  "mother_name",
+  "maiden_name",
+];
 
 // ──────────────────────────────────────────────────────────────────
 // Actor labels
@@ -123,3 +168,25 @@ export const PAYMENT_FIELD_LABELS: Record<string, string> = {
   period: "Περίοδος",
   original_amount: "Αρχικό ποσό",
 };
+
+// ────────────────────────────────────────────────────────────────────
+// Display helpers
+// ────────────────────────────────────────────────────────────────────
+
+/**
+ * Format audit value για UI display.
+ *
+ * Handles:
+ * - null / undefined / empty string → "(κενό)"
+ * - booleans → "Ναι" / "Όχι" (Greek)
+ * - everything else → String(val)
+ */
+export function formatAuditValue(val: unknown): string {
+  if (val === null || val === undefined || val === "") {
+    return "(κενό)";
+  }
+  if (typeof val === "boolean") {
+    return val ? "Ναι" : "Όχι";
+  }
+  return String(val);
+}
