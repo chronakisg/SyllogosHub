@@ -135,7 +135,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 // ─────────── DELETE: Hard delete με type-to-confirm ───────────
 // Βασίζεται σε migration 0015 (FKs σε CASCADE) — η DELETE FROM
 // clubs καθαρίζει αυτόματα members, events, payments, settings,
-// reservation_attendees, user_roles και ό,τι κάνει transitive
+// reservation_attendees και ό,τι κάνει transitive
 // CASCADE από αυτά (π.χ. member_role_assignments μέσω members).
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
