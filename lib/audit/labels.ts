@@ -168,3 +168,25 @@ export const PAYMENT_FIELD_LABELS: Record<string, string> = {
   period: "Περίοδος",
   original_amount: "Αρχικό ποσό",
 };
+
+// ────────────────────────────────────────────────────────────────────
+// Display helpers
+// ────────────────────────────────────────────────────────────────────
+
+/**
+ * Format audit value για UI display.
+ *
+ * Handles:
+ * - null / undefined / empty string → "(κενό)"
+ * - booleans → "Ναι" / "Όχι" (Greek)
+ * - everything else → String(val)
+ */
+export function formatAuditValue(val: unknown): string {
+  if (val === null || val === undefined || val === "") {
+    return "(κενό)";
+  }
+  if (typeof val === "boolean") {
+    return val ? "Ναι" : "Όχι";
+  }
+  return String(val);
+}
