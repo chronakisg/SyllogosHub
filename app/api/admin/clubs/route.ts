@@ -31,18 +31,24 @@ type CreateClubBody = {
   adminFirstName?: unknown;
   adminLastName?: unknown;
   category?: unknown;
+  backupAdminEmail?: unknown;
+  backupAdminPassword?: unknown;
+  backupAdminFirstName?: unknown;
+  backupAdminLastName?: unknown;
 };
 
 function isString(v: unknown): v is string {
   return typeof v === "string" && v.length > 0;
 }
 
-// ─────────── POST: Create new club + bootstrap admin ───────────
+// ─────────── POST: Create new club + bootstrap dual admin ───────────
 export async function POST(req: NextRequest) {
   // Bookkeeping για partial-failure logging (steps 5-9 μετά το club insert).
   let createdClubId: string | undefined;
   let createdAuthUserId: string | undefined;
   let createdMemberId: string | undefined;
+  let createdBackupAuthUserId: string | undefined;
+  let createdBackupMemberId: string | undefined;
 
   try {
     // 1. Super-admin guard (throws 401/403 Response αν fail)
@@ -65,6 +71,10 @@ export async function POST(req: NextRequest) {
       adminFirstName,
       adminLastName,
       category,
+      backupAdminEmail,
+      backupAdminPassword,
+      backupAdminFirstName,
+      backupAdminLastName,
     } = raw;
 
     if (
@@ -74,12 +84,16 @@ export async function POST(req: NextRequest) {
       !isString(adminEmail) ||
       !isString(adminPassword) ||
       !isString(adminFirstName) ||
-      !isString(adminLastName)
+      !isString(adminLastName) ||
+      !isString(backupAdminEmail) ||
+      !isString(backupAdminPassword) ||
+      !isString(backupAdminFirstName) ||
+      !isString(backupAdminLastName)
     ) {
       return NextResponse.json(
         {
           error:
-            "Λείπουν required fields: name, slug, plan, adminEmail, adminPassword, adminFirstName, adminLastName",
+            "Λείπουν required fields: name, slug, plan, adminEmail, adminPassword, adminFirstName, adminLastName, backupAdminEmail, backupAdminPassword, backupAdminFirstName, backupAdminLastName",
         },
         { status: 400 },
       );
@@ -115,7 +129,25 @@ export async function POST(req: NextRequest) {
     }
     if (adminPassword.length < 8) {
       return NextResponse.json(
-        { error: "Το password πρέπει να έχει τουλάχιστον 8 χαρακτήρες" },
+        { error: "Το password του Πρόεδρου πρέπει να έχει τουλάχιστον 8 χαρακτήρες" },
+        { status: 400 },
+      );
+    }
+
+    if (backupAdminPassword.length < 8) {
+      return NextResponse.json(
+        { error: "Το password του Backup Admin πρέπει να έχει τουλάχιστον 8 χαρακτήρες" },
+        { status: 400 },
+      );
+    }
+
+    // Reject if president and backup admin share the same email
+    if (adminEmail.toLowerCase() === backupAdminEmail.toLowerCase()) {
+      return NextResponse.json(
+        {
+          error:
+            "Το email του Πρόεδρου και του Backup Admin πρέπει να είναι διαφορετικά",
+        },
         { status: 400 },
       );
     }
@@ -126,7 +158,14 @@ export async function POST(req: NextRequest) {
     //    παλιό listUsers() χωρίς pagination — βλ. lib/auth/findAuthUserByEmail.ts)
     if (await authEmailExists(adminEmail)) {
       return NextResponse.json(
-        { error: "Email ήδη υπάρχει" },
+        { error: "Το email του Πρόεδρου ήδη υπάρχει" },
+        { status: 409 },
+      );
+    }
+
+    if (await authEmailExists(backupAdminEmail)) {
+      return NextResponse.json(
+        { error: "Το email του Backup Admin ήδη υπάρχει" },
         { status: 409 },
       );
     }
@@ -164,7 +203,7 @@ export async function POST(req: NextRequest) {
     //    club_settings). Errors propagate.
     const seedResult = await seedClub(club.id);
 
-    // 6. Create auth user
+    // 6. Create auth user (Πρόεδρος)
     const { data: createdUser, error: createUserError } =
       await admin.auth.admin.createUser({
         email: adminEmail,
@@ -172,11 +211,26 @@ export async function POST(req: NextRequest) {
         email_confirm: true,
       });
     if (createUserError || !createdUser?.user) {
-      throw createUserError ?? new Error("createUser returned no user");
+      throw createUserError ?? new Error("createUser (admin) returned no user");
     }
     createdAuthUserId = createdUser.user.id;
 
-    // 7. INSERT members row + link σε auth.user (PR #62 fix)
+    // 6b. Create auth user (Backup Admin — SyllogosHub Recovery)
+    const { data: createdBackupUser, error: createBackupUserError } =
+      await admin.auth.admin.createUser({
+        email: backupAdminEmail,
+        password: backupAdminPassword,
+        email_confirm: true,
+      });
+    if (createBackupUserError || !createdBackupUser?.user) {
+      throw (
+        createBackupUserError ??
+        new Error("createUser (backup admin) returned no user")
+      );
+    }
+    createdBackupAuthUserId = createdBackupUser.user.id;
+
+    // 7. INSERT members row για Πρόεδρο + link σε auth.user (PR #62 fix)
     // Bootstrap admin πρέπει να έχει user_id linkage από day-1, αλλιώς
     // δεν μπορεί να κάνει login (proxy + portal flows require linkage).
     const { data: newMember, error: memberInsertError } = await admin
@@ -197,6 +251,31 @@ export async function POST(req: NextRequest) {
     if (!newMember) throw new Error("members insert returned no row");
     createdMemberId = newMember.id;
 
+    // 7b. INSERT members row για Backup Admin (SyllogosHub Recovery)
+    // is_hub_admin marker distinguishes από κανονικό admin. Δεν έχει
+    // board flags (δεν είναι ΔΣ member του συλλόγου — είναι external recovery account).
+    const { data: newBackupMember, error: backupMemberInsertError } =
+      await admin
+        .from("members")
+        .insert({
+          club_id: club.id,
+          user_id: createdBackupUser.user.id,
+          first_name: backupAdminFirstName,
+          last_name: backupAdminLastName,
+          email: backupAdminEmail,
+          is_board_member: false,
+          is_president: false,
+          board_position: null,
+          is_hub_admin: true,
+        })
+        .select("id")
+        .single();
+    if (backupMemberInsertError) throw backupMemberInsertError;
+    if (!newBackupMember) {
+      throw new Error("backup members insert returned no row");
+    }
+    createdBackupMemberId = newBackupMember.id;
+
     // 8. Ψάξε το "Πρόεδρος ΔΣ" role του νέου club (seeded από step 5)
     const { data: presidentRole, error: roleLookupError } = await admin
       .from("member_roles")
@@ -211,14 +290,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 9. INSERT member_role_assignments — link bootstrap member → role
+    // 9. INSERT member_role_assignments — link both admins → "Πρόεδρος ΔΣ" role
+    // Backup admin gets full president permissions για recovery scenarios.
     const { error: assignError } = await admin
       .from("member_role_assignments")
-      .insert({
-        role_id: presidentRole.id,
-        member_id: newMember.id,
-        notes: "Auto-assigned: club bootstrap admin",
-      });
+      .insert([
+        {
+          role_id: presidentRole.id,
+          member_id: newMember.id,
+          notes: "Auto-assigned: club bootstrap admin (Πρόεδρος)",
+        },
+        {
+          role_id: presidentRole.id,
+          member_id: newBackupMember.id,
+          notes: "Auto-assigned: SyllogosHub Recovery (backup admin)",
+        },
+      ]);
     if (assignError) throw assignError;
 
     // 10. Welcome email (fail-soft — Resend outage ΔΕΝ blockάρει club creation)
@@ -262,6 +349,8 @@ export async function POST(req: NextRequest) {
         seedResult,
         adminUserId: createdAuthUserId,
         memberId: createdMemberId,
+        backupAdminUserId: createdBackupAuthUserId,
+        backupMemberId: createdBackupMemberId,
         emailSent,
       },
       { status: 201 },
@@ -279,6 +368,8 @@ export async function POST(req: NextRequest) {
           clubId: createdClubId,
           authUserId: createdAuthUserId,
           memberId: createdMemberId,
+          backupAuthUserId: createdBackupAuthUserId,
+          backupMemberId: createdBackupMemberId,
           error: e,
         },
       );
@@ -290,6 +381,8 @@ export async function POST(req: NextRequest) {
             clubId: createdClubId,
             authUserId: createdAuthUserId,
             memberId: createdMemberId,
+            backupAuthUserId: createdBackupAuthUserId,
+            backupMemberId: createdBackupMemberId,
           },
         },
         { status: 500 },
