@@ -363,46 +363,44 @@ _(no active branches)_
 
   Required before serious multi-tenant onboarding effort.
 
-- [ ] **🔴 Dual-admin PR γ' — provision-backup-admin script + kriton-aigaleo backfill**
+- [ ] **🔴 kriton-aigaleo backup admin backfill (operational)**
 
-  Final piece του 3-PR dual-admin series. PRs α'+β' delivered
-  schema foundation (PR #80) + form/route dual creation (this PR's
-  predecessor merged 2026-05-14). NEW clubs (post-PR β') auto-get
-  dual admins. **EXISTING kriton-aigaleo δεν έχει backup admin
-  ακόμα** — needs manual backfill.
+  Discovered: 2026-05-14 (PR γ' delivered script, execution pending).
 
-  **Scope (operational, no schema/code beyond a script):**
+  **Context:** Dual-admin pattern 3-PR series complete (PRs α'+β'+γ').
+  Νέα clubs auto-get dual admins μέσω /admin/clubs/new form.
+  **kriton-aigaleo παραμένει single-admin** (pre-PR β' creation,
+  πριν το dual-admin pattern κωδικοποιηθεί).
 
-  1. **Email provisioning:** δημιουργία `info@kriton-aigaleo.syllogoshub.gr`
-     στο DNS/mail provider (DNS setup, optionally wildcard MX για
-     `*.syllogoshub.gr`)
-  2. **Migration script:** standalone Node.js (`scripts/provision-backup-admin.ts`)
-     - Mirror του POST /api/admin/clubs Steps 6b/7b/9b flow
-     - Standalone — όχι μέσω /admin/clubs/new (που είναι για new clubs)
-     - Idempotent (skip if backup admin already exists for clubId)
-     - Manual invocation per existing club (one-off)
-  3. **kriton-aigaleo backfill:**
-     - Run script με `--club-slug=kriton-aigaleo`
-     - Auto-generated password → 1Password vault "SyllogosHub Recovery"
-     - Verify login + sidebar + audit log entry
-     - Email πρόεδρο για transparency
+  **Pending tasks:**
 
-  **Open questions (deferred until execution):**
-  - Shared recovery inbox ή per-club inbox;
-  - Auto-rotation password schedule;
-  - Wildcard MX `*.syllogoshub.gr` → central catch-all
-    (`recovery@syllogoshub.gr`);
+  1. **DNS provisioning:** δημιουργία `info@kriton-aigaleo.syllogoshub.gr`
+     στο mail provider (η wildcard MX για `*.syllogoshub.gr` →
+     central recovery mailbox)
+
+  2. **Script execution:**
+npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
+   --club-slug=kriton-aigaleo
+3. **1Password handoff:**
+     - Vault: "SyllogosHub Recovery"
+     - Entry: "kriton-aigaleo"
+     - Fields: email + auto-generated password (printed στο stdout)
+
+  4. **Verification:**
+     - Login με backup credentials → επιτυχία
+     - Sidebar shows all enabled modules
+     - Audit log entry στο kriton-aigaleo (login event)
+
+  5. **President notification:** email στον πρόεδρο εξηγώντας
+     ότι υπάρχει SyllogosHub recovery account (transparency)
 
   **Required before multi-tenant onboarding.** kriton-aigaleo
-  παραμένει single-admin μέχρι να εκτελεστεί. Νέα clubs already
-  protected (PR β').
+  remains single-admin SPOF μέχρι execution. Operational task,
+  no code changes needed.
 
-  Estimated: S-M (script ~2-3h + manual execution + verification)
+  Estimated: S (~30 minutes — DNS + script + 1Password + verification)
 
-  Connects με:
-  - ✅ PR α' (PR #80): Schema foundation (is_hub_admin)
-  - ✅ PR β' (this PR): Form + route dual creation
-  - PR #62/#64: Identity model context
+  Connects με: PR γ' (provision-backup-admin script delivered).
 
 ## 🟡 High Priority (post-beta)
 
@@ -1459,7 +1457,64 @@ _(no active branches)_
 
 ## ✅ Recently Done
 
-### feat/dual-admin-form-and-route (merged 2026-05-14) — PR #?
+### feat/provision-backup-admin-script (merged 2026-05-14) — PR #?
+
+Dual-admin pattern PR γ' (3rd και τελευταίο in series). Standalone 
+CLI script για provisioning του SyllogosHub Recovery backup admin 
+σε ΥΠΑΡΧΟΝ club (post-PR β' clubs auto-get dual admins μέσω form, 
+αλλά pre-PR β' clubs need manual backfill).
+
+**Commit 1: `chore(deps): add tsx για TypeScript script execution`**
+- [x] Installed tsx as dev dependency (v4.21.0)
+- [x] Enables direct TypeScript script execution με tsconfig path 
+  alias support (@/lib/... resolves σε ./lib/...)
+- [x] Native --env-file flag για loading .env.local (zero dotenv dep)
+
+**Commit 2: `feat(scripts): provision-backup-admin για existing clubs`**
+- [x] Νέο scripts/provision-backup-admin.ts (244 lines)
+- [x] CLI arg parsing: --club-slug=<slug> (required, slug regex validated)
+- [x] Idempotency check: skip if backup admin already exists για το club
+- [x] Defensive collision check: authEmailExists() before createUser
+- [x] Mirror του POST /api/admin/clubs Steps 6b/7b/8/9 flow:
+  - auth.admin.createUser με email_confirm: true
+  - INSERT members με is_hub_admin: true, is_president: false, 
+    is_board_member: false, board_position: null
+  - SELECT "Πρόεδρος ΔΣ" role lookup
+  - INSERT member_role_assignments
+- [x] SELECT-based verification post-creation
+- [x] Partial-failure tracking με Greek manual-cleanup hints
+- [x] Credentials output με 1Password handoff markers (stdout-only,
+  no filesystem writes)
+- [x] Defaults: first_name="SyllogosHub", last_name="Recovery"
+
+**Usage:**
+
+`npx tsx --env-file=.env.local scripts/provision-backup-admin.ts --club-slug=kriton-aigaleo`
+
+**Smoke-tested (safe, no DB writes):**
+- ✅ Missing --club-slug → Usage message + exit 1
+- ✅ Invalid slug (non-existent club) → "Club not found" + exit 1
+- ✅ Env loading, path aliases, getAdminClient(), Supabase SELECT
+  all verified end-to-end
+
+**Known Windows quirk:** libuv async cleanup assertion μετά το script 
+logic completion (Windows-only, harmless, documented στο docstring). 
+Production execution σε Linux unaffected.
+
+**Net stats:** +244 lines (script) + +521 lines (package-lock.json για 
+tsx + transitive deps).
+
+**Επόμενο εκκρεμές:** kriton-aigaleo manual backfill execution
+(see 🔴 entry "kriton-aigaleo backup admin backfill").
+
+**Closes:** ROADMAP entry "🔴 Dual-admin PR γ'". Dual-admin 3-PR 
+series **complete** (PRs α'+β'+γ' all delivered). Multi-tenant 
+onboarding pattern production-ready για νέα clubs.
+
+Connects με: PR #80 (PR α' schema), PR #86 (PR β' form+route — 
+script mirrors its Steps 6b/7b/8/9 flow).
+
+### feat/dual-admin-form-and-route (merged 2026-05-14) — PR #86
 
 Dual-admin pattern PR β' (2nd in 3-PR series). Form refactor 
 /admin/clubs/new + route.ts dual creation. Each new club now 
