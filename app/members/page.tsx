@@ -1820,7 +1820,8 @@ function MemberModal({
     return members
       .filter((m) => m.id !== editing?.id)
       .filter((m) =>
-        normalizeGreek(`${m.last_name} ${m.first_name}`).includes(q)
+        normalizeGreek(`${m.last_name} ${m.first_name}`).includes(q) ||
+        normalizeGreek(`${m.first_name} ${m.last_name}`).includes(q)
       )
       .slice(0, 8);
   }, [members, familySearchDebounced, editing?.id]);
