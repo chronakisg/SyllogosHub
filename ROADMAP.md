@@ -716,23 +716,35 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
   Estimated: L
 
-- [ ] **Chunk 4 — Departments + Classes + Messages**
+- [ ] **Chunk 4 — Classes + Announcements + Departments UI**
 
   Stack: 🟣 Member Portal
 
-  Scope: Class enrollment + announcements per τμήμα.
+  Scope: Class enrollment + announcements + member-facing 
+  department pages.
 
-  Spec (απαιτείται νέο schema):
-  - classes table (department_id FK, schedule, location, instructor)
-  - class_enrollments table (class_id, member_id, enrolled_at)
-  - department_messages table (department_id, title, body, posted_by, posted_at)
-  - /departments/[id] page για members
-  - Family-wide visibility (parent βλέπει παιδιά τους εγγεγραμμένα)
-  - Push notifications για νέα μηνύματα
+  **Schema ✅ delivered (Migration 0027, PR portal-schema-foundation):**
+  - ✅ `classes` table (department_id FK, day_of_week + start/end_time, 
+    location, instructor, active)
+  - ✅ `class_enrollments` table (class_id, member_id, enrolled_at, 
+    unenrolled_at για soft delete)
+  - ✅ `announcements` table (RENAMED από αρχικό `department_messages` —
+    broader scope: global ή per-department, pinned + published flags)
+  - ✅ `members.last_announcement_check_at` column (unread badge tracking)
+  - ✅ types.ts updates με DayOfWeek labels + all 3 type triplets
+
+  **UI work 🔜 pending (split σε επιμέρους PRs):**
+  - 🔜 Admin: `/announcements` (CRUD + per-department scoping)
+  - 🔜 Admin: `/classes` (CRUD + enrollment management)
+  - 🔜 Member: `/portal/announcements` με last_check timestamp wiring
+  - 🔜 Member: `/portal/classes` με weekly schedule view
+  - 🔜 Member: `/portal/departments/[id]` page
+  - 🔜 Family-wide visibility (parent βλέπει παιδιά εγγεγραμμένα)
+  - 🔜 Push notifications για νέες ανακοινώσεις
 
   Connects με: departments, family system, push notifications
 
-  Estimated: XL (multi-session — απαιτεί schema design)
+  Estimated: L (UI work post-schema — σπασμένο σε 4-5 PRs)
 
 - [ ] **🟣 Duplicate email στο members table — portal linkage edge case**
 
@@ -1457,7 +1469,65 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
 ## ✅ Recently Done
 
-### feat/provision-backup-admin-script (merged 2026-05-14) — PR #?
+### feat/portal-schema-foundation (merged 2026-05-14) — PR #?
+
+Member Portal Chunk 3+4 schema foundation. 3 new tables + 1 
+column για να ξεκλειδώσει UI work για Chunks 3-4. Pure schema 
++ types — no UI changes user-facing.
+
+**Commit 1: Migration 0027 (schema)**
+- [x] Νέα tables: `announcements`, `classes`, `class_enrollments`
+- [x] Νέα column: `members.last_announcement_check_at` 
+  (timestamp για unread badge tracking)
+- [x] All idempotent (CREATE TABLE IF NOT EXISTS, ADD COLUMN 
+  IF NOT EXISTS)
+- [x] RLS off per project convention
+- [x] FK constraints: cascading/set null όπως appropriate
+- [x] CHECK constraints: title/body/name non-empty, day_of_week 
+  in 1..7, time order start<end
+- [x] UNIQUE NULLS NOT DISTINCT σε class_enrollments για 
+  soft-delete dedup (active enrollment unique, history allowed)
+- [x] Production-verified (5/5 verification queries clean)
+
+**Commit 2: types.ts updates**
+- [x] DayOfWeek literal union (1|2|3|4|5|6|7) + DAY_OF_WEEK_LABELS 
+  Greek labels (mirror του CLUB_CATEGORY_LABELS pattern)
+- [x] 3 type triplets: Announcement/Insert/Update, Class/Insert/Update,
+  ClassEnrollment/Insert/Update (standalone definitions, Pattern A)
+- [x] Database.public.Tables registration: announcements (3 FKs), 
+  classes (2 FKs), class_enrollments (2 FKs)
+- [x] Member.last_announcement_check_at + MemberInsert mirror
+
+**Architectural decisions taken (S1-S5):**
+- S1: announcements = title/body/department_id/pinned/published 
+  (no draft scheduling, no expiry)
+- S2: Read tracking via members.last_announcement_check_at 
+  (1 timestamp aggregate, not row-per-read)
+- S3: classes = single weekly recurring schedule (day + time + 
+  duration), expandable to class_sessions table future
+- S4: class_enrollments soft delete (unenrolled_at), history 
+  preserved για παραδοσιακούς συλλόγους
+- S5: RLS off (consistency με rest of schema)
+
+**Naming refactor:** `department_messages` (από original Chunk 4 
+plan) renamed to `announcements` — broader scope: global ή 
+per-department, όχι department-locked.
+
+**Net stats:** +159 lines (migration) + +162 lines (types) = +321 
+total.
+
+**Επόμενα PRs (επαναπρογραμματισμένο plan):**
+- PR α': /me/[token] password-set flow + Supabase auth integration
+- PR β': /portal home + /portal/announcements + badge wiring
+- PR γ': /portal/finances/me + /portal/events  
+- PR δ': Classes admin tools (CRUD + enrollment management)
+- PR ε': /portal/classes + family-aware visibility
+
+Connects με: PR #44 (Member Portal Chunk 2 — auth foundation), 
+Migration 0027 schema, ROADMAP "Member Portal Chunk 3+4 plan" 
+(σχεδιαστική συζήτηση 2026-05-14).
+
+### feat/provision-backup-admin-script (merged 2026-05-14) — PR #87
 
 Dual-admin pattern PR γ' (3rd και τελευταίο in series). Standalone 
 CLI script για provisioning του SyllogosHub Recovery backup admin 
