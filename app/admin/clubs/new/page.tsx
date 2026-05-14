@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CLUB_CATEGORY_LABELS } from "@/lib/supabase/types";
 import type { ClubCategory } from "@/lib/supabase/types";
+import { slugify } from "@/lib/utils/slugify";
 
 type FormState = {
   name: string;
@@ -36,6 +37,7 @@ export default function NewClubPage() {
   const [form, setForm] = useState<FormState>(INITIAL);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [slugDirty, setSlugDirty] = useState(false);
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -88,7 +90,13 @@ export default function NewClubPage() {
             type="text"
             required
             value={form.name}
-            onChange={(e) => update("name", e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              update("name", value);
+              if (!slugDirty) {
+                update("slug", slugify(value));
+              }
+            }}
             className={INPUT_CLASS}
           />
         </Field>
@@ -96,14 +104,19 @@ export default function NewClubPage() {
         <Field
           label="Slug"
           required
-          hint="Lowercase, αλφαριθμητικό + παύλες (π.χ. kriton-aigaleo)"
+          hint="Auto-generated από το όνομα. Επεξεργάσιμο. Καθαρίστε το για επαναφορά auto-generation."
         >
           <input
             type="text"
             required
             pattern="^[a-z0-9]+(-[a-z0-9]+)*$"
             value={form.slug}
-            onChange={(e) => update("slug", e.target.value.toLowerCase())}
+            onChange={(e) => {
+              const value = e.target.value.toLowerCase();
+              update("slug", value);
+              // Empty slug → re-enable auto-generation από το name
+              setSlugDirty(value.length > 0);
+            }}
             className={`${INPUT_CLASS} font-mono`}
           />
         </Field>
