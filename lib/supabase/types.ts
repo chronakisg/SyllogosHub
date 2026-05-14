@@ -95,6 +95,7 @@ export type Member = {
   board_position: string | null;
   is_president: boolean;
   is_system_admin: boolean;
+  is_hub_admin: boolean;
   birth_date: string | null;
   family_id: string | null;
   family_role: FamilyRole | null;
@@ -133,6 +134,7 @@ export type MemberInsert = {
   board_position?: string | null;
   is_president?: boolean;
   is_system_admin?: boolean;
+  is_hub_admin?: boolean;
   birth_date?: string | null;
   family_id?: string | null;
   family_role?: FamilyRole | null;
