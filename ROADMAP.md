@@ -1445,15 +1445,6 @@ _(no active branches)_
 
 ### Tech Debt & Cleanup
 
-
-- [ ] **Family search reverse-name consistency**
-  - app/members/page.tsx:1640-1649 ελέγχει μόνο "last first",
-    όχι reverse "first last"
-  - Όλα τα άλλα people-search sites (AttendeesEditor, calendar)
-    ελέγχουν και τις 2 κατευθύνσεις
-  - Minor UX inconsistency εντοπισμένη κατά το PR #55 pre-flight
-  - Estimated: XS (1 line edit + smoke test)
-
 - [ ] **Sponsor search helper consolidation**
   - 2 sponsor sites χρησιμοποιούν διαφορετικά helpers + surfaces:
     * app/finances/SponsorsPanel.tsx: sponsorListName(s) — name-only
@@ -1598,6 +1589,45 @@ _(no active branches)_
   Estimated: M
 
 ## ✅ Recently Done
+
+### feat/admin-clubs-new-ux-polish (merged 2026-05-14) — PR #84
+
+UX polish για το /admin/clubs/new form. 2 quick wins που 
+εντοπίστηκαν κατά το test-club-2 onboarding. Bridge work πριν το 
+Dual-admin PR β' (form refactor).
+
+**Commit 1: Slugify utility**
+- [x] Νέο lib/utils/slugify.ts (71 lines) — Greek → Latin 
+  transliteration με custom map (zero dependencies)
+- [x] Phonetic-ish convention: γ→g, η→i, υ→y, χ→ch, ψ→ps
+- [x] Output guaranteed compatible με server-side SLUG_RE regex
+- [x] Examples: "ΣΥΛΛΟΓΟΣ ΔΟΚΙΜΗΣ" → "syllogos-dokimis", 
+  "Ένωση Κρητών Αιγάλεω" → "enosi-kriton-aigaleo"
+
+**Commit 2: Slug auto-gen wire-up**
+- [x] State slugDirty (boolean) στο form
+- [x] Name onChange auto-syncs slug όταν !slugDirty
+- [x] Slug onChange flagάρει slugDirty=true
+- [x] Empty slug → slugDirty=false (reset path)
+- [x] Hint updated: "Auto-generated από το όνομα. Επεξεργάσιμο. 
+  Καθαρίστε το για επαναφορά auto-generation."
+
+**Commit 3: Password visibility toggle**
+- [x] showPassword state + eye/eye-off SVG icons (Lucide style, 
+  24x24 viewBox, currentColor)
+- [x] Absolute-positioned button δεξιά του input (pr-10 spacing)
+- [x] Greek aria-label conditional
+- [x] Focus ring με maroon #800000 (brand consistency)
+- [x] aria-hidden="true" στα SVGs (decorative)
+
+**Net:** +1 new utility file + 1 modified form file. Zero new 
+dependencies.
+
+**Smoke-tested:** slug auto-fill, manual edit lock, reset path, 
+password toggle visibility, accessibility focus ring — all passing.
+
+Connects με: 🔴 Dual-admin pattern PR β' (form refactor θα 
+κληρονομήσει αυτά τα 2 UX features).
 
 ### chore/cleanup-batch-2026-05-14 (merged 2026-05-14) — PR #83
 
@@ -1748,14 +1778,45 @@ Connects με: PR #62 (identity bugs), PR #64 (seedClub linkage),
 PR #81 (audit labels foundation).
 
 <!-- ──────────────────────────────────────────────────────────── -->
-<!-- TODO: Backfill Recently Done entries για merged PRs που      -->
-<!-- λείπουν από αυτή τη λίστα:                                   -->
-<!--   - PR #75 (fix/proxy super admin defense-in-depth)           -->
-<!--   - PR #76 (fix/security open redirect + post-login return-to)-->
-<!--   - PR #77 (feat/admin branded error + not-found pages)       -->
-<!--   - PR #78 (chore/roadmap defer portal return-to)             -->
-<!-- Pending standalone cleanup PR.                                -->
+<!-- TODO: Backfill Recently Done entry για το ίδιο το             -->
+<!-- loose-ends-2026-05-14 PR (PR # to be added post-merge).      -->
+<!-- Includes Commit 1 (ROADMAP cleanup), Commit 2 (family search -->
+<!-- reverse-name fix), Commit 3 (this — backlog Recently Done    -->
+<!-- entries για PR #75-#78 + PR #84 entry).                      -->
 <!-- ──────────────────────────────────────────────────────────── -->
+
+### chore/roadmap-defer-portal-return-to (merged 2026-05-13) — PR #78
+
+Investigation κατά το PR #76 fallout αποκάλυψε ότι /portal flow 
+δεν έχει security gap (zero ?redirect= consumption) ούτε UX gap 
+(single protected page = hardcoded landing always correct). Defer 
+με documented trigger condition (όταν προστεθεί 2η protected portal 
+page). Pattern documented για future.
+
+### feat/admin-branded-error-pages (merged 2026-05-13) — PR #77
+
+2 new files: app/admin/not-found.tsx (server, 🔍 icon + "Επιστροφή 
+στη Διαχείριση Συλλόγων") + app/admin/error.tsx (client, ⚠️ icon + 
+reset() retry + dev-only error details με NODE_ENV guard). Logger 
+integration με tag "admin/error". Tier 2 polish από PR #71 (uuid 
+validation guard) fallout.
+
+### fix/security-open-redirect (merged 2026-05-13) — PR #76
+
+2 issues σε ένα PR: (1) UX — proxy.ts redirect σε /login έχανε 
+intended path (now constructs ?redirect=<path>); (2) Security — 
+open redirect vulnerability στο app/login/page.tsx (no validation 
+σε ?redirect= param). Νέο helper lib/auth/safeRedirect.ts με 
+isSafeRedirectPath + sanitizeRedirect. Defense-in-depth σε proxy 
++ login page.
+
+### fix/proxy-super-admin-defense (merged 2026-05-13) — PR #75
+
+Δεύτερο layer of defense — super_admin lookup στο proxy.ts για 
+/admin/* pages (πέρα από το app/admin/layout.tsx gate). Scope: 
+μόνο pages, όχι /api/admin/* (mixed authorization model — per-route 
+gates remain authoritative). Closes Identity model bugs Bug #4 
+(5/5 resolved).
 
 ### fix/sw-exclude-authenticated-paths (merged 2026-05-13) — PR #68
 
