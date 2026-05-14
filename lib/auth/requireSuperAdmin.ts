@@ -1,6 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 import { getAdminClient } from "../supabase/admin";
 import { getServerClient } from "../supabase/server";
+import { errorResponse } from "./errorResponse";
 
 export type SuperAdminContext = {
   user: User;
@@ -28,10 +29,7 @@ export async function requireSuperAdmin(): Promise<SuperAdminContext> {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    throw new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    throw errorResponse("Unauthorized", 401);
   }
 
   const admin = getAdminClient();
@@ -42,17 +40,11 @@ export async function requireSuperAdmin(): Promise<SuperAdminContext> {
     .maybeSingle();
 
   if (lookupError) {
-    throw new Response(
-      JSON.stringify({ error: "Super-admin lookup failed" }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
+    throw errorResponse("Super-admin lookup failed", 500);
   }
 
   if (!superAdmin) {
-    throw new Response(
-      JSON.stringify({ error: "Super-admin privileges required" }),
-      { status: 403, headers: { "Content-Type": "application/json" } },
-    );
+    throw errorResponse("Super-admin privileges required", 403);
   }
 
   return { user };
