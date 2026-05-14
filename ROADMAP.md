@@ -1603,6 +1603,101 @@ _(no active branches)_
 
 ## ✅ Recently Done
 
+### feat/audit-labels-foundation (merged 2026-05-14) — PR #81
+
+Foundation work για audit visibility — pre-work για 2 upcoming
+ROADMAP items (Audit admin coverage + Dual-admin pattern PR γ').
+
+Triggered από user observation: στο /audit-log εμφανίζονταν αλλαγές 
+με raw 'true'/'false' (όχι Ναι/Όχι), και τα admin/board flags δεν 
+είχαν Greek labels.
+
+**Commit 1: Labels expansion + FIELD_ORDER**
+- [x] MEMBER_FIELD_LABELS expanded από 14 → 19 entries
+  - is_president → 'Πρόεδρος ΔΣ'
+  - is_board_member → 'Μέλος ΔΣ'
+  - board_position → 'Θέση στο ΔΣ'
+  - is_system_admin → 'Διαχειριστής συστήματος'
+  - is_hub_admin → 'Λογαριασμός SyllogosHub Recovery'
+- [x] Νέα export MEMBER_AUDIT_FIELD_ORDER (19 fields, semantic 
+  grouping: Identity → Board/admin flags → Verification → Personal)
+- [x] Section comments διαχωρίζουν self-updateable vs admin-editable
+
+**Commit 2: Boolean formatter + consumer migration**
+- [x] Νέα export formatAuditValue στο lib/audit/labels.ts:
+  - true → 'Ναι', false → 'Όχι' (was 'true'/'false')
+  - null/undefined/empty → '(κενό)' unchanged
+- [x] /audit-log/page.tsx + MemberHistoryTab.tsx σταματούν να 
+  ορίζουν local FIELD_ORDER + formatValue
+- [x] Import + consume από lib/audit/labels.ts (centralized)
+- [x] Stale comments updated (FIELD_ORDER → MEMBER_AUDIT_FIELD_ORDER)
+
+Net: -6 lines across 3 files (centralized).
+
+**Out of scope:** Admin /members updates δεν περνάνε σήμερα από 
+API route → audit hook δεν τρέχει. board_position / is_president / 
+is_hub_admin αλλαγές δεν audit-άρονται ακόμα. ROADMAP entry "Audit 
+admin coverage" καλύπτει το refactor — όταν έρθει, το display 
+layer έχει ήδη τα tools.
+
+Connects με: PR #80 (is_hub_admin schema), PR #49 (audit foundation).
+
+### feat/members-is-hub-admin (merged 2026-05-14) — PR #80
+
+Dual-admin pattern PR α' (3-PR series). Foundation schema layer για 
+τον SyllogosHub Recovery account pattern.
+
+**Schema (Migration 0025):**
+- [x] members.is_hub_admin (boolean NOT NULL default false)
+- [x] Defensive snapshot members_backup_20260514_pre_hub_admin
+- [x] Idempotent (if not exists pattern)
+- [x] RLS off (paranoid re-assertion)
+
+**Types:**
+- [x] is_hub_admin field στο Member + MemberInsert (hand-crafted)
+- [x] MemberUpdate auto-derives μέσω Partial<Omit<Member, ...>>
+
+**Architectural decisions:**
+- **Option A revised (boolean flag, όχι global role):** Pragmatic 
+  short-term, migration σε global roles εύκολη όταν εμφανιστεί 
+  3ος recovery-style concept
+- **Marker only, όχι access gate:** Full access έρχεται από 
+  "Πρόεδρος ΔΣ" role assignment (existing pattern)
+- **Distinct semantic από is_system_admin** (που gates cross-club 
+  impersonation στο useCurrentClub.ts:114 — load-bearing flag, 
+  αδιατάρακτο)
+
+**Production-verified (5/5):**
+- Column shape: boolean NOT NULL default false ✓
+- Snapshot parity: 244 = 244 ✓
+- Default population: all false, no NULLs ✓
+- RLS: disabled ✓
+- Sample read: clean ✓
+
+**Pre-flight discoveries (νέα ROADMAP entries):**
+- Schema drift: members admin flags δεν υπάρχουν σε migration files 
+  (is_board_member, board_position, is_president, is_system_admin) 
+  — added στο 🔴 Critical "types.ts drift" entry
+- Board position ↔ role assignment sync gap — added στο 🟡 Audit 
+  & Monitoring
+
+**Out of scope (επόμενα PRs):**
+- PR β': Form refactor /admin/clubs/new + route.ts dual creation
+- PR γ': provision-backup-admin.ts script + kriton-aigaleo backfill
+
+Connects με: PR #62 (identity bugs), PR #64 (seedClub linkage), 
+PR #81 (audit labels foundation).
+
+<!-- ──────────────────────────────────────────────────────────── -->
+<!-- TODO: Backfill Recently Done entries για merged PRs που      -->
+<!-- λείπουν από αυτή τη λίστα:                                   -->
+<!--   - PR #75 (fix/proxy super admin defense-in-depth)           -->
+<!--   - PR #76 (fix/security open redirect + post-login return-to)-->
+<!--   - PR #77 (feat/admin branded error + not-found pages)       -->
+<!--   - PR #78 (chore/roadmap defer portal return-to)             -->
+<!-- Pending standalone cleanup PR.                                -->
+<!-- ──────────────────────────────────────────────────────────── -->
+
 ### fix/sw-exclude-authenticated-paths (merged 2026-05-13) — PR #68
 
 Production blocker fix για το super admin /admin/clubs που
