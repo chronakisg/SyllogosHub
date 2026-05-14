@@ -274,6 +274,25 @@ _(no active branches)_
      από PROJECT_RESUME.md memory)
   4. Re-verify με tsc + smoke test affected paths
 
+  **Additional drift discovered 2026-05-14 (PR #80 pre-flight):**
+  
+  `members` table έχει 4 columns στο production που δεν εμφανίζονται 
+  σε καμία migration file (πιθανότατα προστέθηκαν manual μέσω Supabase 
+  Dashboard):
+  - `is_board_member` (boolean NOT NULL default false)
+  - `board_position` (text nullable)
+  - `is_president` (boolean NOT NULL default false)
+  - `is_system_admin` (boolean NOT NULL default false)
+  
+  Verification: `grep is_system_admin supabase/` → 0 matches σε .sql files.
+  
+  Implication: τα 4 columns είναι load-bearing σε resolveAuthMember, 
+  useRole, useCurrentClub:114 (cross-club impersonation gate). Fresh 
+  DB από repo migrations σπάει με column-not-exists.
+  
+  Suggested follow-up: νέα migration `0026_backfill_members_admin_flags_schema.sql` 
+  με `ADD COLUMN IF NOT EXISTS` + documented defaults για τα 4 flags.
+
   Estimated: M-L (4-8 ώρες audit + corrections, multi-PR αν χρειαστεί)
 
   Required before multi-tenant onboarding — δεν θέλουμε σύλλογο να
@@ -343,9 +362,17 @@ _(no active branches)_
       (cross-cutting schema change)
     * Πιο πολλή dev work upfront
 
-  **Decision pending.** Option A πιο pragmatic short-term, Option B
-  cleaner long-term. Probably ξεκινάμε με A και migrate σε B όταν
-  χρειαστεί 3ος global role.
+  **✅ Decision locked 2026-05-14: Option A revised (PR #80 merged).**
+  
+  Pre-flight inspection αποκάλυψε ότι `is_system_admin` είναι 
+  load-bearing για cross-club impersonation στο useCurrentClub.ts:114 
+  — αδιατάρακτο. Νέο `is_hub_admin` boolean flag, **marker only, 
+  όχι access gate**. Full access έρχεται από "Πρόεδρος ΔΣ" role 
+  assignment (existing pattern).
+  
+  Migration σε proper global roles (Option B) εύκολη όταν εμφανιστεί 
+  3ος recovery-style concept — backfill `is_hub_admin=true` → global 
+  "Recovery" role.
 
   ---
 
@@ -421,15 +448,20 @@ _(no active branches)_
   ---
 
   **Estimated:** L (3 PRs minimum)
-  - PR α': Schema decision + types.ts updates (Option A vs B)
-  - PR β': Form refactor + route.ts dual creation
-  - PR γ': Migration script + kriton-aigaleo backfill
+  - ✅ PR α' (PR #80, merged 2026-05-14): Schema + types.ts foundation
+    - Migration 0025: members.is_hub_admin boolean NOT NULL default false
+    - types.ts: is_hub_admin σε Member + MemberInsert (hand-crafted)
+    - Production-verified (5/5 verification queries clean)
+  - 🔜 PR β': Form refactor + route.ts dual creation
+  - 🔜 PR γ': Migration script + kriton-aigaleo backfill
 
   **Required before multi-tenant onboarding.** Δεν προχωρούμε σε
   νέα clubs χωρίς dual-admin guarantee — single-admin clubs είναι
   technical debt που θα μας κυνηγήσει.
 
   **Connects με:**
+  - ✅ PR #80: Schema foundation (is_hub_admin marker) — merged 2026-05-14
+  - ✅ PR #81: Audit labels foundation (is_hub_admin Greek label ready) — merged 2026-05-14
   - PR #62: Identity model bugs (sibling — recovery scenarios assume
     working linkage, που το #64 fixed για new clubs)
   - PR #64: seedClub linkage fix (πρώτο βήμα προς robust onboarding —
@@ -952,8 +984,54 @@ _(no active branches)_
   - Currently admin updates ΔΕΝ καταγράφονται — μόνο
     self-updates μέσω /me/[token] + /portal/profile
   - Δεν χρειάζεται schema change
+  - **Display layer foundation ready** (PR #81, merged 2026-05-14):
+    MEMBER_FIELD_LABELS expanded με admin/board flags, 
+    MEMBER_AUDIT_FIELD_ORDER με semantic grouping, formatAuditValue 
+    Greek boolean helper. Όταν γίνει το refactor, τα tools υπάρχουν 
+    ήδη — μόνο audit hook μένει.
   - Estimated: M-L (4-5 commits)
-  - Connects με: PR #49 audit foundation
+  - Connects με: PR #49 (audit foundation), PR #81 (labels foundation)
+
+- [ ] **🟡 Board position ↔ role assignment sync gap**
+
+  Discovered: 2026-05-14 (user observation στο /permissions Ομάδες tab)
+
+  **Πρόβλημα:** Στο /members modal admin setάρει board_position 
+  ("Πρόεδρος"/"Αντιπρόεδρος"/"Ταμίας"/etc.), αλλά το αντίστοιχο 
+  role στο /permissions Ομάδες tab εμφανίζει 0 μέλη. Real example: 
+  7 ΔΣ μέλη στο kriton-aigaleo έχουν board_position set, αλλά:
+  - Πρόεδρος ΔΣ role: 0 μέλη / 33 permissions
+  - Αντιπρόεδρος: 0 μέλη / 17 permissions
+  - Ταμίας: 0 μέλη / 9 permissions
+  - Γραμματέας: 0 μέλη / 10 permissions
+  
+  Implication: Permission system δεν λειτουργεί για existing 
+  board members — δεν έχουν την πρόσβαση που υποτίθεται να έχουν.
+
+  Σήμερα: bootstrap admin από /admin/clubs/new παίρνει automatic 
+  role assignment (Step 9). Για existing members δεν υπάρχει 
+  automation.
+
+  **3 conceptual approaches — decision pending:**
+  
+  - **A. Auto-sync (board_position → role assignment)**
+    Trigger ή hook όταν setάρεται board_position → assign role.
+    Pros: Single source of truth, zero manual maintenance.
+    Cons: Magic, decoupling members management από roles.
+  
+  - **B. Manual assignment με UI awareness**
+    Στο /permissions Ομάδες tab, "Suggested members" filter
+    βασισμένο σε board_position match.
+    Pros: Καθαρός decoupling. Cons: Manual work για admin.
+  
+  - **C. Hybrid: auto-sync με opt-out**
+    Default auto-sync. is_hub_admin=true ή ειδικό flag εξαιρείται.
+
+  **Pre-question:** Πώς έγινε το assignment του "Πρόεδρος ΔΣ" 
+  role για τους ήδη existing members; Backfill needed για 
+  kriton-aigaleo ανεξάρτητα από τη μελλοντική απόφαση.
+
+  Estimated: M (απόφαση + implementation)
 
 - [ ] **Audit για άλλα tables**
   - Επέκταση audit hooks σε events/finances/sponsors
@@ -1434,6 +1512,7 @@ _(no active branches)_
   - `reservations_backup_20260430`
   - `members_backup_20260430`
   - `reservation_attendees_backup_20260506` (Cashier PR1 safety net)
+  - `members_backup_20260514_pre_hub_admin` (PR #80 safety net)
   - Παραμένουν ως safety net για το beta — drop όταν συγχωνευθεί feature
     + production stable για ~1 εβδομάδα
 - [ ] **Drop `user_roles` table (dead code)**
