@@ -363,177 +363,46 @@ _(no active branches)_
 
   Required before serious multi-tenant onboarding effort.
 
-- [ ] **🔴 Dual-admin pattern + SyllogosHub recovery email convention**
+- [ ] **🔴 Dual-admin PR γ' — provision-backup-admin script + kriton-aigaleo backfill**
 
-  Discovered: 2026-05-12 (test-club-2 onboarding, single-point-of-failure
-  realization κατά τη συζήτηση multi-tenant operations).
+  Final piece του 3-PR dual-admin series. PRs α'+β' delivered
+  schema foundation (PR #80) + form/route dual creation (this PR's
+  predecessor merged 2026-05-14). NEW clubs (post-PR β') auto-get
+  dual admins. **EXISTING kriton-aigaleo δεν έχει backup admin
+  ακόμα** — needs manual backfill.
 
-  **Problem:** Single-admin clubs έχουν single point of failure: αν
-  ο πρόεδρος χάσει access (ξεχάσει password, χάσει email account,
-  hostile takeover μετά από εκλογές, αδυναμία επικοινωνίας), ο
-  σύλλογος γίνεται **unrecoverable** χωρίς manual super admin
-  intervention στο Supabase auth panel. Αυτό δεν είναι production-
-  acceptable για paying SaaS.
+  **Scope (operational, no schema/code beyond a script):**
 
-  **Στόχος:** Κάθε σύλλογος έχει **2 admins από day-1**:
-  - **President admin** — ο πρόεδρος του ΔΣ (φυσικό πρόσωπο,
-    real email)
-  - **Backup admin** — recovery account ελεγχόμενο από SyllogosHub
-    operations (synthetic email: `info@<slug>.syllogoshub.gr`)
+  1. **Email provisioning:** δημιουργία `info@kriton-aigaleo.syllogoshub.gr`
+     στο DNS/mail provider (DNS setup, optionally wildcard MX για
+     `*.syllogoshub.gr`)
+  2. **Migration script:** standalone Node.js (`scripts/provision-backup-admin.ts`)
+     - Mirror του POST /api/admin/clubs Steps 6b/7b/9b flow
+     - Standalone — όχι μέσω /admin/clubs/new (που είναι για new clubs)
+     - Idempotent (skip if backup admin already exists for clubId)
+     - Manual invocation per existing club (one-off)
+  3. **kriton-aigaleo backfill:**
+     - Run script με `--club-slug=kriton-aigaleo`
+     - Auto-generated password → 1Password vault "SyllogosHub Recovery"
+     - Verify login + sidebar + audit log entry
+     - Email πρόεδρο για transparency
 
-  ---
+  **Open questions (deferred until execution):**
+  - Shared recovery inbox ή per-club inbox;
+  - Auto-rotation password schedule;
+  - Wildcard MX `*.syllogoshub.gr` → central catch-all
+    (`recovery@syllogoshub.gr`);
 
-  **1. Email naming convention**
+  **Required before multi-tenant onboarding.** kriton-aigaleo
+  παραμένει single-admin μέχρι να εκτελεστεί. Νέα clubs already
+  protected (PR β').
 
-  - SyllogosHub-owned domain: `*.syllogoshub.gr` (subdomain per club)
-  - Per-club backup email: `info@<club-slug>.syllogoshub.gr`
-    * Παράδειγμα: `info@kriton-aigaleo.syllogoshub.gr`
-    * Παράδειγμα: `info@test-club-2.syllogoshub.gr`
-  - DNS setup: Wildcard MX record για `*.syllogoshub.gr` → central
-    recovery mailbox (probably catch-all → `recovery@syllogoshub.gr`)
-  - **Open questions:**
-    * Shared inbox ή per-club inbox; (security vs operability tradeoff)
-    * Auto-rotation password schedule; (90-day rotation = overhead vs
-      static = breach risk)
-    * Storage: 1Password vault "SyllogosHub Recovery Accounts"
-      με per-club entries
+  Estimated: S-M (script ~2-3h + manual execution + verification)
 
-  ---
-
-  **2. Schema considerations**
-
-  Δύο alternatives — απόφαση εκκρεμεί:
-
-  **Option A — `is_hub_admin` boolean flag στο `members`**
-  - Νέα column: `members.is_hub_admin boolean default false`
-  - Pros:
-    * Explicit, queryable easily ("ποιοι members είναι SyllogosHub
-      recovery accounts cross-club;")
-    * Distinct από `is_board_member` / `is_president`
-    * Simple RLS predicates
-  - Cons:
-    * Ένα ακόμα boolean flag στον schema (already crowded)
-    * Διαρκής maintenance σε δύο axes (role + flag)
-
-  **Option B — System role "SyllogosHub Recovery"**
-  - Νέο role στο `member_roles` (system-level, special scope)
-  - Permission scope: all modules read+write + admin override
-  - Pros:
-    * Extensible — μελλοντικά roles χωρίς schema changes
-    * Audit trail από `member_role_assignments`
-    * Cleaner separation of concerns
-  - Cons:
-    * Roles είναι per-club σήμερα — χρειάζεται global role concept
-      (cross-cutting schema change)
-    * Πιο πολλή dev work upfront
-
-  **✅ Decision locked 2026-05-14: Option A revised (PR #80 merged).**
-  
-  Pre-flight inspection αποκάλυψε ότι `is_system_admin` είναι 
-  load-bearing για cross-club impersonation στο useCurrentClub.ts:114 
-  — αδιατάρακτο. Νέο `is_hub_admin` boolean flag, **marker only, 
-  όχι access gate**. Full access έρχεται από "Πρόεδρος ΔΣ" role 
-  assignment (existing pattern).
-  
-  Migration σε proper global roles (Option B) εύκολη όταν εμφανιστεί 
-  3ος recovery-style concept — backfill `is_hub_admin=true` → global 
-  "Recovery" role.
-
-  ---
-
-  **3. Form refactor — /admin/clubs/new**
-
-  Σήμερα: 1 section "Διαχειριστής (Πρόεδρος)". Πρέπει να γίνει 2:
-
-  - **Section 1: Πρόεδρος ΔΣ** (current fields, no change)
-    * Όνομα, Επώνυμο, Email, Κωδικός
-  - **Section 2: Backup Admin (SyllogosHub Recovery)**
-    * Email — auto-suggest από slug: `info@<slug>.syllogoshub.gr`
-      (read-only ή editable με override checkbox)
-    * Κωδικός — auto-generate (cryptographically secure, 16+ chars,
-      copy-to-clipboard button)
-    * Notes field για disambiguation (π.χ. "Recovery — 1Password
-      vault SyllogosHub")
-
-  UX: Collapsible "Advanced" toggle πιθανόν, ώστε standard flow
-  να μη φοβίζει νέους super admins. Default expanded όμως — backup
-  admin ΔΕΝ είναι optional, είναι required.
-
-  ---
-
-  **4. seedClub.ts vs route.ts integration**
-
-  Το backup admin creation **ΔΕΝ** μπαίνει στο `seedClub.ts` —
-  ο seeder είναι generic per-club bootstrap data, και ο backup
-  admin είναι caller-supplied (όπως ο πρόεδρος σήμερα).
-
-  Νέα ροή στο POST /api/admin/clubs:
-  - Step 6 (current): create president auth user
-  - **Step 6b (νέο):** create backup admin auth user (parallel)
-  - Step 7 (current): INSERT president member row
-  - **Step 7b (νέο):** INSERT backup admin member row με
-    `is_hub_admin=true` (per Option A)
-  - Step 9 (current): assign Πρόεδρος ΔΣ role στον president
-  - **Step 9b (νέο):** assign Πρόεδρος ΔΣ role και στον backup
-    admin (full permissions για recovery scenarios)
-
-  Partial failure logging πρέπει να καλύψει και τα δύο user/member
-  pairs.
-
-  ---
-
-  **5. Migration plan — kriton-aigaleo (existing club)**
-
-  kriton-aigaleo είναι σήμερα το single producing client και έχει
-  **μόνο τον πρόεδρο** — δεν υπάρχει backup admin. Πρέπει:
-
-  1. **Email provisioning:** δημιουργία
-     `info@kriton-aigaleo.syllogoshub.gr` στο DNS/mail provider
-  2. **Auth user:** INSERT μέσω Supabase admin client (mirror του
-     POST /api/admin/clubs Step 6 pattern)
-  3. **Members row:** INSERT με `club_id`, `user_id` linkage,
-     `is_hub_admin=true`, `first_name="SyllogosHub"`,
-     `last_name="Recovery"`
-  4. **Role assignment:** "Πρόεδρος ΔΣ" role για full access
-  5. **Credentials handoff:** auto-generated password → 1Password
-     vault "SyllogosHub Recovery Accounts" → entry
-     "kriton-aigaleo"
-  6. **Verification:**
-     * Login με backup credentials → επιτυχία
-     * Sidebar shows all 7 modules
-     * Audit log entry στο kriton-aigaleo (login event)
-  7. **President notification:** email στον πρόεδρο εξηγώντας
-     ότι υπάρχει SyllogosHub recovery account (transparency)
-
-  Migration script: standalone Node.js / SQL combo, **όχι** μέσω
-  /admin/clubs/new (που είναι για new clubs). Πιθανώς
-  `scripts/provision-backup-admin.ts` που τρέχει manually από
-  super admin per existing club.
-
-  ---
-
-  **Estimated:** L (3 PRs minimum)
-  - ✅ PR α' (PR #80, merged 2026-05-14): Schema + types.ts foundation
-    - Migration 0025: members.is_hub_admin boolean NOT NULL default false
-    - types.ts: is_hub_admin σε Member + MemberInsert (hand-crafted)
-    - Production-verified (5/5 verification queries clean)
-  - 🔜 PR β': Form refactor + route.ts dual creation
-  - 🔜 PR γ': Migration script + kriton-aigaleo backfill
-
-  **Required before multi-tenant onboarding.** Δεν προχωρούμε σε
-  νέα clubs χωρίς dual-admin guarantee — single-admin clubs είναι
-  technical debt που θα μας κυνηγήσει.
-
-  **Connects με:**
-  - ✅ PR #80: Schema foundation (is_hub_admin marker) — merged 2026-05-14
-  - ✅ PR #81: Audit labels foundation (is_hub_admin Greek label ready) — merged 2026-05-14
-  - PR #62: Identity model bugs (sibling — recovery scenarios assume
-    working linkage, που το #64 fixed για new clubs)
-  - PR #64: seedClub linkage fix (πρώτο βήμα προς robust onboarding —
-    αυτό extends το ίδιο pattern σε dual-admin)
-  - Email naming convention overlaps με future "tenant subdomain"
-    architecture (αν ποτέ πάμε σε `<slug>.syllogoshub.gr` per-tenant
-    URLs)
+  Connects με:
+  - ✅ PR α' (PR #80): Schema foundation (is_hub_admin)
+  - ✅ PR β' (this PR): Form + route dual creation
+  - PR #62/#64: Identity model context
 
 ## 🟡 High Priority (post-beta)
 
@@ -1590,6 +1459,76 @@ _(no active branches)_
 
 ## ✅ Recently Done
 
+### feat/dual-admin-form-and-route (merged 2026-05-14) — PR #?
+
+Dual-admin pattern PR β' (2nd in 3-PR series). Form refactor 
+/admin/clubs/new + route.ts dual creation. Each new club now 
+provisions 2 admins from day-1: Πρόεδρος (real person) + Backup 
+Admin (SyllogosHub Recovery account). Eliminates single point 
+of failure για multi-tenant onboarding.
+
+**Commit 1: Form refactor (client-side)**
+- [x] FormState extended με 4 backup admin fields
+- [x] Lazy initializer pattern για auto-generated backup password 
+  on mount (clean React idiom, strict-mode safe)
+- [x] State hooks: showBackupPassword toggle + backupEmailDirty flag
+- [x] Backup email auto-suggests από slug με dirty-flag pattern
+  (info@<slug>.syllogoshub.gr, διορθώθηκε bug με name onChange sync)
+- [x] Backup admin section JSX: 2-col grid (Όνομα/Επώνυμο με 
+  "SyllogosHub"/"Recovery" defaults) + Email field + Password 
+  field με 🎲 Νέος κωδικός regenerate button + eye toggle
+- [x] Field component label prop typed σε ReactNode (mini-fix για 
+  JSX label support)
+- [x] Reuses existing generatePassword() από lib/utils/password.ts
+  (already battle-tested σε /settings/users/PeopleTab.tsx)
+
+**Commit 2: Route refactor (server-side)**
+- [x] CreateClubBody type +4 backup fields
+- [x] Validation pipeline expanded: 4 isString checks + backup 
+  password length + same-email rejection με Greek discriminated 
+  error messages
+- [x] Email collision: 2 sequential authEmailExists calls με 
+  discriminated 409 messages ("Πρόεδρου ήδη υπάρχει" / "Backup 
+  Admin ήδη υπάρχει")
+- [x] Step 6b: parallel auth.admin.createUser για backup admin
+- [x] Step 7b: INSERT members row με is_hub_admin: true, 
+  is_president: false, is_board_member: false, board_position: null
+- [x] Step 8: SHARED — single SELECT "Πρόεδρος ΔΣ" role serves 
+  both admins
+- [x] Step 9: Batch insert 2 role assignments (πρόεδρος + backup) 
+  με discriminated notes
+- [x] Welcome email: SKIPPED για backup admin (D2 decision — 
+  backup admin είναι SyllogosHub ops account, no self-email)
+- [x] Bookkeeping: +2 vars (createdBackupAuthUserId, 
+  createdBackupMemberId) — track και τους 2 για partial-failure
+- [x] Success response: +2 fields (backupAdminUserId, backupMemberId)
+- [x] Partial-failure log + context: +2 keys mirror
+
+**Smoke-tested:**
+- ✅ Test 1 — Happy path club creation (2 members, both με 
+  "Πρόεδρος ΔΣ" role)
+- ✅ Test 2 — DB verification: is_hub_admin correctly distinguishes,
+  role_assignments table has 2 rows με discriminated notes
+- ✅ Test 3 — Same-email rejection: 400 error με Greek message
+
+**Architectural decisions taken:**
+- D1: Backup password auto-generated, editable, with visibility 
+  toggle (mirror του primary)
+- D2: Skip welcome email για backup admin
+- D3: Both admins get "Πρόεδρος ΔΣ" role (full permissions για 
+  recovery scenarios) — distinction μέσω is_hub_admin flag
+- D4: Both sections always visible (mandatory backup, no collapse)
+
+Net stats: +158/-3 lines (form), +107/-14 lines (route).
+
+**Επόμενο εκκρεμές:** PR γ' — provision-backup-admin.ts script 
++ kriton-aigaleo backfill (existing club δεν έχει backup admin 
+ακόμα). Δες ROADMAP entry "🔴 Dual-admin PR γ'".
+
+Connects με: PR #80 (schema foundation με is_hub_admin), PR #81 
+(audit labels για is_hub_admin), PR #84 (slug auto-gen + password 
+toggle inherited σε νέο section).
+
 ### feat/admin-clubs-new-ux-polish (merged 2026-05-14) — PR #84
 
 UX polish για το /admin/clubs/new form. 2 quick wins που 
@@ -1777,13 +1716,31 @@ Dual-admin pattern PR α' (3-PR series). Foundation schema layer για
 Connects με: PR #62 (identity bugs), PR #64 (seedClub linkage), 
 PR #81 (audit labels foundation).
 
-<!-- ──────────────────────────────────────────────────────────── -->
-<!-- TODO: Backfill Recently Done entry για το ίδιο το             -->
-<!-- loose-ends-2026-05-14 PR (PR # to be added post-merge).      -->
-<!-- Includes Commit 1 (ROADMAP cleanup), Commit 2 (family search -->
-<!-- reverse-name fix), Commit 3 (this — backlog Recently Done    -->
-<!-- entries για PR #75-#78 + PR #84 entry).                      -->
-<!-- ──────────────────────────────────────────────────────────── -->
+### chore/loose-ends-2026-05-14 (merged 2026-05-14) — PR #85
+
+Tidy-up PR μετά τα PR #80/#81/#82/#83/#84 της 2026-05-14 session.
+3 atomic commits για ROADMAP cleanup + minimal UX inconsistency
+fix + Recently Done backlog gap closure.
+
+**Commit 1: ROADMAP entry cleanup**
+- [x] Closed 3 Tech Debt/High Priority entries (Drop user_roles,
+  requireSuperAdmin parity, /admin/clubs/new UX polish)
+- [x] Fixed PR #? placeholder σε cleanup-batch Recently Done entry
+
+**Commit 2: Family search reverse-name fix**
+- [x] app/members/page.tsx familyMatches filter now matches both
+  "last first" AND "first last" orders
+- [x] Mirror calendar/page.tsx:1640-1641 pattern (existing site)
+
+**Commit 3: Recently Done backfill για pre-existing gap**
+- [x] 4 minimal entries για PR #75/#76/#77/#78 (από 2026-05-13
+  session που είχαν αφεθεί ως TODO placeholder)
+- [x] Recently Done entry για PR #84 (slug auto-gen + password toggle)
+
+Net: -7 lines total.
+
+Connects με: PR #83 (closes 2 of 3 Tech Debt entries), PR #84 
+(closes UX polish entry), pre-existing 2026-05-13 backlog gap.
 
 ### chore/roadmap-defer-portal-return-to (merged 2026-05-13) — PR #78
 
