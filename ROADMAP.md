@@ -287,16 +287,81 @@ _(no active branches)_
   Verification: `grep is_system_admin supabase/` → 0 matches σε .sql files.
   
   Implication: τα 4 columns είναι load-bearing σε resolveAuthMember, 
-  useRole, useCurrentClub:114 (cross-club impersonation gate). Fresh 
-  DB από repo migrations σπάει με column-not-exists.
+  useRole, useCurrentClub:114 (cross-club impersonation gate).
   
-  Suggested follow-up: νέα migration `0026_backfill_members_admin_flags_schema.sql` 
-  με `ADD COLUMN IF NOT EXISTS` + documented defaults για τα 4 flags.
+  **Root cause identified 2026-05-14 (Commit 2 cleanup-batch session):** 
+  Production δεν χρησιμοποιεί `supabase_migrations.schema_migrations` 
+  table — migration files στο repo είναι documentation only, όχι 
+  runnable artifacts. Άρα "schema drift" είναι documentation drift, 
+  όχι runtime drift. Δες strategic entry "Migration system 
+  architecture decision" παρακάτω για τη σχετική απόφαση που 
+  εκκρεμεί.
 
   Estimated: M-L (4-8 ώρες audit + corrections, multi-PR αν χρειαστεί)
 
   Required before multi-tenant onboarding — δεν θέλουμε σύλλογο να
   πέσει σε runtime error από schema drift που υπολανθάνει.
+
+- [ ] **🔴 Migration system architecture decision**
+
+  Discovered: 2026-05-14 (cleanup-batch session, attempted 
+  `select * from supabase_migrations.schema_migrations`).
+  
+  **Reality check:** Production δεν έχει `supabase_migrations.schema_migrations` 
+  table. Migration files στο `supabase/migrations/` directory είναι 
+  **documentation/history**, όχι runnable artifacts. Όλες οι schema 
+  changes γίνονται manual στο Supabase SQL Editor από τον dev, και 
+  μετά καταγράφονται ως migration files post-hoc.
+
+  **Concrete evidence (3 examples):**
+  
+  1. `members` table admin flags (is_board_member, board_position, 
+     is_president, is_system_admin) — δεν εμφανίζονται σε κανένα 
+     migration file. Production add έγινε manual μέσω Dashboard.
+  
+  2. `user_roles` table — Migration 0015 sets FK constraint πάνω 
+     του (line 86-90), αλλά κανένα προηγούμενο migration δεν 
+     CREATE-άρει το table. Production existence ήταν manual.
+     (Dropped 2026-05-14 ως dead code, see PR cleanup-batch-2026-05-14.)
+  
+  3. Migration 0026_drop_user_roles.sql — documentation-only file 
+     στο repo, η πραγματική drop εκτέλεση έγινε manual στο SQL Editor.
+
+  **Implications:**
+  - Fresh DB από repo migrations replay **σπάει σιωπηρά** σε πολλαπλά 
+    σημεία (0005 αν δεν υπάρχουν admin flags, 0015 αν δεν υπάρχει 
+    user_roles, κλπ).
+  - Multi-tenant onboarding σε νέο environment = snapshot restore 
+    από production, όχι migration replay.
+  - Νέος dev που pull-άρει το repo δεν μπορεί να φτιάξει local 
+    schema από scratch.
+
+  **3 paths forward — decision pending:**
+  
+  - **(α) Embrace current reality** — Document explicitly ότι 
+    migrations = history, production = source of truth. Update 
+    onboarding docs. Zero infrastructure change. Fresh DB 
+    workflow = snapshot restore από production.
+  
+  - **(β) Adopt proper migration system** — Run `supabase migration 
+    repair` + baseline snapshot, enable CLI workflow. Significant 
+    refactor — απαιτεί reconciliation όλων των existing migrations 
+    με production reality.
+  
+  - **(γ) Hybrid** — Διατήρηση current manual workflow + automation 
+    tooling για schema export (production → repo). Documentation 
+    file στο repo που παράγεται από production introspection. 
+    Migrations stay as historical log αλλά γίνονται optional.
+
+  **Connects με:**
+  - 🔴 lib/supabase/types.ts drift (παραπάνω) — ίδια root cause
+  - 🔴 Dual-admin pattern (παρακάτω) — multi-tenant onboarding pain
+  - "Migration safety conventions" στο Tech Debt section — needs 
+    reframing μετά την απόφαση
+
+  Estimated: M (decision + path-specific implementation)
+
+  Required before serious multi-tenant onboarding effort.
 
 - [ ] **🔴 Dual-admin pattern + SyllogosHub recovery email convention**
 
@@ -1602,6 +1667,69 @@ _(no active branches)_
   Estimated: M
 
 ## ✅ Recently Done
+
+### chore/cleanup-batch-2026-05-14 (merged 2026-05-14) — PR #?
+
+Strategic cleanup batch με theme "clean foundation πριν Dual-admin 
+PR β'". 3 commits, multi-target cleanup + ROADMAP reframe μετά από 
+3 critical discoveries σχετικά με το migration workflow.
+
+**Commit 1: refactor(auth) — requireSuperAdmin parity με errorResponse**
+- [x] Replace 3 raw `throw new Response` με errorResponse() helper calls
+- [x] Add import { errorResponse } στο lib/auth/requireSuperAdmin.ts
+- [x] Full parity achieved σε όλο το lib/auth/ — όλοι οι server 
+  helpers (resolveAuthMember, requireAdmin, requirePermission, 
+  requireSuperAdmin) consume τώρα το shared helper
+- [x] Net: -12 lines, cleaner pattern
+
+**Commit 2: chore(schema) — drop user_roles dead table + code cleanup**
+- [x] Production SQL: snapshot (1 row preserved σε 
+  user_roles_backup_20260514) + DROP TABLE
+- [x] New migration file 0026_drop_user_roles.sql (documentation-only)
+- [x] Code cleanup:
+  - lib/hooks/useRole.ts: drop user_roles fetch από Promise.all, 
+    drop tableRole derivation, drop canAccessFinances orphan export
+  - lib/supabase/server.ts: drop UserRole type + getCurrentUserRole 
+    function (orphans, no consumers)
+  - lib/supabase/types.ts: drop UserRoleRow/Insert/Update + Database 
+    entry. Keep UserRoleName (still used by RoleState + isAdmin signature).
+  - app/api/admin/clubs/[id]/route.ts: stale comment cleanup 
+    (cascade docs reference)
+- [x] Option 3 refactor pattern (minimal change): isAdmin export 
+  παραμένει — calendar/page.tsx (8 usages) δεν επηρεάζεται
+- [x] Smoke test passed σε 5 routes (members, calendar, audit-log, 
+  admin/clubs, finances)
+- [x] Net: -8 lines κώδικα + new 44-line migration doc
+
+**Commit 3: chore(roadmap) — migration system reality + drift reframe**
+- [x] Updated "lib/supabase/types.ts drift" entry: drop stale 
+  filename suggestion (0026_backfill_members_admin_flags_schema.sql, 
+  conflicting με actual 0026 usage), add root cause link
+- [x] New 🔴 Critical entry "Migration system architecture decision" 
+  με 3 paths (α/β/γ) και 3 concrete evidence examples (members 
+  admin flags, user_roles, 0026 documentation pattern)
+
+**3 critical discoveries σήμερα:**
+
+1. `supabase_migrations.schema_migrations` table **does not exist** 
+   στο production. Migrations στο repo είναι documentation only.
+
+2. `user_roles` table είχε διαφορετικό schema από types.ts 
+   (column `created_at` ορίστηκε στο types.ts αλλά δεν υπάρχει στο 
+   production). Pattern: yet another types.ts drift case.
+
+3. `Migration 0015_clubs_cascade_fixes.sql` references `user_roles` 
+   σε ALTER TABLE statements αλλά καμία προηγούμενη migration δεν 
+   CREATE-άρει το table — production add ήταν manual.
+
+**Pattern emerging:** "production-first development χωρίς migration 
+validation". Όχι defect — απλά reality που πρέπει να τεκμηριώσουμε 
+explicitly και να αποφασίσουμε strategic direction.
+
+**Connects με:**
+- 🔴 New Critical entry "Migration system architecture decision"
+- ROADMAP "Audit admin coverage" entry (στο 🟡 section)
+- PR #80 (is_hub_admin schema), PR #81 (audit labels foundation)
 
 ### feat/audit-labels-foundation (merged 2026-05-14) — PR #81
 
