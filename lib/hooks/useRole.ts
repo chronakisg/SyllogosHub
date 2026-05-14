@@ -97,22 +97,15 @@ export function useRole(): RoleState {
     async function resolveRole(userId: string, email: string | null) {
       const lookupEmail = email?.trim() ?? null;
       try {
-        const [memRes, roleRes] = await Promise.all([
-          lookupEmail
-            ? supabase
-                .from("members")
-                .select(
-                  "id,first_name,last_name,email,is_president,is_system_admin,is_board_member,board_position"
-                )
-                .ilike("email", lookupEmail)
-                .maybeSingle()
-            : Promise.resolve({ data: null, error: null } as const),
-          supabase
-            .from("user_roles")
-            .select("role")
-            .eq("user_id", userId)
-            .maybeSingle(),
-        ]);
+        const memRes = lookupEmail
+          ? await supabase
+              .from("members")
+              .select(
+                "id,first_name,last_name,email,is_president,is_system_admin,is_board_member,board_position"
+              )
+              .ilike("email", lookupEmail)
+              .maybeSingle()
+          : ({ data: null, error: null } as const);
         if (cancelled) return;
 
         const m = (memRes.data ?? null) as
@@ -192,11 +185,6 @@ export function useRole(): RoleState {
         }
         if (cancelled) return;
 
-        const tableRole =
-          roleRes.error || !roleRes.data
-            ? null
-            : ((roleRes.data as { role: UserRoleName }).role ?? null);
-
         const permissions = computePermissions({
           isPresident,
           isSystemAdmin,
@@ -211,7 +199,7 @@ export function useRole(): RoleState {
           memberId,
           firstName,
           lastName,
-          role: isSystemAdmin || isPresident ? "admin" : tableRole,
+          role: isSystemAdmin || isPresident ? "admin" : null,
           isPresident,
           isSystemAdmin,
           isBoardMember,
@@ -266,10 +254,6 @@ export function useRole(): RoleState {
 
 export function isAdmin(role: UserRoleName | null): boolean {
   return role === "admin";
-}
-
-export function canAccessFinances(role: UserRoleName | null): boolean {
-  return role === "admin" || role === "treasurer";
 }
 
 export function hasPermission(state: RoleState, perm: Permission): boolean {

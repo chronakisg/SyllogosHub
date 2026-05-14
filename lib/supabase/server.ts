@@ -44,17 +44,3 @@ export async function getCurrentUser() {
   return data.user;
 }
 
-export type UserRole = "admin" | "treasurer" | "member";
-
-export async function getCurrentUserRole(): Promise<UserRole | null> {
-  const supabase = await getServerClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) return null;
-  const { data, error } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userData.user.id)
-    .maybeSingle();
-  if (error || !data) return null;
-  return (data as { role: UserRole }).role;
-}

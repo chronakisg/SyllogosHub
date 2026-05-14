@@ -858,22 +858,6 @@ export type ClubSettingsUpdate = Partial<Omit<ClubSettings, "id">>;
 
 export type UserRoleName = "admin" | "treasurer" | "member";
 
-export type UserRoleRow = {
-  user_id: string;
-  club_id: string | null;
-  role: UserRoleName;
-  created_at: string;
-};
-
-export type UserRoleInsert = {
-  user_id: string;
-  club_id?: string | null;
-  role: UserRoleName;
-  created_at?: string;
-};
-
-export type UserRoleUpdate = Partial<Omit<UserRoleRow, "user_id" | "created_at">>;
-
 export type SuperAdmin = {
   user_id: string;
   created_at: string;
@@ -1350,12 +1334,6 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
-      };
-      user_roles: {
-        Row: UserRoleRow;
-        Insert: UserRoleInsert;
-        Update: UserRoleUpdate;
-        Relationships: [];
       };
       calendar_events: {
         Row: CalendarEvent;
