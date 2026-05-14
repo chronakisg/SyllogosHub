@@ -120,6 +120,7 @@ export type Member = {
   application_number: string | null;
   application_date: string | null;
   user_id: string | null;
+  last_announcement_check_at: string | null;
 };
 
 export type MemberInsert = {
@@ -156,6 +157,7 @@ export type MemberInsert = {
   application_number?: string | null;
   application_date?: string | null;
   user_id?: string | null;
+  last_announcement_check_at?: string | null;
 };
 
 export type MemberUpdate = Partial<Omit<Member, "id" | "created_at">>;
@@ -903,6 +905,96 @@ export type AuditLogInsert = {
 
 export type AuditLogUpdate = Partial<Omit<AuditLog, "id" | "created_at">>;
 
+// ─────────── Member Portal Chunk 3 — Schema (Migration 0027) ───────────
+
+export type DayOfWeek = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+export const DAY_OF_WEEK_LABELS: Record<DayOfWeek, string> = {
+  1: "Δευτέρα",
+  2: "Τρίτη",
+  3: "Τετάρτη",
+  4: "Πέμπτη",
+  5: "Παρασκευή",
+  6: "Σάββατο",
+  7: "Κυριακή",
+};
+
+export type Announcement = {
+  id: string;
+  club_id: string;
+  department_id: string | null;
+  title: string;
+  body: string;
+  pinned: boolean;
+  published: boolean;
+  created_at: string;
+  created_by: string | null;
+};
+
+export type AnnouncementInsert = {
+  id?: string;
+  club_id: string;
+  department_id?: string | null;
+  title: string;
+  body: string;
+  pinned?: boolean;
+  published?: boolean;
+  created_at?: string;
+  created_by?: string | null;
+};
+
+export type AnnouncementUpdate = Partial<Omit<Announcement, "id" | "club_id" | "created_at">>;
+
+export type Class = {
+  id: string;
+  club_id: string;
+  department_id: string | null;
+  name: string;
+  day_of_week: DayOfWeek | null;
+  start_time: string | null;
+  end_time: string | null;
+  location: string | null;
+  instructor: string | null;
+  active: boolean;
+  created_at: string;
+};
+
+export type ClassInsert = {
+  id?: string;
+  club_id: string;
+  department_id?: string | null;
+  name: string;
+  day_of_week?: DayOfWeek | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  location?: string | null;
+  instructor?: string | null;
+  active?: boolean;
+  created_at?: string;
+};
+
+export type ClassUpdate = Partial<Omit<Class, "id" | "club_id" | "created_at">>;
+
+export type ClassEnrollment = {
+  id: string;
+  class_id: string;
+  member_id: string;
+  enrolled_at: string;
+  unenrolled_at: string | null;
+  notes: string | null;
+};
+
+export type ClassEnrollmentInsert = {
+  id?: string;
+  class_id: string;
+  member_id: string;
+  enrolled_at?: string;
+  unenrolled_at?: string | null;
+  notes?: string | null;
+};
+
+export type ClassEnrollmentUpdate = Partial<Omit<ClassEnrollment, "id" | "class_id" | "member_id">>;
+
 export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "12";
@@ -1445,6 +1537,76 @@ export type Database = {
           {
             foreignKeyName: "audit_log_actor_member_id_fkey";
             columns: ["actor_member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      announcements: {
+        Row: Announcement;
+        Insert: AnnouncementInsert;
+        Update: AnnouncementUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "announcements_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "announcements_department_id_fkey";
+            columns: ["department_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "announcements_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      classes: {
+        Row: Class;
+        Insert: ClassInsert;
+        Update: ClassUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "classes_club_id_fkey";
+            columns: ["club_id"];
+            isOneToOne: false;
+            referencedRelation: "clubs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "classes_department_id_fkey";
+            columns: ["department_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      class_enrollments: {
+        Row: ClassEnrollment;
+        Insert: ClassEnrollmentInsert;
+        Update: ClassEnrollmentUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "class_enrollments_class_id_fkey";
+            columns: ["class_id"];
+            isOneToOne: false;
+            referencedRelation: "classes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "class_enrollments_member_id_fkey";
+            columns: ["member_id"];
             isOneToOne: false;
             referencedRelation: "members";
             referencedColumns: ["id"];
