@@ -6,6 +6,7 @@ import Link from "next/link";
 import { CLUB_CATEGORY_LABELS } from "@/lib/supabase/types";
 import type { ClubCategory } from "@/lib/supabase/types";
 import { slugify } from "@/lib/utils/slugify";
+import { generatePassword } from "@/lib/utils/password";
 
 type FormState = {
   name: string;
@@ -16,6 +17,10 @@ type FormState = {
   adminFirstName: string;
   adminLastName: string;
   category: ClubCategory;
+  backupAdminEmail: string;
+  backupAdminPassword: string;
+  backupAdminFirstName: string;
+  backupAdminLastName: string;
 };
 
 const INITIAL: FormState = {
@@ -27,6 +32,10 @@ const INITIAL: FormState = {
   adminFirstName: "",
   adminLastName: "",
   category: "traditional",
+  backupAdminEmail: "",
+  backupAdminPassword: "",
+  backupAdminFirstName: "SyllogosHub",
+  backupAdminLastName: "Recovery",
 };
 
 const INPUT_CLASS =
@@ -34,11 +43,16 @@ const INPUT_CLASS =
 
 export default function NewClubPage() {
   const router = useRouter();
-  const [form, setForm] = useState<FormState>(INITIAL);
+  const [form, setForm] = useState<FormState>(() => ({
+    ...INITIAL,
+    backupAdminPassword: generatePassword(),
+  }));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [slugDirty, setSlugDirty] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showBackupPassword, setShowBackupPassword] = useState(false);
+  const [backupEmailDirty, setBackupEmailDirty] = useState(false);
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -95,7 +109,14 @@ export default function NewClubPage() {
               const value = e.target.value;
               update("name", value);
               if (!slugDirty) {
-                update("slug", slugify(value));
+                const newSlug = slugify(value);
+                update("slug", newSlug);
+                if (!backupEmailDirty) {
+                  update(
+                    "backupAdminEmail",
+                    newSlug ? `info@${newSlug}.syllogoshub.gr` : "",
+                  );
+                }
               }
             }}
             className={INPUT_CLASS}
@@ -117,6 +138,13 @@ export default function NewClubPage() {
               update("slug", value);
               // Empty slug → re-enable auto-generation από το name
               setSlugDirty(value.length > 0);
+              // Auto-sync backup email αν δεν έχει manually edited
+              if (!backupEmailDirty) {
+                update(
+                  "backupAdminEmail",
+                  value ? `info@${value}.syllogoshub.gr` : "",
+                );
+              }
             }}
             className={`${INPUT_CLASS} font-mono`}
           />
@@ -245,6 +273,133 @@ export default function NewClubPage() {
           </div>
         </Field>
 
+        <div className="border-t border-gray-200 pt-4 mt-2">
+          <h2 className="text-sm font-semibold text-[#800000] mb-1">
+            Backup Admin (SyllogosHub Recovery)
+          </h2>
+          <p className="text-xs text-gray-600 mb-4">
+            Λογαριασμός recovery για περιπτώσεις απώλειας access του
+            Πρόεδρου. Διαχειρίζεται ο πάροχος (SyllogosHub).
+          </p>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Όνομα" required>
+              <input
+                type="text"
+                required
+                value={form.backupAdminFirstName}
+                onChange={(e) => update("backupAdminFirstName", e.target.value)}
+                className={INPUT_CLASS}
+              />
+            </Field>
+            <Field label="Επώνυμο" required>
+              <input
+                type="text"
+                required
+                value={form.backupAdminLastName}
+                onChange={(e) => update("backupAdminLastName", e.target.value)}
+                className={INPUT_CLASS}
+              />
+            </Field>
+          </div>
+
+          <Field
+            label="Email"
+            required
+            hint="Auto-generated από το slug. Επεξεργάσιμο. Καθαρίστε το για επαναφορά auto-generation."
+          >
+            <input
+              type="email"
+              required
+              value={form.backupAdminEmail}
+              onChange={(e) => {
+                const value = e.target.value;
+                update("backupAdminEmail", value);
+                setBackupEmailDirty(value.length > 0);
+              }}
+              className={INPUT_CLASS}
+            />
+          </Field>
+
+          <Field
+            label={
+              <span className="flex items-center gap-2">
+                Κωδικός
+                <button
+                  type="button"
+                  onClick={() =>
+                    update("backupAdminPassword", generatePassword())
+                  }
+                  className="text-xs text-[#800000] hover:underline focus:outline-none"
+                >
+                  🎲 Νέος κωδικός
+                </button>
+              </span>
+            }
+            required
+            hint="Auto-generated. Αποθηκεύεται σε password manager."
+          >
+            <div className="relative">
+              <input
+                type={showBackupPassword ? "text" : "password"}
+                required
+                minLength={8}
+                value={form.backupAdminPassword}
+                onChange={(e) =>
+                  update("backupAdminPassword", e.target.value)
+                }
+                className={`${INPUT_CLASS} pr-10 font-mono`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowBackupPassword((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000] rounded"
+                aria-label={
+                  showBackupPassword
+                    ? "Απόκρυψη κωδικού"
+                    : "Εμφάνιση κωδικού"
+                }
+              >
+                {showBackupPassword ? (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+                    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+                    <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+                    <line x1="2" x2="22" y1="2" y2="22" />
+                  </svg>
+                ) : (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </Field>
+        </div>
+
         {error && (
           <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">
             {error}
@@ -277,7 +432,7 @@ function Field({
   hint,
   children,
 }: {
-  label: string;
+  label: ReactNode;
   required?: boolean;
   hint?: string;
   children: ReactNode;
