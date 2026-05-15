@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-13 (Portal post-login return-to deferred — documented for future trigger)  
+> Last updated: 2026-05-15 (Dashboard data leak + Greek search transliteration entries added)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -402,6 +402,47 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
   Connects με: PR γ' (provision-backup-admin script delivered).
 
+- [ ] **🔴 Dashboard `/` data leak σε non-admin members**
+
+  Discovered: 2026-05-14 (smoke testing του Commit 2,
+  branch `feat/portal-password-set`).
+
+  **Symptom:** Member με valid Supabase auth session αλλά χωρίς
+  admin role (test user: ΚΩΣΤΑΣ ΧΡΟΝΑΚΗΣ μέσω password login)
+  βλέπει στο `/`:
+  - Stats cards: total active members count (245), monthly revenue
+  - "Εκκρεμότητες" modal που dumps όλους τους members με pending
+    dues + phone numbers (**PII exposure**)
+
+  **Affects:** `app/page.tsx` (root dashboard). Page-level
+  permission gate λείπει στο root rendering.
+
+  **Σωστά λειτουργούν (defense-in-depth verified):**
+  - Sidebar nav filter: non-admin βλέπει μόνο "Αρχική" + "Ημερολόγιο"
+  - `/members` direct URL → blocked με friendly Greek message
+  - Other protected pages (/events, /finances, /seating) έχουν
+    correct gates ή layout-level redirect
+
+  **Fix options (decision pending):**
+  - **(α) Layout-level redirect:** non-admin redirected σε
+    `/portal/profile` ή `/calendar`
+  - **(β) Permission gate inside page:** dashboard rendering
+    behind `requirePermission('admin')` check, fallback empty
+    state με "Δεν έχετε πρόσβαση"
+  - **(γ) Member dashboard variant:** non-admin βλέπει custom
+    "Welcome [Όνομα]" view χωρίς admin stats — connects με
+    Member Portal Stack
+
+  Connects με: PR α' (Member Portal password-set — first time
+  που non-admin κάνει login μέσω portal flow), 🟣 Member Portal
+  domain.
+
+  **Required before multi-tenant onboarding.** Existing kriton
+  members με portal accounts (0 σήμερα, αλλά 10 πιθανοί) θα δουν
+  PII leak μόλις κάνουν login.
+
+  Estimated: S-M (option-dependent)
+
 ## 🟡 High Priority (post-beta)
 
 ### Reservations & Attendees domain
@@ -797,6 +838,49 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
   Estimated: M (responsive design, AppShell rework)
   Priority: High (UX blocker σε field use)
+
+- [ ] **🔤 Greek search bidirectional transliteration (Latin↔Greek)**
+
+  Stack: 📊 + 🌐 Cross-cutting UX
+
+  Discovered: 2026-05-14 (κατά τη χρήση του /members search,
+  λάθος keyboard layout assumption).
+
+  **Σήμερα:**
+  - `lib/utils/greekSearch.ts` `normalizeGreek()` (PR #51):
+    lowercase + NFD diacritics strip + final-sigma normalization.
+    Greek input → normalized Greek. **ΟΧΙ transliteration.**
+  - `lib/utils/slugify.ts` (PR #84): Greek → Latin για slug
+    generation στο `/admin/clubs/new`. Standalone utility, δεν
+    συνδέεται με search.
+
+  **Λείπει:** Latin → Greek για search input normalization.
+
+  **Use case:** User ξεχνάει να αλλάξει keyboard layout, γράφει
+  `xronakis` στο /members search → θα έπρεπε να ταιριάξει
+  "ΧΡΟΝΑΚΗΣ". Σήμερα 0 results.
+
+  **Όχι regression** — feature που ποτέ δεν δούλεψε. Latin
+  search σε Greek member names = ξεκάθαρο UX gap αλλά όχι
+  breaking.
+
+  **Implementation thoughts:**
+  - Νέα export `latinToGreek()` στο `lib/utils/greekSearch.ts`
+  - Inverse map του `slugify.ts` (μη-bijective — π.χ. `i` →
+    `ι/η/υ/ει/οι`, `o` → `ο/ω`). Χρειάζεται multi-candidate
+    generation ή broader regex matching
+  - Detection heuristic: αν query έχει μόνο Latin chars + όχι
+    Greek chars, παράγεται variants σε Greek
+  - Affects search sites που χρησιμοποιούν `normalizeGreek` (από
+    PR #55): /members, /seating, /cashier, /events, /finances,
+    SponsorsPanel, κλπ
+  - Bidirectional = και reverse path (Greek query → match Latin
+    stored data, αν εμφανιστεί τέτοιο use case)
+
+  **Low urgency** — orthogonal feature, UX win αλλά όχι blocker.
+
+  Estimated: M (helper utility + dispatcher logic + 10-15 search
+  sites)
 
 ### 🔍 Audit & Monitoring
 
