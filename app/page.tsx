@@ -10,6 +10,8 @@ import type {
   CalendarEventCategory,
 } from "@/lib/supabase/types";
 
+export const dynamic = 'force-dynamic';
+
 interface DashboardStats {
   activeMembers: number | null;
   monthRevenue: number | null;

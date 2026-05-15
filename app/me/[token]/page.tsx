@@ -65,6 +65,10 @@ export default function MeTokenPage() {
   const [maidenName, setMaidenName] = useState("");
   const [birthplace, setBirthplace] = useState("");
   const [residence, setResidence] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   // Fetch member by token
   useEffect(() => {
@@ -109,6 +113,18 @@ export default function MeTokenPage() {
 
   async function handleSubmit() {
     if (!token) return;
+
+    // Client-side password validation
+    setPasswordError(null);
+    if (password.length < 8) {
+      setPasswordError("Ο κωδικός πρέπει να έχει τουλάχιστον 8 χαρακτήρες");
+      return;
+    }
+    if (password !== passwordConfirm) {
+      setPasswordError("Οι κωδικοί δεν ταιριάζουν");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     try {
@@ -125,6 +141,7 @@ export default function MeTokenPage() {
           maiden_name: maidenName.trim() || null,
           birthplace: birthplace.trim() || null,
           residence: residence.trim() || null,
+          password,
         }),
       });
       if (!res.ok) {
@@ -339,6 +356,88 @@ export default function MeTokenPage() {
                 className={inputClass}
               />
             </Field>
+
+            {/* Password setup section */}
+            <div className="border-t border-gray-200 pt-4 mt-2">
+              <h3 className="text-sm font-semibold text-gray-800 mb-1">
+                Δημιουργία Κωδικού Πρόσβασης
+              </h3>
+              <p className="text-xs text-gray-600 mb-3">
+                Ορίστε έναν κωδικό για να συνδέεστε στην εφαρμογή. Τουλάχιστον 8 χαρακτήρες.
+              </p>
+
+              <Field label="Κωδικός">
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    minLength={8}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className={`${inputClass} pr-10`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-[#800000] focus:outline-none focus:ring-2 focus:ring-[#800000] rounded"
+                    aria-label={showPassword ? "Απόκρυψη κωδικού" : "Εμφάνιση κωδικού"}
+                  >
+                    {showPassword ? (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+                        <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+                        <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+                        <line x1="2" x2="22" y1="2" y2="22" />
+                      </svg>
+                    ) : (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </Field>
+
+              <Field label="Επιβεβαίωση κωδικού">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  minLength={8}
+                  value={passwordConfirm}
+                  onChange={(e) => setPasswordConfirm(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+
+              {passwordError && (
+                <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2 mt-2">
+                  {passwordError}
+                </div>
+              )}
+            </div>
           </div>
 
           {error && (
@@ -354,7 +453,7 @@ export default function MeTokenPage() {
             className="mt-6 w-full rounded-lg px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
             style={{ backgroundColor: primary }}
           >
-            {submitting ? "Αποθήκευση…" : "Αποθήκευση & Επιβεβαίωση"}
+            {submitting ? "Δημιουργία…" : "Αποθήκευση & Δημιουργία Λογαριασμού"}
           </button>
 
           <p className="mt-3 text-center text-xs text-muted">

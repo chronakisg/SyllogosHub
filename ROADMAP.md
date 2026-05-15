@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-13 (Portal post-login return-to deferred — documented for future trigger)  
+> Last updated: 2026-05-15 (PR α' ready — feat/portal-password-set 8-commit branch με Member Portal Chunk 3 auth + dashboard PII block)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -402,6 +402,43 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
   Connects με: PR γ' (provision-backup-admin script delivered).
 
+- [ ] **🔴 Root `/` PII leak σε non-admin — temporary block**
+
+  Discovered: 2026-05-14, branch `feat/portal-password-set`
+  (smoke testing του Commit 2).
+
+  **Symptom:** Member με valid Supabase auth session αλλά χωρίς
+  admin role (test user: ΚΩΣΤΑΣ ΧΡΟΝΑΚΗΣ μέσω password login)
+  βλέπει στο `/`:
+  - Stats cards (245 ενεργά μέλη, monthly revenue)
+  - "Εκκρεμότητες" modal με ονόματα + τηλέφωνα όλων των μελών
+    (**PII exposure — GDPR concern**)
+  - Admin quick-action cards (Διαχείριση Μελών, Πλάνο Τραπεζιών)
+
+  **Affects:** `app/page.tsx` (root dashboard). Page-level
+  permission gate λείπει στο root rendering.
+
+  **Σωστά λειτουργούν (defense-in-depth verified):**
+  - Sidebar nav filter: non-admin βλέπει μόνο "Αρχική" + "Ημερολόγιο"
+  - `/members` direct URL → blocked με friendly Greek message
+  - Other protected pages (/events, /finances, /seating) έχουν
+    correct gates ή layout-level redirect
+
+  **Temporary fix shape (this entry):** Server-side check στο
+  root layout ή `app/page.tsx` — αν user δεν έχει admin
+  permissions, redirect σε `/portal/profile`. Reuse
+  `resolveAuthMember` + permissions logic από existing code.
+
+  **ΟΧΙ permanent solution.** Είναι αρχιτεκτονικό gap, όχι bug:
+  λείπει η persona-based root routing. Permanent → βλ.
+  🟣 entry "Member Persona Home — root routing architecture".
+
+  **Required before multi-tenant onboarding.** Existing kriton
+  members με portal accounts (0 σήμερα, 10 πιθανοί με email)
+  θα δουν PII leak μόλις κάνουν login.
+
+  Estimated: S (~30 minutes — single redirect addition)
+
 ## 🟡 High Priority (post-beta)
 
 ### Reservations & Attendees domain
@@ -698,6 +735,175 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 > Stack description βλ. 🏗️ Architectural Stacks → 🟣 Member Portal Stack.
 > Foundation merged: Chunk 2 — Auth + Profile (PR #44, 2026-05-09).
 
+- [ ] **🟣 Member Persona Home — root routing architecture**
+
+  Stack: 🟣 Member Portal · Permanent solution για 🔴 Root `/` PII leak
+
+  Strategic context: Σήμερα root `/` δείχνει admin dashboard
+  σε όλους τους authenticated users. Είναι αρχιτεκτονικό gap,
+  όχι bug — λείπει η persona-based root routing.
+
+  **Locked design (συζήτηση 2026-05-15):**
+
+  1. **Persona-based root routing:**
+     - `/` = admin dashboard (αμετάβλητο για admins)
+     - Non-admin user στο `/` → redirect σε `/portal`
+     - Admin που θέλει member view → manually σε `/portal`
+
+  2. **`/portal` = member home** (νέο route, layout διακριτό
+     από admin shell):
+     - Welcome header με όνομα μέλους
+     - Ενιαία λίστα εκκρεμοτήτων (subscription + events +
+       classes + excursions + ad-hoc)
+     - Ανακοινώσεις (filtered βάσει audience — βλ. Chunk 4)
+     - Επόμενες εκδηλώσεις του συλλόγου
+     - Quick links σε /portal/profile, /portal/events,
+       /portal/finances/me
+
+  3. **Layout divergence:** `app/portal/layout.tsx` ζει
+     ξεχωριστά. Member sidebar = ~5 entries (όχι 11 του admin).
+     Δυνατότητα διαφορετικού color tone (branded warmth vs
+     admin functional) ανά σύλλογο.
+
+  **Standalone-able principle:** Σύλλογος που δεν θέλει
+  Member Portal απενεργοποιεί το `portal` module στο
+  `club_modules` (μελλοντική προσθήκη — δεν υπάρχει σήμερα
+  στο 7-module CHECK constraint). Root `/` τότε επιστρέφει
+  στο "Δεν έχετε πρόσβαση" message για non-admin.
+
+  **Phase rollout:**
+  - **Phase 1**: Routing + skeleton page με welcome +
+    obligations placeholder
+  - **Phase 2**: Announcements integration (βλ. Chunk 4 entry)
+  - **Phase 3**: Events + finances integration (βλ. Chunk 3 entry)
+  - **Phase 4**: Family-aware features (parent βλέπει παιδιά)
+
+  **Connects με:**
+  - 🔴 Root `/` PII leak (αυτό κλείνει το permanent fix)
+  - 🟣 Chunk 3 — Member Events + Finances
+  - 🟣 Chunk 4 — Classes + Announcements + Departments UI
+  - 🟣 Obligations unified view (Phase 1 dependency)
+  - `club_modules.portal` feature flag (future addition για
+    standalone-able)
+
+  Estimated: L (multi-session, foundation feature)
+
+- [ ] **🟣 Obligations unified view — `member_obligations_v`**
+
+  Stack: 🟣 Member Portal · Sub-feature του Member Persona Home
+
+  Strategic context: Member view εκκρεμοτήτων χρειάζεται
+  unified data από πολλαπλά sources. Αντί `obligations` table
+  (sync drift risk), χρησιμοποιούμε read-time Postgres view
+  που ενώνει sources με UNION ALL.
+
+  **Design (locked 2026-05-15):**
+
+  Νέο view `member_obligations_v` με columns:
+  - `kind text` — `'subscription'` | `'event_attendance'` |
+    `'class_enrollment'` | `'event_excursion'` | `'other'`
+  - `source_id uuid` — pointer στο original row
+  - `member_id uuid`
+  - `club_id uuid`
+  - `amount numeric`
+  - `label text` — human-readable description
+  - `due_date date`
+  - `event_id uuid` — nullable, αν αφορά εκδήλωση
+  - `created_at timestamptz`
+
+  UNION ALL queries από:
+  - `payments` WHERE status pending → subscription
+  - `reservation_attendees` με unpaid amount → event_attendance
+  - `class_enrollments` με unpaid fee → class_enrollment (future)
+  - Event subtype ή new column → event_excursion (future)
+  - `member_other_transactions` → other (future schema)
+
+  **Why read-time view, όχι denormalized table:**
+  - Source of truth παραμένει στα αρχικά tables
+  - Zero sync drift risk
+  - Άμεση συνέπεια με admin views
+  - Materialized view as future optimization αν χρειαστεί
+
+  **Phase rollout:**
+  - Phase 1: subscription + event_attendance (έχουμε ήδη data)
+  - Phase 2: class_enrollment (μετά UI work του Chunk 4)
+  - Phase 3: event_excursion (όταν αποσαφηνιστεί το concept —
+    σήμερα δεν υπάρχει distinct event_type για εκδρομές)
+  - Phase 4: other_transactions (όταν schema προστεθεί)
+
+  **Connects με:**
+  - 🟣 Member Persona Home (primary consumer)
+  - 🟣 Chunk 3 — Member Events + Finances (πιθανώς ίδιο
+    component reuse στο /portal/finances/me)
+  - Zero schema impact (μόνο view, no new tables)
+
+  Estimated: M (view + types + 1-2 components για consumption)
+
+- [ ] **🟡 Magic link verify — PKCE flow refactor**
+
+  Stack: 🟣 Member Portal · Auth foundation fix
+
+  Strategic context: Σήμερα magic link **send** δουλεύει
+  (Resend integration OK, email arrives σωστά) αλλά
+  magic link **verify** αποτυγχάνει deterministic με
+  `otp_expired` error σε <20 δευτερόλεπτα από send.
+
+  **Symptom (από smoke testing 2026-05-15, branch
+  `feat/portal-password-set`):**
+  - `generateLink({ type: 'magiclink' })` επιστρέφει token σε
+    PKCE format
+  - `verifyOtp({ token_hash, type: 'magiclink' })` σε
+    PKCE-default server client αποτυγχάνει με `otp_expired`
+    (generic fallback error)
+  - Token **δεν είναι** όντως expired — είναι type mismatch
+    μεταξύ generate path και verify path
+  - Verified με: incognito test (αποκλείσαμε email scanner),
+    Supabase OTP expiry config check (3600s), explicit
+    diagnostic με 2 sequential link sends
+
+  **Root cause:** `@supabase/ssr@0.10` default `flowType: 'pkce'`.
+  `verifyOtp` με `token_hash` περιμένει implicit-flow tokens.
+  Comment στο `send-magic-link/route.ts:110`
+  ("PKCE incompatible με admin-generated links") είναι **stale**
+  από προηγούμενη Supabase version όπου το pattern δούλευε.
+
+  **Solution path (locked 2026-05-15):** Refactor σε proper
+  PKCE flow.
+  - Στο send: χρήση `linkData.properties.action_link` directly
+    (όχι manual URL construction με `token_hash`)
+  - Στο auth-callback: `exchangeCodeForSession(code)` αντί
+    `verifyOtp({ token_hash, type })`
+  - Email template: pass-through του Supabase-generated URL
+
+  **ΟΧΙ quick fix με `flowType: 'implicit'`.** Pre-flight
+  διάγνωση 2026-05-15 αποκάλυψε ότι το change:
+  - Είναι permanent security posture downgrade (όλο το app,
+    όχι μόνο magic link)
+  - Επηρεάζει 38+ browser-side call sites μέσω cookie format
+  - Invalidate-άρει active sessions στο deployment
+  Όλα αυτά για ένα **fallback** feature — disproportionate cost.
+
+  **Current mitigation (PR α', Commit 6):** UX guards στο
+  `/portal/login` δείχνουν Greek error banner όταν user
+  πατάει failed link («Ο σύνδεσμος έληξε ή είναι άκυρος.
+  Συνδεθείτε με κωδικό ή ζητήστε νέο σύνδεσμο.»). Password
+  login = primary path που δουλεύει, magic link = pending fix.
+
+  **Connects με:**
+  - 🟢 Welcome email follow-ups (C) Forgot password flow —
+    proper email-based auth UX πρέπει να σχεδιαστεί μαζί
+    (κοινό pattern: server-generated link + PKCE exchange)
+  - 🟣 Member Persona Home — auth foundation για non-admin
+    users, magic link θα γίνει actual usable path
+  - PR α' UX guards (Commit 6 από `feat/portal-password-set`) —
+    το temporary mitigation που εμφανίζει σωστό Greek error
+  - 🔧 Document @supabase/ssr default flowType decision
+    (Tech Debt entry — comment cleanup μετά τον refactor)
+
+  Estimated: M (2-3 ώρες, multi-file change: send-magic-link
+  route + auth-callback page + email template + thorough
+  smoke testing σε Vercel preview environment)
+
 - [ ] **Chunk 3 — Member Events + Finances**
 
   Stack: 🟣 Member Portal
@@ -742,9 +948,95 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   - 🔜 Family-wide visibility (parent βλέπει παιδιά εγγεγραμμένα)
   - 🔜 Push notifications για νέες ανακοινώσεις
 
-  Connects με: departments, family system, push notifications
+  **🆕 Audience-aware announcements (locked 2026-05-15):**
+
+  Member βλέπει μια ανακοίνωση αν ισχύει **ένα από τα**:
+  1. **Global** — `announcements.department_id IS NULL`
+     (όλος ο σύλλογος)
+  2. **Department membership** — γραμμένο στο τμήμα της
+     ανακοίνωσης (μέσω `class_enrollments` που ανήκει σε
+     class με το συγκεκριμένο `department_id`)
+  3. **Direct class enrollment** — γραμμένο σε class που
+     ανήκει σε αυτό το department (transitive)
+
+  Write permissions (ποιοι γράφουν ανακοινώσεις):
+  - **Πρόεδρος/Γραμματέας** → global ή οποιοδήποτε department
+  - **Ομαδάρχης τμήματος** → μόνο τα δικά του departments
+    (απαιτεί 🟡 Department Leaders concept — βλ. entry)
+  - **Καθηγητής class** (future) → μόνο τα δικά του classes
+    (απαιτεί instructor FK refactor από text σε
+    `instructor_member_id`)
+
+  Σήμερα μόνο πρόεδρος/γραμματέας μπορούν να γράψουν
+  department-scoped announcements (Πρόεδρος ΔΣ role έχει
+  το permission). Ομαδάρχης concept πρέπει να μπει πρώτα.
+
+  Connects με: departments, family system, push notifications,
+  🟡 Department Leaders concept (prerequisite για
+  ομαδάρχη-scoped announcements)
 
   Estimated: L (UI work post-schema — σπασμένο σε 4-5 PRs)
+
+- [ ] **🟡 Department Leaders concept (schema prerequisite)**
+
+  Stack: 🟣 Member Portal · Schema evolution prerequisite
+
+  Strategic context: Σήμερα το schema δεν υποστηρίζει τον
+  «ομαδάρχη» concept που είναι standard σε παραδοσιακούς
+  συλλόγους. Κάθε τμήμα (τμήμα Λύρας, τμήμα Παραδοσιακών Χορών,
+  κλπ) έχει 1+ ομαδάρχη — μέλος του συλλόγου με διοικητική
+  φροντίδα του τμήματος.
+
+  **Σχέση με instructor:** Διαφορετική έννοια.
+  - **Ομαδάρχης** = εσωτερικό μέλος, διοικητικός ρόλος,
+    γράφει ανακοινώσεις για το τμήμα
+  - **Instructor** (`classes.instructor` text column σήμερα)
+    = external professional που διδάσκει, δεν έχει αναγκαστικά
+    member account
+
+  Το ομαδάρχης concept ζει στο **department layer**, ο
+  instructor στο **class layer**.
+
+  **Design (locked 2026-05-15):**
+
+  Νέα table `department_leaders`:
+  - `department_id uuid` (FK → departments, ON DELETE CASCADE)
+  - `member_id uuid` (FK → members, ON DELETE CASCADE)
+  - `role text NOT NULL DEFAULT 'leader'`
+    (`'leader'` | `'assistant'` | future expansion)
+  - `started_at timestamptz DEFAULT now()`
+  - PRIMARY KEY (department_id, member_id)
+
+  - Multi-leader support per department (π.χ. 2 ομαδάρχες
+    ταυτόχρονα στο τμήμα Λύρας)
+  - Multi-role support (leader + assistant)
+  - Future: `ended_at` column για audit trail (όταν προκύψει
+    need — π.χ. ποιος ήταν ομαδάρχης 2024)
+  - RLS off (consistent με project pattern)
+  - Idempotent migration με defensive snapshot
+
+  **Permission integration:**
+  - Νέο permission module `'department_leadership'` ή reuse
+    existing `'departments'` permission με conditional scope
+    check στο API layer
+  - Server-side guard για write actions: «ο user είναι
+    ομαδάρχης του department_id αυτής της ανακοίνωσης;»
+  - UI: στο /announcements admin page, ομαδάρχης βλέπει μόνο
+    τα δικά του departments στο dropdown
+
+  **Prerequisite για:**
+  - 🟣 Chunk 4 audience-aware announcements
+    (ομαδάρχης-scoped writes)
+  - Future: ομαδάρχης μπορεί να εγγράψει νέα μέλη στο τμήμα του,
+    να βλέπει roster, να στέλνει target messages
+
+  **Connects με:**
+  - departments table (existing)
+  - 🟣 Chunk 4 — Classes + Announcements + Departments UI
+  - permissions system (PRs #49/50/51)
+
+  Estimated: M (schema migration + types + permission integration
+  + admin UI για leader assignment)
 
 - [ ] **🟣 Duplicate email στο members table — portal linkage edge case**
 
@@ -797,6 +1089,49 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
   Estimated: M (responsive design, AppShell rework)
   Priority: High (UX blocker σε field use)
+
+- [ ] **🔤 Greek search bidirectional transliteration (Latin↔Greek)**
+
+  Stack: 📊 + 🌐 Cross-cutting UX
+
+  Discovered: 2026-05-14 (κατά τη χρήση του /members search,
+  λάθος keyboard layout assumption).
+
+  **Σήμερα:**
+  - `lib/utils/greekSearch.ts` `normalizeGreek()` (PR #51):
+    lowercase + NFD diacritics strip + final-sigma normalization.
+    Greek input → normalized Greek. **ΟΧΙ transliteration.**
+  - `lib/utils/slugify.ts` (PR #84): Greek → Latin για slug
+    generation στο `/admin/clubs/new`. Standalone utility, δεν
+    συνδέεται με search.
+
+  **Λείπει:** Latin → Greek για search input normalization.
+
+  **Use case:** User ξεχνάει να αλλάξει keyboard layout, γράφει
+  `xronakis` στο /members search → θα έπρεπε να ταιριάξει
+  "ΧΡΟΝΑΚΗΣ". Σήμερα 0 results.
+
+  **Όχι regression** — feature που ποτέ δεν δούλεψε. Latin
+  search σε Greek member names = ξεκάθαρο UX gap αλλά όχι
+  breaking.
+
+  **Implementation thoughts:**
+  - Νέα export `latinToGreek()` στο `lib/utils/greekSearch.ts`
+  - Inverse map του `slugify.ts` (μη-bijective — π.χ. `i` →
+    `ι/η/υ/ει/οι`, `o` → `ο/ω`). Χρειάζεται multi-candidate
+    generation ή broader regex matching
+  - Detection heuristic: αν query έχει μόνο Latin chars + όχι
+    Greek chars, παράγεται variants σε Greek
+  - Affects search sites που χρησιμοποιούν `normalizeGreek` (από
+    PR #55): /members, /seating, /cashier, /events, /finances,
+    SponsorsPanel, κλπ
+  - Bidirectional = και reverse path (Greek query → match Latin
+    stored data, αν εμφανιστεί τέτοιο use case)
+
+  **Low urgency** — orthogonal feature, UX win αλλά όχι blocker.
+
+  Estimated: M (helper utility + dispatcher logic + 10-15 search
+  sites)
 
 ### 🔍 Audit & Monitoring
 
@@ -1467,7 +1802,85 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   + local `.env*` + code references + redeploy.
   Estimated: M
 
+- [ ] **🔧 Document @supabase/ssr default flowType decision**
+
+  Stack: 📊 Cross-cutting · Auth documentation
+
+  Σήμερα τα Supabase clients (`lib/supabase/server.ts`,
+  `lib/supabase/client.ts`) δεν περνούν explicit `flowType` —
+  βασίζονται στο default. Default σε `@supabase/ssr@0.10`
+  είναι `'pkce'`. Αυτή η implicit dependency δεν είναι
+  documented στο codebase.
+
+  **Πρόβλημα:** Επόμενος developer (ή ο ίδιος dev σε 6 μήνες)
+  θα δει το `send-magic-link/route.ts:110` comment
+  ("PKCE incompatible με admin-generated links") και θα
+  μπερδευτεί:
+  - Comment υπονοεί manual override του PKCE
+  - Στην πραγματικότητα το manual URL fails σε PKCE-default
+    server client
+  - Pattern είναι vestigial από προηγούμενη `@supabase/ssr`
+    version όπου δούλευε
+
+  **Action items:**
+  - Inline comment στο `lib/supabase/server.ts` που εξηγεί:
+    «Default flowType σε @supabase/ssr@0.10 είναι 'pkce'.
+    Affects verifyOtp + exchangeCodeForSession paths.»
+  - Inline comment στο `lib/supabase/client.ts` με ίδιο context
+  - Update στο `send-magic-link/route.ts:110` comment ώστε να
+    αντιπροσωπεύει actual state (current code path is broken,
+    pending PKCE refactor)
+  - Optional: `docs/AUTH.md` mini-doc αν αξίζει formalization
+    (μελλοντικά όταν έχουμε >2 auth flows documented)
+
+  **Σχέση με Magic link verify entry:**
+  Όταν γίνει ο PKCE refactor (proper solution), αυτή η entry
+  παραμένει σχετική επειδή τα inline comments θα μένουν για
+  future auth-related work. Independent value.
+
+  **Trigger για cleanup:** Όταν γίνει ο Magic link verify
+  refactor, τα stale comments θα αντικατασταθούν αυτόματα.
+  Αυτή η entry κλείνει τότε ως superseded.
+
+  **Connects με:**
+  - 🟡 Magic link verify — PKCE flow refactor (κύρια entry
+    που τελειώνει το comment debt)
+  - PR #44 Member Portal Chunk 2 — origin του auth pattern
+
+  Estimated: S (~30 minutes — comment additions σε 3 αρχεία)
+
 ## ✅ Recently Done
+
+### feat/portal-password-set (PR #?, ready to merge 2026-05-15)
+
+Member Portal Chunk 3 — Auth integration με password-set flow +
+dual-mode login + PII protection.
+
+**Commits (8):**
+- /me/[token] password-set flow (Commit 1)
+- /portal/login dual-mode (password + magic link) (Commit 2)
+- Dashboard data leak ROADMAP entry + Greek transliteration (Commit 3)
+- Member Persona Home architecture documentation (Commit 4)
+- Proxy.ts non-admin redirect από / σε /portal/profile (Commit 5)
+- /portal/login UX guards (Commit 6)
+- Magic link PKCE ROADMAP entry + auth flow type docs (Commit 7)
+- force-dynamic στο app/page.tsx για proxy middleware execution (Commit 8)
+
+**Critical discovery (Commit 8):**
+Vercel CDN edge cache σερβίρει static prerendered `/` route,
+bypassing middleware entirely. HAR analysis showed
+`x-vercel-cache: HIT` με `age: 416s`. Solution: force-dynamic
+directive αναγκάζει SSR per-request → middleware runs → Commit 5
+PII block ενεργοποιείται.
+
+**Production-verified end-to-end (preview):**
+- ΚΩΣΤΑΣ (non-admin) login → /portal/profile ✅
+- Admin login → / με full stats ✅
+- Sidebar permission filtering working για non-admin (only Αρχική +
+  Ημερολόγιο) ✅
+
+**Closes:** 🔴 Dashboard data leak entry (παραμένει 🟡 για
+defense-in-depth page-level guard ως future enhancement).
 
 ### feat/portal-schema-foundation (merged 2026-05-14) — PR #?
 

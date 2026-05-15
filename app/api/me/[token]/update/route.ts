@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerClient } from '@/lib/supabase/server';
+import { getAdminClient } from '@/lib/supabase/admin';
+import { findAuthUserByEmail } from '@/lib/auth/findAuthUserByEmail';
 import { computeChanges, logChange, logEmailVerified } from '@/lib/audit/log';
 
 // Whitelist των fields που επιτρέπεται να ενημερώνει το μέλος
@@ -38,6 +40,7 @@ export async function POST(
     .select(`
       id,
       club_id,
+      email,
       email_verification_expires_at,
       email_verified,
       phone,
@@ -84,13 +87,64 @@ export async function POST(
     }
   }
 
-  // 5. Update member + set email_verified = true
+  // 4.5. Password setup — create or update auth account
+  const password = body.password;
+  if (typeof password !== 'string' || password.length < 8) {
+    return NextResponse.json(
+      { error: 'Ο κωδικός πρέπει να έχει τουλάχιστον 8 χαρακτήρες' },
+      { status: 400 }
+    );
+  }
+  if (!member.email) {
+    return NextResponse.json(
+      { error: 'Το μέλος δεν έχει email — επικοινωνήστε με τη γραμματεία' },
+      { status: 400 }
+    );
+  }
+
+  const admin = getAdminClient();
+  const existingAuthUser = await findAuthUserByEmail(member.email);
+  let userIdToLink: string;
+
+  if (existingAuthUser) {
+    // Existing auth account — update password
+    const { error: pwError } = await admin.auth.admin.updateUserById(
+      existingAuthUser.id,
+      { password }
+    );
+    if (pwError) {
+      return NextResponse.json(
+        { error: 'Σφάλμα ενημέρωσης κωδικού: ' + pwError.message },
+        { status: 500 }
+      );
+    }
+    userIdToLink = existingAuthUser.id;
+  } else {
+    // New auth account — create
+    const { data: created, error: createError } =
+      await admin.auth.admin.createUser({
+        email: member.email,
+        password,
+        email_confirm: true,
+      });
+    if (createError || !created.user) {
+      return NextResponse.json(
+        { error: 'Σφάλμα δημιουργίας λογαριασμού: ' + (createError?.message ?? 'Άγνωστο σφάλμα') },
+        { status: 500 }
+      );
+    }
+    userIdToLink = created.user.id;
+  }
+
+  // 5. Update member + set email_verified = true + link user_id + clear token
   const { error: updateError } = await supabase
     .from('members')
     .update({
       ...updates,
       email_verified: true,
       email_verified_at: new Date().toISOString(),
+      user_id: userIdToLink,
+      email_verification_token: null,
     })
     .eq('id', member.id);
 
