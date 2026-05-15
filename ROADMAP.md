@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-15 (PR α' ready — feat/portal-password-set 8-commit branch με Member Portal Chunk 3 auth + dashboard PII block)  
+> Last updated: 2026-05-15 (PR β' ready — feat/portal-persona-home 5-commit branch με Member Portal Phase 1 — Persona Home root routing architecture)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -401,43 +401,6 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   Estimated: S (~30 minutes — DNS + script + 1Password + verification)
 
   Connects με: PR γ' (provision-backup-admin script delivered).
-
-- [ ] **🔴 Root `/` PII leak σε non-admin — temporary block**
-
-  Discovered: 2026-05-14, branch `feat/portal-password-set`
-  (smoke testing του Commit 2).
-
-  **Symptom:** Member με valid Supabase auth session αλλά χωρίς
-  admin role (test user: ΚΩΣΤΑΣ ΧΡΟΝΑΚΗΣ μέσω password login)
-  βλέπει στο `/`:
-  - Stats cards (245 ενεργά μέλη, monthly revenue)
-  - "Εκκρεμότητες" modal με ονόματα + τηλέφωνα όλων των μελών
-    (**PII exposure — GDPR concern**)
-  - Admin quick-action cards (Διαχείριση Μελών, Πλάνο Τραπεζιών)
-
-  **Affects:** `app/page.tsx` (root dashboard). Page-level
-  permission gate λείπει στο root rendering.
-
-  **Σωστά λειτουργούν (defense-in-depth verified):**
-  - Sidebar nav filter: non-admin βλέπει μόνο "Αρχική" + "Ημερολόγιο"
-  - `/members` direct URL → blocked με friendly Greek message
-  - Other protected pages (/events, /finances, /seating) έχουν
-    correct gates ή layout-level redirect
-
-  **Temporary fix shape (this entry):** Server-side check στο
-  root layout ή `app/page.tsx` — αν user δεν έχει admin
-  permissions, redirect σε `/portal/profile`. Reuse
-  `resolveAuthMember` + permissions logic από existing code.
-
-  **ΟΧΙ permanent solution.** Είναι αρχιτεκτονικό gap, όχι bug:
-  λείπει η persona-based root routing. Permanent → βλ.
-  🟣 entry "Member Persona Home — root routing architecture".
-
-  **Required before multi-tenant onboarding.** Existing kriton
-  members με portal accounts (0 σήμερα, 10 πιθανοί με email)
-  θα δουν PII leak μόλις κάνουν login.
-
-  Estimated: S (~30 minutes — single redirect addition)
 
 ## 🟡 High Priority (post-beta)
 
@@ -1070,6 +1033,84 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   **Low frequency edge case** — δεν θα εμφανιστεί μέχρι κάποιος
   της οικογένειας Κουρουγκιαούρη ενεργοποιήσει portal. Defer μέχρι
   user demand demonstrated ή πριν multi-tenant launch.
+
+- [ ] **🟢 Portal layout/page member fetch deduplication**
+
+  Stack: 🟣 Member Portal · Optimization
+
+  Discovered: 2026-05-15, PR β' Commit 2 review.
+
+  **Σήμερα:** `getCurrentMember()` καλείται δυο φορές σε κάθε /portal
+  hit — μία στο `app/portal/(member)/layout.tsx` (auth gate + branding),
+  μία στο `app/portal/(member)/page.tsx` (για το firstName στο welcome
+  card). Επίσης στο `app/portal/(member)/profile/page.tsx`. Belt-and-
+  suspenders, αλλά 2-3 DB queries που μπορούν να γίνουν 1 per request.
+
+  **Options για future deduplication:**
+  - React `cache()` wrapper γύρω από `getCurrentMember()` — request-
+    scoped memoization, σταθερό σε όλο το server render. Established
+    Next.js 14+ pattern, zero refactor σε call sites
+  - Layout context provider (αλλά server components δεν έχουν Context
+    API με τον τρόπο που τα client έχουν — απαιτεί workaround)
+  - Prop drilling — layout passes member σε children μέσω cloneElement
+    pattern (καθαρό αλλά ad-hoc)
+
+  Προτείνεται React `cache()` — μικρότερο surface area, καμία change
+  σε call signatures. Affects: όλα τα `app/portal/(member)/**` server
+  components που τρέχουν `getCurrentMember()`.
+
+  **Performance impact today:** single-table indexed query (members
+  WHERE user_id = ?). ~5-10ms per redundant call. Acceptable trade-off
+  Phase 1, becomes meaningful αν πολλά portal pages προστεθούν στα
+  Chunks 3-4.
+
+  **Connects με:** PR β' Commit 2 review observation.
+
+  Estimated: S (~30 minutes — wrap `getCurrentMember` in `cache()` +
+  verify call sites)
+
+- [ ] **🟡 Portal-native calendar view ή /portal/calendar route**
+
+  Stack: 🟣 Member Portal · UX consistency
+
+  Discovered: 2026-05-15, PR β' preview smoke test (Image 2).
+
+  **Σήμερα:** Όταν ο member κάνει click "Ημερολόγιο" στο portal
+  sidebar, μεταβαίνει στο `/calendar` που χρησιμοποιεί το admin
+  `AppShell`. Αποτέλεσμα: inconsistent shell μεταξύ `/portal/*`
+  (member shell — branded top header + portal sidebar) και `/calendar`
+  (admin shell — different sidebar layout, "ΜΕΛΟΣ" badge στο user
+  card). Visual jarring transition.
+
+  **Trade-off accepted Phase 1:** Functionality > consistency.
+  `/calendar` έχει ήδη `permission: null` (όλοι authenticated το
+  βλέπουν) και τα admin-only buttons (+ Νέο, edit/delete) είναι
+  hidden για non-admin μέσω `isAdminUser` check. Practical
+  functionality preserved.
+
+  **Options για cleanup:**
+  - (α) Δημιουργία `/portal/calendar` route μέσα στο `(member)` group
+    με dedicated read-only view (reuse data fetching + month grid
+    component, drop admin-only UI)
+  - (β) Skip-shell μηχανισμός — admin `AppShell` detects "user came
+    from portal" (referrer ή query param) και renders με portal shell
+    (cross-shell awareness)
+  - (γ) Iframe `/calendar` μέσα στο portal shell (απλό αλλά awkward,
+    nested scroll issues)
+
+  Προτείνεται (α) όταν Chunk 3 (Member Events) εξελιχθεί — calendar
+  και events πιθανώς θα μοιραστούν component layer. Reusable extract:
+  `<CalendarMonthGrid>` component που και τα δύο shells μπορούν να
+  το hostάρουν.
+
+  **Low urgency** — visual inconsistency μόνο, λειτουργικότητα
+  πλήρης. Defer μέχρι ο member portal stack ωριμάσει.
+
+  **Connects με:** PR β' smoke test observation, Chunk 3 Member
+  Events + Finances entry.
+
+  Estimated: M (extract reusable calendar grid component + new
+  `/portal/calendar` route + drop admin-only UI elements)
 
 ### Schema evolution
 
@@ -1850,6 +1891,55 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   Estimated: S (~30 minutes — comment additions σε 3 αρχεία)
 
 ## ✅ Recently Done
+
+### feat/portal-persona-home (PR #?, ready to merge 2026-05-15)
+
+Member Portal Phase 1 — Persona Home root routing architecture.
+Permanent solution για το PR α' temporary PII block.
+
+**Commits (5):**
+- app/portal/(member) shell foundation με branded header + sidebar +
+  user card + logout (Commit 1)
+- /portal home page με welcome + obligations placeholder + quick links
+  (Commit 2)
+- /portal/profile refactor σε route group (member) — drop custom header,
+  inherit shell (Commit 3, −29 lines, ProfileLogoutButton.tsx deleted)
+- proxy.ts redirect target swap από /portal/profile σε /portal (Commit 4)
+- ROADMAP sync (αυτό το commit)
+
+**Production-verified preview smoke test (4 screenshots):**
+- ΚΩΣΤΑΣ login → / → /portal (welcome + obligations + quick links) ✅
+- Portal sidebar nav highlighting works (Αρχική active στο /portal,
+  Το προφίλ μου active στο /portal/profile) ✅
+- Logout από shell user card → /portal/login ✅
+- /portal/profile inherits shell, identity section + edit form working ✅
+- Admin user manually visits /portal/profile → ίδιο shell ✅
+- /calendar από portal sidebar → trade-off documented (admin shell wrap,
+  future entry για portal-native view)
+
+**Architectural decisions:**
+- Route group `(member)` για layout isolation — `/portal/login` και
+  `/portal/auth-callback` παραμένουν εκτός shell
+- Service-role branding fetch στο layout (`getAdminClient`), single
+  source of truth για clubName/logoUrl/primaryColor
+- `club_id` null guard για orphaned members (silent empty branding,
+  mirror του /portal/profile pre-refactor pattern)
+- Visual redundancy principle — fullName στο shell user card, ΟΧΙ
+  duplicated σε page header του profile
+- Member badge παραλείπεται (shell context implies "member" persona)
+- Force-dynamic precedent από PR α' Commit 8 preserved — proxy.ts
+  middleware τρέχει per request, κανένα CDN cache bypass
+
+**Closes:**
+- 🔴 Root `/` PII leak σε non-admin — temporary block (PR α' Commit 5)
+  → permanent solution via Persona Home
+
+**Phase rollout status:**
+- ✅ Phase 1: routing + skeleton (αυτό το PR)
+- 🔜 Phase 2: real obligations data (Obligations unified view ROADMAP
+  entry — pending `member_obligations_v`)
+- 🔜 Phase 3: Events + finances integration (Chunk 3)
+- 🔜 Phase 4: Family-aware features
 
 ### feat/portal-password-set (PR #?, ready to merge 2026-05-15)
 
