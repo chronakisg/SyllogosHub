@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-15 (Member Persona Home architecture — 4-entry restructure)  
+> Last updated: 2026-05-15 (Magic link verify PKCE refactor — defer entry + auth flow docs)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -838,6 +838,71 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   - Zero schema impact (μόνο view, no new tables)
 
   Estimated: M (view + types + 1-2 components για consumption)
+
+- [ ] **🟡 Magic link verify — PKCE flow refactor**
+
+  Stack: 🟣 Member Portal · Auth foundation fix
+
+  Strategic context: Σήμερα magic link **send** δουλεύει
+  (Resend integration OK, email arrives σωστά) αλλά
+  magic link **verify** αποτυγχάνει deterministic με
+  `otp_expired` error σε <20 δευτερόλεπτα από send.
+
+  **Symptom (από smoke testing 2026-05-15, branch
+  `feat/portal-password-set`):**
+  - `generateLink({ type: 'magiclink' })` επιστρέφει token σε
+    PKCE format
+  - `verifyOtp({ token_hash, type: 'magiclink' })` σε
+    PKCE-default server client αποτυγχάνει με `otp_expired`
+    (generic fallback error)
+  - Token **δεν είναι** όντως expired — είναι type mismatch
+    μεταξύ generate path και verify path
+  - Verified με: incognito test (αποκλείσαμε email scanner),
+    Supabase OTP expiry config check (3600s), explicit
+    diagnostic με 2 sequential link sends
+
+  **Root cause:** `@supabase/ssr@0.10` default `flowType: 'pkce'`.
+  `verifyOtp` με `token_hash` περιμένει implicit-flow tokens.
+  Comment στο `send-magic-link/route.ts:110`
+  ("PKCE incompatible με admin-generated links") είναι **stale**
+  από προηγούμενη Supabase version όπου το pattern δούλευε.
+
+  **Solution path (locked 2026-05-15):** Refactor σε proper
+  PKCE flow.
+  - Στο send: χρήση `linkData.properties.action_link` directly
+    (όχι manual URL construction με `token_hash`)
+  - Στο auth-callback: `exchangeCodeForSession(code)` αντί
+    `verifyOtp({ token_hash, type })`
+  - Email template: pass-through του Supabase-generated URL
+
+  **ΟΧΙ quick fix με `flowType: 'implicit'`.** Pre-flight
+  διάγνωση 2026-05-15 αποκάλυψε ότι το change:
+  - Είναι permanent security posture downgrade (όλο το app,
+    όχι μόνο magic link)
+  - Επηρεάζει 38+ browser-side call sites μέσω cookie format
+  - Invalidate-άρει active sessions στο deployment
+  Όλα αυτά για ένα **fallback** feature — disproportionate cost.
+
+  **Current mitigation (PR α', Commit 6):** UX guards στο
+  `/portal/login` δείχνουν Greek error banner όταν user
+  πατάει failed link («Ο σύνδεσμος έληξε ή είναι άκυρος.
+  Συνδεθείτε με κωδικό ή ζητήστε νέο σύνδεσμο.»). Password
+  login = primary path που δουλεύει, magic link = pending fix.
+
+  **Connects με:**
+  - 🟢 Welcome email follow-ups (C) Forgot password flow —
+    proper email-based auth UX πρέπει να σχεδιαστεί μαζί
+    (κοινό pattern: server-generated link + PKCE exchange)
+  - 🟣 Member Persona Home — auth foundation για non-admin
+    users, magic link θα γίνει actual usable path
+  - PR α' UX guards (Commit 6 από `feat/portal-password-set`) —
+    το temporary mitigation που εμφανίζει σωστό Greek error
+  - 🔧 Document @supabase/ssr default flowType decision
+    (Tech Debt entry — comment cleanup μετά τον refactor)
+
+  Estimated: M (2-3 ώρες, multi-file change: send-magic-link
+  route + auth-callback page + email template + thorough
+  smoke testing σε Vercel preview environment)
 
 - [ ] **Chunk 3 — Member Events + Finances**
 
@@ -1736,6 +1801,53 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   dedicated tech debt session. Απαιτεί env var rename σε Vercel
   + local `.env*` + code references + redeploy.
   Estimated: M
+
+- [ ] **🔧 Document @supabase/ssr default flowType decision**
+
+  Stack: 📊 Cross-cutting · Auth documentation
+
+  Σήμερα τα Supabase clients (`lib/supabase/server.ts`,
+  `lib/supabase/client.ts`) δεν περνούν explicit `flowType` —
+  βασίζονται στο default. Default σε `@supabase/ssr@0.10`
+  είναι `'pkce'`. Αυτή η implicit dependency δεν είναι
+  documented στο codebase.
+
+  **Πρόβλημα:** Επόμενος developer (ή ο ίδιος dev σε 6 μήνες)
+  θα δει το `send-magic-link/route.ts:110` comment
+  ("PKCE incompatible με admin-generated links") και θα
+  μπερδευτεί:
+  - Comment υπονοεί manual override του PKCE
+  - Στην πραγματικότητα το manual URL fails σε PKCE-default
+    server client
+  - Pattern είναι vestigial από προηγούμενη `@supabase/ssr`
+    version όπου δούλευε
+
+  **Action items:**
+  - Inline comment στο `lib/supabase/server.ts` που εξηγεί:
+    «Default flowType σε @supabase/ssr@0.10 είναι 'pkce'.
+    Affects verifyOtp + exchangeCodeForSession paths.»
+  - Inline comment στο `lib/supabase/client.ts` με ίδιο context
+  - Update στο `send-magic-link/route.ts:110` comment ώστε να
+    αντιπροσωπεύει actual state (current code path is broken,
+    pending PKCE refactor)
+  - Optional: `docs/AUTH.md` mini-doc αν αξίζει formalization
+    (μελλοντικά όταν έχουμε >2 auth flows documented)
+
+  **Σχέση με Magic link verify entry:**
+  Όταν γίνει ο PKCE refactor (proper solution), αυτή η entry
+  παραμένει σχετική επειδή τα inline comments θα μένουν για
+  future auth-related work. Independent value.
+
+  **Trigger για cleanup:** Όταν γίνει ο Magic link verify
+  refactor, τα stale comments θα αντικατασταθούν αυτόματα.
+  Αυτή η entry κλείνει τότε ως superseded.
+
+  **Connects με:**
+  - 🟡 Magic link verify — PKCE flow refactor (κύρια entry
+    που τελειώνει το comment debt)
+  - PR #44 Member Portal Chunk 2 — origin του auth pattern
+
+  Estimated: S (~30 minutes — comment additions σε 3 αρχεία)
 
 ## ✅ Recently Done
 
