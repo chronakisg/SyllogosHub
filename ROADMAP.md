@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-15 (Dashboard data leak + Greek search transliteration entries added)  
+> Last updated: 2026-05-15 (Member Persona Home architecture — 4-entry restructure)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -402,17 +402,18 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
   Connects με: PR γ' (provision-backup-admin script delivered).
 
-- [ ] **🔴 Dashboard `/` data leak σε non-admin members**
+- [ ] **🔴 Root `/` PII leak σε non-admin — temporary block**
 
-  Discovered: 2026-05-14 (smoke testing του Commit 2,
-  branch `feat/portal-password-set`).
+  Discovered: 2026-05-14, branch `feat/portal-password-set`
+  (smoke testing του Commit 2).
 
   **Symptom:** Member με valid Supabase auth session αλλά χωρίς
   admin role (test user: ΚΩΣΤΑΣ ΧΡΟΝΑΚΗΣ μέσω password login)
   βλέπει στο `/`:
-  - Stats cards: total active members count (245), monthly revenue
-  - "Εκκρεμότητες" modal που dumps όλους τους members με pending
-    dues + phone numbers (**PII exposure**)
+  - Stats cards (245 ενεργά μέλη, monthly revenue)
+  - "Εκκρεμότητες" modal με ονόματα + τηλέφωνα όλων των μελών
+    (**PII exposure — GDPR concern**)
+  - Admin quick-action cards (Διαχείριση Μελών, Πλάνο Τραπεζιών)
 
   **Affects:** `app/page.tsx` (root dashboard). Page-level
   permission gate λείπει στο root rendering.
@@ -423,25 +424,20 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   - Other protected pages (/events, /finances, /seating) έχουν
     correct gates ή layout-level redirect
 
-  **Fix options (decision pending):**
-  - **(α) Layout-level redirect:** non-admin redirected σε
-    `/portal/profile` ή `/calendar`
-  - **(β) Permission gate inside page:** dashboard rendering
-    behind `requirePermission('admin')` check, fallback empty
-    state με "Δεν έχετε πρόσβαση"
-  - **(γ) Member dashboard variant:** non-admin βλέπει custom
-    "Welcome [Όνομα]" view χωρίς admin stats — connects με
-    Member Portal Stack
+  **Temporary fix shape (this entry):** Server-side check στο
+  root layout ή `app/page.tsx` — αν user δεν έχει admin
+  permissions, redirect σε `/portal/profile`. Reuse
+  `resolveAuthMember` + permissions logic από existing code.
 
-  Connects με: PR α' (Member Portal password-set — first time
-  που non-admin κάνει login μέσω portal flow), 🟣 Member Portal
-  domain.
+  **ΟΧΙ permanent solution.** Είναι αρχιτεκτονικό gap, όχι bug:
+  λείπει η persona-based root routing. Permanent → βλ.
+  🟣 entry "Member Persona Home — root routing architecture".
 
   **Required before multi-tenant onboarding.** Existing kriton
-  members με portal accounts (0 σήμερα, αλλά 10 πιθανοί) θα δουν
-  PII leak μόλις κάνουν login.
+  members με portal accounts (0 σήμερα, 10 πιθανοί με email)
+  θα δουν PII leak μόλις κάνουν login.
 
-  Estimated: S-M (option-dependent)
+  Estimated: S (~30 minutes — single redirect addition)
 
 ## 🟡 High Priority (post-beta)
 
@@ -739,6 +735,110 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 > Stack description βλ. 🏗️ Architectural Stacks → 🟣 Member Portal Stack.
 > Foundation merged: Chunk 2 — Auth + Profile (PR #44, 2026-05-09).
 
+- [ ] **🟣 Member Persona Home — root routing architecture**
+
+  Stack: 🟣 Member Portal · Permanent solution για 🔴 Root `/` PII leak
+
+  Strategic context: Σήμερα root `/` δείχνει admin dashboard
+  σε όλους τους authenticated users. Είναι αρχιτεκτονικό gap,
+  όχι bug — λείπει η persona-based root routing.
+
+  **Locked design (συζήτηση 2026-05-15):**
+
+  1. **Persona-based root routing:**
+     - `/` = admin dashboard (αμετάβλητο για admins)
+     - Non-admin user στο `/` → redirect σε `/portal`
+     - Admin που θέλει member view → manually σε `/portal`
+
+  2. **`/portal` = member home** (νέο route, layout διακριτό
+     από admin shell):
+     - Welcome header με όνομα μέλους
+     - Ενιαία λίστα εκκρεμοτήτων (subscription + events +
+       classes + excursions + ad-hoc)
+     - Ανακοινώσεις (filtered βάσει audience — βλ. Chunk 4)
+     - Επόμενες εκδηλώσεις του συλλόγου
+     - Quick links σε /portal/profile, /portal/events,
+       /portal/finances/me
+
+  3. **Layout divergence:** `app/portal/layout.tsx` ζει
+     ξεχωριστά. Member sidebar = ~5 entries (όχι 11 του admin).
+     Δυνατότητα διαφορετικού color tone (branded warmth vs
+     admin functional) ανά σύλλογο.
+
+  **Standalone-able principle:** Σύλλογος που δεν θέλει
+  Member Portal απενεργοποιεί το `portal` module στο
+  `club_modules` (μελλοντική προσθήκη — δεν υπάρχει σήμερα
+  στο 7-module CHECK constraint). Root `/` τότε επιστρέφει
+  στο "Δεν έχετε πρόσβαση" message για non-admin.
+
+  **Phase rollout:**
+  - **Phase 1**: Routing + skeleton page με welcome +
+    obligations placeholder
+  - **Phase 2**: Announcements integration (βλ. Chunk 4 entry)
+  - **Phase 3**: Events + finances integration (βλ. Chunk 3 entry)
+  - **Phase 4**: Family-aware features (parent βλέπει παιδιά)
+
+  **Connects με:**
+  - 🔴 Root `/` PII leak (αυτό κλείνει το permanent fix)
+  - 🟣 Chunk 3 — Member Events + Finances
+  - 🟣 Chunk 4 — Classes + Announcements + Departments UI
+  - 🟣 Obligations unified view (Phase 1 dependency)
+  - `club_modules.portal` feature flag (future addition για
+    standalone-able)
+
+  Estimated: L (multi-session, foundation feature)
+
+- [ ] **🟣 Obligations unified view — `member_obligations_v`**
+
+  Stack: 🟣 Member Portal · Sub-feature του Member Persona Home
+
+  Strategic context: Member view εκκρεμοτήτων χρειάζεται
+  unified data από πολλαπλά sources. Αντί `obligations` table
+  (sync drift risk), χρησιμοποιούμε read-time Postgres view
+  που ενώνει sources με UNION ALL.
+
+  **Design (locked 2026-05-15):**
+
+  Νέο view `member_obligations_v` με columns:
+  - `kind text` — `'subscription'` | `'event_attendance'` |
+    `'class_enrollment'` | `'event_excursion'` | `'other'`
+  - `source_id uuid` — pointer στο original row
+  - `member_id uuid`
+  - `club_id uuid`
+  - `amount numeric`
+  - `label text` — human-readable description
+  - `due_date date`
+  - `event_id uuid` — nullable, αν αφορά εκδήλωση
+  - `created_at timestamptz`
+
+  UNION ALL queries από:
+  - `payments` WHERE status pending → subscription
+  - `reservation_attendees` με unpaid amount → event_attendance
+  - `class_enrollments` με unpaid fee → class_enrollment (future)
+  - Event subtype ή new column → event_excursion (future)
+  - `member_other_transactions` → other (future schema)
+
+  **Why read-time view, όχι denormalized table:**
+  - Source of truth παραμένει στα αρχικά tables
+  - Zero sync drift risk
+  - Άμεση συνέπεια με admin views
+  - Materialized view as future optimization αν χρειαστεί
+
+  **Phase rollout:**
+  - Phase 1: subscription + event_attendance (έχουμε ήδη data)
+  - Phase 2: class_enrollment (μετά UI work του Chunk 4)
+  - Phase 3: event_excursion (όταν αποσαφηνιστεί το concept —
+    σήμερα δεν υπάρχει distinct event_type για εκδρομές)
+  - Phase 4: other_transactions (όταν schema προστεθεί)
+
+  **Connects με:**
+  - 🟣 Member Persona Home (primary consumer)
+  - 🟣 Chunk 3 — Member Events + Finances (πιθανώς ίδιο
+    component reuse στο /portal/finances/me)
+  - Zero schema impact (μόνο view, no new tables)
+
+  Estimated: M (view + types + 1-2 components για consumption)
+
 - [ ] **Chunk 3 — Member Events + Finances**
 
   Stack: 🟣 Member Portal
@@ -783,9 +883,95 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   - 🔜 Family-wide visibility (parent βλέπει παιδιά εγγεγραμμένα)
   - 🔜 Push notifications για νέες ανακοινώσεις
 
-  Connects με: departments, family system, push notifications
+  **🆕 Audience-aware announcements (locked 2026-05-15):**
+
+  Member βλέπει μια ανακοίνωση αν ισχύει **ένα από τα**:
+  1. **Global** — `announcements.department_id IS NULL`
+     (όλος ο σύλλογος)
+  2. **Department membership** — γραμμένο στο τμήμα της
+     ανακοίνωσης (μέσω `class_enrollments` που ανήκει σε
+     class με το συγκεκριμένο `department_id`)
+  3. **Direct class enrollment** — γραμμένο σε class που
+     ανήκει σε αυτό το department (transitive)
+
+  Write permissions (ποιοι γράφουν ανακοινώσεις):
+  - **Πρόεδρος/Γραμματέας** → global ή οποιοδήποτε department
+  - **Ομαδάρχης τμήματος** → μόνο τα δικά του departments
+    (απαιτεί 🟡 Department Leaders concept — βλ. entry)
+  - **Καθηγητής class** (future) → μόνο τα δικά του classes
+    (απαιτεί instructor FK refactor από text σε
+    `instructor_member_id`)
+
+  Σήμερα μόνο πρόεδρος/γραμματέας μπορούν να γράψουν
+  department-scoped announcements (Πρόεδρος ΔΣ role έχει
+  το permission). Ομαδάρχης concept πρέπει να μπει πρώτα.
+
+  Connects με: departments, family system, push notifications,
+  🟡 Department Leaders concept (prerequisite για
+  ομαδάρχη-scoped announcements)
 
   Estimated: L (UI work post-schema — σπασμένο σε 4-5 PRs)
+
+- [ ] **🟡 Department Leaders concept (schema prerequisite)**
+
+  Stack: 🟣 Member Portal · Schema evolution prerequisite
+
+  Strategic context: Σήμερα το schema δεν υποστηρίζει τον
+  «ομαδάρχη» concept που είναι standard σε παραδοσιακούς
+  συλλόγους. Κάθε τμήμα (τμήμα Λύρας, τμήμα Παραδοσιακών Χορών,
+  κλπ) έχει 1+ ομαδάρχη — μέλος του συλλόγου με διοικητική
+  φροντίδα του τμήματος.
+
+  **Σχέση με instructor:** Διαφορετική έννοια.
+  - **Ομαδάρχης** = εσωτερικό μέλος, διοικητικός ρόλος,
+    γράφει ανακοινώσεις για το τμήμα
+  - **Instructor** (`classes.instructor` text column σήμερα)
+    = external professional που διδάσκει, δεν έχει αναγκαστικά
+    member account
+
+  Το ομαδάρχης concept ζει στο **department layer**, ο
+  instructor στο **class layer**.
+
+  **Design (locked 2026-05-15):**
+
+  Νέα table `department_leaders`:
+  - `department_id uuid` (FK → departments, ON DELETE CASCADE)
+  - `member_id uuid` (FK → members, ON DELETE CASCADE)
+  - `role text NOT NULL DEFAULT 'leader'`
+    (`'leader'` | `'assistant'` | future expansion)
+  - `started_at timestamptz DEFAULT now()`
+  - PRIMARY KEY (department_id, member_id)
+
+  - Multi-leader support per department (π.χ. 2 ομαδάρχες
+    ταυτόχρονα στο τμήμα Λύρας)
+  - Multi-role support (leader + assistant)
+  - Future: `ended_at` column για audit trail (όταν προκύψει
+    need — π.χ. ποιος ήταν ομαδάρχης 2024)
+  - RLS off (consistent με project pattern)
+  - Idempotent migration με defensive snapshot
+
+  **Permission integration:**
+  - Νέο permission module `'department_leadership'` ή reuse
+    existing `'departments'` permission με conditional scope
+    check στο API layer
+  - Server-side guard για write actions: «ο user είναι
+    ομαδάρχης του department_id αυτής της ανακοίνωσης;»
+  - UI: στο /announcements admin page, ομαδάρχης βλέπει μόνο
+    τα δικά του departments στο dropdown
+
+  **Prerequisite για:**
+  - 🟣 Chunk 4 audience-aware announcements
+    (ομαδάρχης-scoped writes)
+  - Future: ομαδάρχης μπορεί να εγγράψει νέα μέλη στο τμήμα του,
+    να βλέπει roster, να στέλνει target messages
+
+  **Connects με:**
+  - departments table (existing)
+  - 🟣 Chunk 4 — Classes + Announcements + Departments UI
+  - permissions system (PRs #49/50/51)
+
+  Estimated: M (schema migration + types + permission integration
+  + admin UI για leader assignment)
 
 - [ ] **🟣 Duplicate email στο members table — portal linkage edge case**
 
