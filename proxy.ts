@@ -80,6 +80,58 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // Root '/' = admin dashboard. Non-admin authenticated users
+  // redirected σε /portal/profile (temporary block — βλ. 🟣
+  // Member Persona Home στο ROADMAP για permanent solution).
+  if (request.nextUrl.pathname === '/' && user) {
+    const admin = getAdminClient();
+
+    // Step 1: lookup by user_id (post-PR-#44 portal users)
+    const byUserId = await admin
+      .from('members')
+      .select('is_system_admin, is_president, is_hub_admin')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    // Step 2: email ilike fallback για legacy admins χωρίς linked user_id
+    const fallback = !byUserId.error && !byUserId.data && user.email
+      ? await admin
+          .from('members')
+          .select('is_system_admin, is_president, is_hub_admin')
+          .ilike('email', user.email)
+          .maybeSingle()
+      : null;
+
+    const member = byUserId.data ?? fallback?.data ?? null;
+    const lookupError = byUserId.error ?? fallback?.error ?? null;
+
+    if (lookupError) {
+      logger.error("proxy/dashboard-pii-block", "Member lookup failed", {
+        userId: user.id,
+        userEmail: user.email,
+        errorMessage: lookupError.message,
+      });
+      // Fail-open: don't block legit admins on transient DB errors.
+      // Worst case = continued PII exposure για member με existing bug
+      // (status quo — δεν επιδεινώνεται).
+      return response;
+    }
+
+    const isPrivileged = !!member && (
+      member.is_system_admin ||
+      member.is_president ||
+      member.is_hub_admin
+    );
+
+    if (!isPrivileged) {
+      logger.warn("proxy/dashboard-pii-block", "Non-admin redirected from /", {
+        userId: user.id,
+        userEmail: user.email,
+      });
+      return NextResponse.redirect(new URL('/portal/profile', request.url));
+    }
+  }
+
   if (request.nextUrl.pathname.startsWith('/portal/profile') && !user) {
     return NextResponse.redirect(new URL('/portal/login', request.url));
   }
