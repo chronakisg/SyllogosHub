@@ -1,12 +1,26 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getBrowserClient } from "@/lib/supabase/client";
 
 type State = "idle" | "sending" | "sent" | "error";
 
 export default function PortalLoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-dvh items-center justify-center text-muted">
+          Φόρτωση…
+        </div>
+      }
+    >
+      <PortalLoginView />
+    </Suspense>
+  );
+}
+
+function PortalLoginView() {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<State>("idle");
   const [errorMessage, setErrorMessage] = useState("");
@@ -15,10 +29,33 @@ export default function PortalLoginPage() {
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
   const [passwordError, setPasswordError] = useState("");
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [urlError, setUrlError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const code = searchParams.get('error');
+    if (!code) return;
+
+    const URL_ERROR_MESSAGES: Record<string, string> = {
+      link_failed: 'Ο σύνδεσμος έληξε ή είναι άκυρος. Συνδεθείτε με κωδικό ή ζητήστε νέο σύνδεσμο.',
+      member_not_found: 'Δεν βρέθηκε μέλος με αυτό το email. Επικοινωνήστε με τη γραμματεία του συλλόγου.',
+    };
+
+    setUrlError(URL_ERROR_MESSAGES[code] ?? 'Σφάλμα σύνδεσης. Δοκιμάστε ξανά.');
+
+    // Clear URL param μετά τη συλλογή του message (history-friendly).
+    // Banner state παραμένει local — δεν επηρεάζεται από το URL replace.
+    router.replace('/portal/login', { scroll: false });
+  }, [searchParams, router]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!email.trim()) return;
+    if (!email.trim()) {
+      setUrlError(null);
+      setErrorMessage('Συμπληρώστε το email για να λάβετε σύνδεσμο.');
+      setState('error');
+      return;
+    }
 
     setState("sending");
     setErrorMessage("");
@@ -46,7 +83,11 @@ export default function PortalLoginPage() {
 
   async function handlePasswordLogin(e: FormEvent) {
     e.preventDefault();
-    if (!email.trim() || !password) return;
+    if (!email.trim() || !password) {
+      setUrlError(null);
+      setPasswordError('Συμπληρώστε email και κωδικό.');
+      return;
+    }
 
     setPasswordSubmitting(true);
     setPasswordError("");
@@ -112,6 +153,11 @@ export default function PortalLoginPage() {
           </div>
         ) : (
           <div className="space-y-6">
+            {urlError && (
+              <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+                {urlError}
+              </div>
+            )}
             {/* Password login form (primary) */}
             <form onSubmit={handlePasswordLogin} className="space-y-4">
               <label className="block">
@@ -120,7 +166,7 @@ export default function PortalLoginPage() {
                 </span>
                 <input
                   type="email"
-                  required
+                  aria-required="true"
                   autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -136,7 +182,7 @@ export default function PortalLoginPage() {
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
-                    required
+                    aria-required="true"
                     autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -196,7 +242,7 @@ export default function PortalLoginPage() {
 
               <button
                 type="submit"
-                disabled={passwordSubmitting || !email.trim() || !password}
+                disabled={passwordSubmitting}
                 className="w-full rounded-lg bg-[#800000] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#660000] disabled:opacity-50"
               >
                 {passwordSubmitting ? "Σύνδεση…" : "Σύνδεση"}
@@ -227,7 +273,7 @@ export default function PortalLoginPage() {
 
               <button
                 type="submit"
-                disabled={state === "sending" || !email.trim() || passwordSubmitting}
+                disabled={state === "sending" || passwordSubmitting}
                 className="w-full rounded-lg border border-[#800000] bg-transparent px-4 py-2 text-sm font-medium text-[#800000] transition hover:bg-[#800000]/5 disabled:opacity-50"
               >
                 {state === "sending" ? "Αποστολή…" : "Στείλε μου σύνδεσμο email"}
