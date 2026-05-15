@@ -1069,49 +1069,6 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   Estimated: S (~30 minutes — wrap `getCurrentMember` in `cache()` +
   verify call sites)
 
-- [ ] **🟡 Portal-native calendar view ή /portal/calendar route**
-
-  Stack: 🟣 Member Portal · UX consistency
-
-  Discovered: 2026-05-15, PR β' preview smoke test (Image 2).
-
-  **Σήμερα:** Όταν ο member κάνει click "Ημερολόγιο" στο portal
-  sidebar, μεταβαίνει στο `/calendar` που χρησιμοποιεί το admin
-  `AppShell`. Αποτέλεσμα: inconsistent shell μεταξύ `/portal/*`
-  (member shell — branded top header + portal sidebar) και `/calendar`
-  (admin shell — different sidebar layout, "ΜΕΛΟΣ" badge στο user
-  card). Visual jarring transition.
-
-  **Trade-off accepted Phase 1:** Functionality > consistency.
-  `/calendar` έχει ήδη `permission: null` (όλοι authenticated το
-  βλέπουν) και τα admin-only buttons (+ Νέο, edit/delete) είναι
-  hidden για non-admin μέσω `isAdminUser` check. Practical
-  functionality preserved.
-
-  **Options για cleanup:**
-  - (α) Δημιουργία `/portal/calendar` route μέσα στο `(member)` group
-    με dedicated read-only view (reuse data fetching + month grid
-    component, drop admin-only UI)
-  - (β) Skip-shell μηχανισμός — admin `AppShell` detects "user came
-    from portal" (referrer ή query param) και renders με portal shell
-    (cross-shell awareness)
-  - (γ) Iframe `/calendar` μέσα στο portal shell (απλό αλλά awkward,
-    nested scroll issues)
-
-  Προτείνεται (α) όταν Chunk 3 (Member Events) εξελιχθεί — calendar
-  και events πιθανώς θα μοιραστούν component layer. Reusable extract:
-  `<CalendarMonthGrid>` component που και τα δύο shells μπορούν να
-  το hostάρουν.
-
-  **Low urgency** — visual inconsistency μόνο, λειτουργικότητα
-  πλήρης. Defer μέχρι ο member portal stack ωριμάσει.
-
-  **Connects με:** PR β' smoke test observation, Chunk 3 Member
-  Events + Finances entry.
-
-  Estimated: M (extract reusable calendar grid component + new
-  `/portal/calendar` route + drop admin-only UI elements)
-
 ### Schema evolution
 
 ### 📱 Mobile & Cross-cutting
@@ -1891,6 +1848,58 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   Estimated: S (~30 minutes — comment additions σε 3 αρχεία)
 
 ## ✅ Recently Done
+
+### feat/portal-native-calendar (PR #?, ready to merge 2026-05-15)
+
+PR γ' του Member Portal Phase 1 — Portal-native calendar view.
+Pure code refactor, καμία migration, καμία types.ts edit.
+
+**Commits (4):**
+- Extract `CalendarView` σε `components/calendar/` με `readOnly`
+  prop (Commit 1, 1771 lines moved από `app/calendar/page.tsx`)
+- Convert admin `app/calendar/page.tsx` σε thin server wrapper
+  `<CalendarView />` με default `readOnly={false}` (Commit 2,
+  −1763 lines)
+- Νέο `app/portal/(member)/calendar/page.tsx` route με
+  `<CalendarView readOnly />` — inherits PortalShell μέσω
+  route group (Commit 3, +5 lines)
+- `PortalShell.tsx` NAV_ITEMS swap `/calendar` → `/portal/calendar`
+  (Commit 4, +1/−1)
+
+**Architectural decisions:**
+- **`readOnly` prop pattern (persona-based, όχι role-based)** —
+  admin που browseάρει το portal βλέπει member view consistent με
+  τη φιλοσοφία του `(member)` route group. Το `useRole()` παραμένει
+  ενεργό για memberId resolution + email lookup, μόνο τα 6 UI gates
+  του calendar (header CTA, DetailModal manage actions, MonthView
+  day-cell clickable) short-circuit-άρουν όταν `readOnly=true`.
+- **Full move strategy** (όχι partial extract) — 13 inline
+  sub-components + 19 pure date helpers + 14 useState hooks + local
+  types ήταν tightly coupled. Partial extract θα δημιουργούσε 25+
+  prop interface ή duplicate definitions.
+- **Atomic commits** — κάθε commit independently revertable, admin
+  /calendar λειτουργεί identically μετά από Commits 1+2 χωρίς να
+  χρειάζεται το portal route.
+
+**Closes:**
+- 🟡 "Portal-native calendar view ή /portal/calendar route" —
+  Option α (νέο route + dedicated read-only view) implemented.
+  PR β' smoke test trade-off resolved.
+
+**Production-verified:** pending (waiting on push + preview).
+Expected smoke test paths:
+- Admin /calendar → unchanged behavior (regression check)
+- ΚΩΣΤΑΣ /portal/calendar → PortalShell + branded header + portal
+  sidebar + admin buttons hidden + view tabs (Day/Week/Month/Year)
+  fully functional
+- PortalShell sidebar "Ημερολόγιο" highlighting active όταν στο
+  /portal/calendar
+
+**Connects με:** PR β' (PR #90, `feat/portal-persona-home`) — closes
+το trade-off που τεκμηριώθηκε στο post-merge smoke test.
+
+Net stats: +1771 (CalendarView) +5 (admin wrapper after −1763)
++5 (portal wrapper) +1 (nav swap) = **+15 lines net**.
 
 ### feat/portal-persona-home (PR #?, ready to merge 2026-05-15)
 
