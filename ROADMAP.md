@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-15 (Magic link verify PKCE refactor — defer entry + auth flow docs)  
+> Last updated: 2026-05-15 (PR α' ready — feat/portal-password-set 8-commit branch με Member Portal Chunk 3 auth + dashboard PII block)  
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -1850,6 +1850,37 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   Estimated: S (~30 minutes — comment additions σε 3 αρχεία)
 
 ## ✅ Recently Done
+
+### feat/portal-password-set (PR #?, ready to merge 2026-05-15)
+
+Member Portal Chunk 3 — Auth integration με password-set flow +
+dual-mode login + PII protection.
+
+**Commits (8):**
+- /me/[token] password-set flow (Commit 1)
+- /portal/login dual-mode (password + magic link) (Commit 2)
+- Dashboard data leak ROADMAP entry + Greek transliteration (Commit 3)
+- Member Persona Home architecture documentation (Commit 4)
+- Proxy.ts non-admin redirect από / σε /portal/profile (Commit 5)
+- /portal/login UX guards (Commit 6)
+- Magic link PKCE ROADMAP entry + auth flow type docs (Commit 7)
+- force-dynamic στο app/page.tsx για proxy middleware execution (Commit 8)
+
+**Critical discovery (Commit 8):**
+Vercel CDN edge cache σερβίρει static prerendered `/` route,
+bypassing middleware entirely. HAR analysis showed
+`x-vercel-cache: HIT` με `age: 416s`. Solution: force-dynamic
+directive αναγκάζει SSR per-request → middleware runs → Commit 5
+PII block ενεργοποιείται.
+
+**Production-verified end-to-end (preview):**
+- ΚΩΣΤΑΣ (non-admin) login → /portal/profile ✅
+- Admin login → / με full stats ✅
+- Sidebar permission filtering working για non-admin (only Αρχική +
+  Ημερολόγιο) ✅
+
+**Closes:** 🔴 Dashboard data leak entry (παραμένει 🟡 για
+defense-in-depth page-level guard ως future enhancement).
 
 ### feat/portal-schema-foundation (merged 2026-05-14) — PR #?
 
