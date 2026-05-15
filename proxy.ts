@@ -81,8 +81,8 @@ export async function proxy(request: NextRequest) {
   }
 
   // Root '/' = admin dashboard. Non-admin authenticated users
-  // redirected σε /portal/profile (temporary block — βλ. 🟣
-  // Member Persona Home στο ROADMAP για permanent solution).
+  // redirected σε /portal (Member Persona Home root).
+  // Part του Persona Home architecture — βλ. PR β'.
   if (request.nextUrl.pathname === '/' && user) {
     const admin = getAdminClient();
 
@@ -124,11 +124,11 @@ export async function proxy(request: NextRequest) {
     );
 
     if (!isPrivileged) {
-      logger.warn("proxy/dashboard-pii-block", "Non-admin redirected from /", {
+      logger.warn("proxy/dashboard-pii-block", "Non-admin redirected to /portal", {
         userId: user.id,
         userEmail: user.email,
       });
-      return NextResponse.redirect(new URL('/portal/profile', request.url));
+      return NextResponse.redirect(new URL('/portal', request.url));
     }
   }
 

@@ -13,7 +13,7 @@ export default async function MemberPortalLayout({
     redirect("/portal/login");
   }
 
-  // Branding fetch — mirror του guard pattern από app/portal/profile/page.tsx
+  // Branding fetch — mirror του guard pattern από app/portal/(member)/profile/page.tsx
   // (skip αν orphaned member χωρίς club_id). Service-role client (getAdminClient)
   // bypass RLS — branding είναι read-only club-wide data.
   let branding = {
