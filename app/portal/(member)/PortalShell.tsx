@@ -23,7 +23,7 @@ type PortalShellProps = {
 const NAV_ITEMS = [
   { href: "/portal", label: "Αρχική" },
   { href: "/portal/profile", label: "Το προφίλ μου" },
-  { href: "/calendar", label: "Ημερολόγιο" },
+  { href: "/portal/calendar", label: "Ημερολόγιο" },
 ];
 
 // Helpers mirror των AppShell.tsx (lines 372-396).
