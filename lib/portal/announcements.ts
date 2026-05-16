@@ -121,3 +121,40 @@ export async function getUnreadCount(member: Member): Promise<number> {
 
   return count ?? 0;
 }
+
+/**
+ * Επιστρέφει το συνολικό πλήθος δημοσιευμένων announcements που αφορούν
+ * τον member (same audience filter με getRecentAnnouncements, χωρίς timestamp
+ * filter). Χρησιμοποιείται στο header του AnnouncementsPanel ως "Ανακοινώσεις (N)".
+ *
+ * Αν ο member δεν έχει club_id (orphaned), επιστρέφει 0 χωρίς query.
+ */
+export async function getTotalCount(member: Member): Promise<number> {
+  if (!member.club_id) return 0;
+
+  const deptIds = await getMemberDepartmentIds(member.id);
+  const admin = getAdminClient();
+
+  let query = admin
+    .from("announcements")
+    .select("id", { count: "exact", head: true })
+    .eq("club_id", member.club_id)
+    .eq("published", true);
+
+  if (deptIds.length === 0) {
+    query = query.is("department_id", null);
+  } else {
+    query = query.or(
+      `department_id.is.null,department_id.in.(${deptIds.join(",")})`,
+    );
+  }
+
+  const { count, error } = await query;
+
+  if (error) {
+    console.error("getTotalCount failed:", error);
+    return 0;
+  }
+
+  return count ?? 0;
+}
