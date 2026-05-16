@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentMember } from "@/lib/auth/portalAuth";
+import AnnouncementsPanel from "./_components/AnnouncementsPanel";
+import { MarkReadOnMount } from "./_components/MarkReadOnMount";
 
 export default async function PortalHomePage() {
   // Belt-and-suspenders auth check — το layout ήδη κάνει redirect αν
@@ -27,6 +29,9 @@ export default async function PortalHomePage() {
           εκδηλώσεις.
         </p>
       </section>
+
+      <AnnouncementsPanel member={member} />
+      <MarkReadOnMount />
 
       {/* Obligations placeholder — Phase 2 hook (Obligations unified view) */}
       <section className="rounded-xl border border-border bg-background p-6">
