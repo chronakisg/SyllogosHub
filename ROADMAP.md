@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-15 (PR β' ready — feat/portal-persona-home 5-commit branch με Member Portal Phase 1 — Persona Home root routing architecture)  
+> Last updated: 2026-05-16 (PR δ' merged — feat/portal-announcements / Member Portal Phase 2: Announcements integration με collapsible panel + unread tracking)
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -162,6 +162,30 @@ QR distribution sources (3 από Phase 1):
 _(no active branches)_
 
 ## 🔴 Critical / Production Blockers
+
+- [ ] **🔴 Migration delivery 2-stage checklist — process gap caught σε PR #92**
+
+  Discovered: 2026-05-16 (κατά smoke testing του announcements UI)
+
+  **Incident:**
+  Migration 0027 (από PR #88 `feat/portal-schema-foundation`, merged 2026-05-14) είχε code-merge στο main αλλά **ποτέ δεν τρέξε στην production DB**. Δύο μέρες spurious type definitions για non-existent columns (`members.last_announcement_check_at` + 3 tables). Caught κατά τη διάρκεια smoke testing του PR #92, πριν deploy.
+
+  **Risk:**
+  Αν είχε γίνει deploy κώδικα που reference-άρει non-existent columns (όπως το PR #92 helper layer), `/portal` θα κρασάριζε σε runtime.
+
+  **Action items:**
+  - 2-stage delivery για κάθε PR με migration:
+    - (1) Code merge στο main
+    - (2) Manual SQL Editor execution σε production
+  - ROADMAP entry δεν marked-done μέχρι ΚΑΙ τα δύο stages
+  - PR template update: explicit `DB applied: ☐` checkbox στο PR description, ticked μόνο μετά manual execution
+  - Sanity verification queries να είναι appendix στο migration SQL file (precedent: το 0027 το είχε ήδη — keep pattern)
+
+  **Connects με:** PR template update, future migration PRs.
+
+  Estimated: S (PR template edit + ROADMAP note + pattern adoption).
+
+  Required before next PR με migration (PR template update + manual production apply step).
 
 - [ ] **🔴 Identity model bugs (multi-tenant launch blocker)**
 
@@ -735,9 +759,8 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   στο "Δεν έχετε πρόσβαση" message για non-admin.
 
   **Phase rollout:**
-  - **Phase 1**: Routing + skeleton page με welcome +
-    obligations placeholder
-  - **Phase 2**: Announcements integration (βλ. Chunk 4 entry)
+  - ✅ **Phase 1** (PR #90): Routing + skeleton page με welcome + obligations placeholder
+  - ✅ **Phase 2** (PR #92): Announcements integration με collapsible panel + unread tracking
   - **Phase 3**: Events + finances integration (βλ. Chunk 3 entry)
   - **Phase 4**: Family-aware features (parent βλέπει παιδιά)
 
@@ -905,10 +928,12 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   **UI work 🔜 pending (split σε επιμέρους PRs):**
   - 🔜 Admin: `/announcements` (CRUD + per-department scoping)
   - 🔜 Admin: `/classes` (CRUD + enrollment management)
-  - 🔜 Member: `/portal/announcements` με last_check timestamp wiring
+  - ✅ Member: `/portal/announcements` με last_check timestamp wiring (PR #92)
   - 🔜 Member: `/portal/classes` με weekly schedule view
   - 🔜 Member: `/portal/departments/[id]` page
   - 🔜 Family-wide visibility (parent βλέπει παιδιά εγγεγραμμένα)
+  - 🔜 `announcements.expires_at` column + auto-hide expired (future enhancement)
+  - 🔜 Rich text body για announcements με markdown + safe-html stripping (future enhancement)
   - 🔜 Push notifications για νέες ανακοινώσεις
 
   **🆕 Audience-aware announcements (locked 2026-05-15):**
@@ -1849,7 +1874,35 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
 ## ✅ Recently Done
 
-### feat/portal-native-calendar (PR #?, ready to merge 2026-05-15)
+### feat/portal-announcements (PR #92, merged 2026-05-16)
+
+Phase 2 του Persona Home — Announcements integration στο /portal home. Collapsible panel με audience-filtered fetch (club-wide ∪ member's departments via member_departments junction), unread tracking μέσω members.last_announcement_check_at, και mark-read mechanism στο first page load.
+
+**Commits (3):**
+- `5b5503a` feat(portal): announcements data layer + mark-read API
+- `2429955` feat(portal): add getTotalCount() για collapsible panel header
+- `a5a40b4` feat(portal): AnnouncementsPanel UI με collapsible state + mark-read
+
+**Architectural decisions:**
+- Data layer (`lib/portal/announcements.ts`): 3 helpers (getRecent / getUnreadCount / getTotalCount) με defensive PostgREST `.or()` handling για empty deptIds arrays + orphan-member guards.
+- API surface fidelity με `profile/update`: `getCurrentMember()` + early 401 + `getServerClient()` (user-scoped) για member-initiated writes — admin client μόνο για audience-filtered reads.
+- Server↔client split: `AnnouncementsPanel` (server) fetches + passes serializable data στο `AnnouncementsPanelView` (client) που χειρίζεται collapse state. JSX rendering moved στο client (cards είναι plain data).
+- Smart default collapse: auto-open αν `unreadCount > 0`, αλλιώς closed. Mark-read fires on mount, όχι on expand.
+
+**Closes:**
+- 🟣 Member Persona Home — Phase 2 (announcements integration)
+
+**Production-verified:** /portal home με 2 seeded announcements (1 pinned + 1 normal): panel renders, badge "2 νέες", chevron toggle, mark-read POST → 200, refresh → badge cleared, panel auto-collapses, keyboard a11y OK.
+
+**Critical incident caught during smoke test:** Migration 0027 (από feat/portal-schema-foundation, PR #88) είχε merge-άρει στο main στις 2026-05-14 αλλά **ποτέ δεν είχε εφαρμοστεί στη production DB**. Το column `members.last_announcement_check_at` έλειπε. Εφαρμόστηκε χειροκίνητα στο SQL Editor κατά τη διάρκεια του session (idempotent migration). Process gap → νέο 🔴 entry για migration delivery checklist (βλέπε Critical Production Blockers section).
+
+**Connects με:**
+- Builds on: PR #88 (schema foundation, migration 0027)
+- Next: Chunk 4 Admin authoring UI για announcements
+
+Net stats: +365 lines, 6 files (5 new + 1 modified).
+
+### feat/portal-native-calendar (PR #91, merged 2026-05-15)
 
 PR γ' του Member Portal Phase 1 — Portal-native calendar view.
 Pure code refactor, καμία migration, καμία types.ts edit.
@@ -1901,7 +1954,7 @@ Expected smoke test paths:
 Net stats: +1771 (CalendarView) +5 (admin wrapper after −1763)
 +5 (portal wrapper) +1 (nav swap) = **+15 lines net**.
 
-### feat/portal-persona-home (PR #?, ready to merge 2026-05-15)
+### feat/portal-persona-home (PR #90, merged 2026-05-15)
 
 Member Portal Phase 1 — Persona Home root routing architecture.
 Permanent solution για το PR α' temporary PII block.
@@ -1950,7 +2003,7 @@ Permanent solution για το PR α' temporary PII block.
 - 🔜 Phase 3: Events + finances integration (Chunk 3)
 - 🔜 Phase 4: Family-aware features
 
-### feat/portal-password-set (PR #?, ready to merge 2026-05-15)
+### feat/portal-password-set (PR #89, merged 2026-05-15)
 
 Member Portal Chunk 3 — Auth integration με password-set flow +
 dual-mode login + PII protection.
@@ -1981,7 +2034,7 @@ PII block ενεργοποιείται.
 **Closes:** 🔴 Dashboard data leak entry (παραμένει 🟡 για
 defense-in-depth page-level guard ως future enhancement).
 
-### feat/portal-schema-foundation (merged 2026-05-14) — PR #?
+### feat/portal-schema-foundation (PR #88, merged 2026-05-14)
 
 Member Portal Chunk 3+4 schema foundation. 3 new tables + 1 
 column για να ξεκλειδώσει UI work για Chunks 3-4. Pure schema 
@@ -2034,6 +2087,8 @@ total.
 - PR γ': /portal/finances/me + /portal/events  
 - PR δ': Classes admin tools (CRUD + enrollment management)
 - PR ε': /portal/classes + family-aware visibility
+
+**Note (added 2026-05-16):** Το παραπάνω plan άλλαξε. Actual sequence: PR α (#89) = password-set ✅, PR β (#90) = persona home Phase 1 ✅, PR γ (#91) = portal-native calendar ✅, PR δ (#92) = announcements ✅. Επόμενα Member Portal Chunks (admin authoring UI, /portal/announcements full list, /portal/classes, family-aware) trackαρονται στο Chunk 4 entry — TBD ordering.
 
 Connects με: PR #44 (Member Portal Chunk 2 — auth foundation), 
 Migration 0027 schema, ROADMAP "Member Portal Chunk 3+4 plan" 
