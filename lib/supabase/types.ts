@@ -708,7 +708,8 @@ export type PermissionModule =
   | "dashboard"
   | "settings"
   | "cashier"
-  | "audit";
+  | "audit"
+  | "announcements";
 
 export type PermissionAction = "read" | "create" | "edit" | "delete";
 

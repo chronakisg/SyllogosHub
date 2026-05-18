@@ -21,7 +21,8 @@ export type Permission =
   | "settings"
   | "dashboard"
   | "cashier"
-  | "audit";
+  | "audit"
+  | "announcements";
 
 export const ALL_PERMISSIONS: Permission[] = [
   "finances",
@@ -33,6 +34,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   "dashboard",
   "cashier",
   "audit",
+  "announcements",
 ];
 
 export const MODULE_TO_PERMISSION: Record<PermissionModule, Permission> = {
@@ -45,6 +47,7 @@ export const MODULE_TO_PERMISSION: Record<PermissionModule, Permission> = {
   settings: "settings",
   cashier: "cashier",
   audit: "audit",
+  announcements: "announcements",
 };
 
 /**
