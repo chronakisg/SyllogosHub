@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-16 (PR δ' merged — feat/portal-announcements / Member Portal Phase 2: Announcements integration με collapsible panel + unread tracking)
+> Last updated: 2026-05-18 (PR στ' (#94) merged — feat/admin-announcements / Admin Announcements: full CRUD UI + permission module 0028)
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -926,7 +926,7 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   - ✅ types.ts updates με DayOfWeek labels + all 3 type triplets
 
   **UI work 🔜 pending (split σε επιμέρους PRs):**
-  - 🔜 Admin: `/announcements` (CRUD + per-department scoping)
+  - ✅ Admin: `/announcements` (CRUD + permission module 0028, PR στ' (#94), merged 2026-05-18) — scope='all' only, ομαδάρχης writes deferred
   - 🔜 Admin: `/classes` (CRUD + enrollment management)
   - ✅ Member: `/portal/announcements` με last_check timestamp wiring (PR #92)
   - 🔜 Member: `/portal/classes` με weekly schedule view
@@ -955,9 +955,12 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
     (απαιτεί instructor FK refactor από text σε
     `instructor_member_id`)
 
-  Σήμερα μόνο πρόεδρος/γραμματέας μπορούν να γράψουν
-  department-scoped announcements (Πρόεδρος ΔΣ role έχει
-  το permission). Ομαδάρχης concept πρέπει να μπει πρώτα.
+  PR στ' (#94) delivered: admin-side CRUD + permission module 0028 + auto-grant
+  σε Πρόεδρος ΔΣ + Γραμματέας. Όλα τα grants είναι `scope='all'` (club-wide,
+  2 ρόλοι × 4 actions = 8 rows ανά club). Per-department scoping (ομαδάρχης
+  writes μόνο για τα τμήματά του) requires το permission scope system να γίνει
+  wired — βλ. νέα sub-section "Permission scope system wire-up" στο Department
+  Leaders entry + 🟡 Department Leaders concept ως prerequisite.
 
   Connects με: departments, family system, push notifications,
   🟡 Department Leaders concept (prerequisite για
@@ -1011,6 +1014,35 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
     ομαδάρχης του department_id αυτής της ανακοίνωσης;»
   - UI: στο /announcements admin page, ομαδάρχης βλέπει μόνο
     τα δικά του departments στο dropdown
+
+  **🆕 Permission scope system wire-up (prerequisite finding από PR στ' (#94)):**
+
+  Inspection κατά το PR στ' (#94) planning αποκάλυψε ότι το scope system είναι
+  half-baked:
+  - Schema έχει `scope` ('all' | 'own' | 'department') + nullable
+    `scope_value` text (κρατάει όνομα τμήματος, ΟΧΙ UUID)
+  - `computePermissions` (lib/auth/permissions.ts) **αγνοεί τα scope/
+    scope_value** όταν παράγει `Permission[]` — flat module-level check
+  - `requirePermission` (server guard) επιστρέφει μόνο modules, no scope
+  - `canDo` helper στο useRole.ts υπάρχει αλλά: (1) zero callers στο
+    codebase, (2) iterates μόνο `customPermissions` ΟΧΙ `rolePermissions`,
+    (3) matches `scope_value` by name όχι UUID
+  - `hasPermission` helper επίσης zero callers
+
+  Wire-up work required (πριν ομαδάρχης writes activate):
+  1. Migration: `scope_value` column normalization → text name to UUID FK
+     (`scope_value uuid references departments(id)`)
+  2. `computePermissions` returns scoped structure αντί για flat array
+  3. `requirePermission` accepts optional `resourceDepartmentId` arg +
+     server-side scope match
+  4. `canDo` rewrite: include rolePermissions, UUID matching
+  5. Existing call sites (10+ files χρησιμοποιούν
+     `role.permissions.includes("X")`) — backward-compat path ή migration
+  6. UI integration: announcement form modal filters department dropdown
+     για ομαδάρχη
+
+  Bundling decision: αυτό + το `department_leaders` table + ομαδάρχης UI
+  πάνε όλα στο PR ζ' (single coherent slice).
 
   **Prerequisite για:**
   - 🟣 Chunk 4 audience-aware announcements
@@ -1873,6 +1905,38 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   Estimated: S (~30 minutes — comment additions σε 3 αρχεία)
 
 ## ✅ Recently Done
+
+### feat/admin-announcements (PR στ' #94, merged 2026-05-18)
+
+Admin authoring UI για ανακοινώσεις του συλλόγου. Full CRUD: list view, create/edit modal, hard delete με confirmation. Permission foundation με migration 0028 (νέο `announcements` module, auto-grant σε Πρόεδρος ΔΣ + Γραμματέας με `scope='all'`, bonus cleanup του `member_permissions_module_check` που είχε μείνει stale από 0022).
+
+**Commits (6):**
+- `7a2ed08` feat(permissions): add announcements module + audit cleanup
+- `008bffa` feat(announcements): GET /api/admin/announcements list route
+- `190aa3c` feat(announcements): POST + PATCH + DELETE admin routes
+- `dcb92f4` feat(announcements): admin list page (read-only)
+- `c27f2f4` feat(announcements): admin CRUD UI με modal forms
+- `dddc5ee` feat(announcements): add /announcements στο AppShell nav
+
+**Architectural decisions:**
+- Migration 0028 fixes ασυνέπεια από 0022 — και τα 2 constraints (role-level + per-member) τώρα identical (10 modules).
+- API routes χρησιμοποιούν `requirePermission("announcements")` (όχι coarse `requireAdmin`) — αξιοποιεί το νέο module.
+- Mount-once modal pattern (no `isOpen` prop, parent controls lifecycle via conditional render + `key` prop για target switching) — αντικαθιστά το παλιό effect-driven reset pattern που σπάει το React 19 `react-hooks/set-state-in-effect` rule.
+- Derived `isDenied` value αντί για `setStatus("denied")` σε effect — same lint rule.
+- Re-fetch refresh strategy post-mutation αντί για optimistic update — απλό + correct, YAGNI για το first cut.
+- Migration delivery: 0028 applied inline μέσω SQL Editor κατά το first step (πριν API routes write), όχι post-merge. Continuity vs PR #92 incident — pre-flight inspection έδωσε confidence ότι τα 2 constraints ήταν σε γνωστό state πριν drop+recreate.
+
+**Process learning:**
+- Pre-flight inspection αποκάλυψε ότι το permission scope system είναι half-baked (computePermissions αγνοεί scope, canDo είναι dead code). Έγινε **explicit defer** της per-department scoping — wired-up scope system είναι standalone work στο PR ζ' με ομαδάρχης concept. Βλ. updated Department Leaders entry.
+- ESLint `react-hooks/set-state-in-effect` rule πιάνει modern React 19 anti-patterns — δύο εμφανίσεις στο PR (permission gate + modal reset), και τα δύο fixed με derived values / lazy init.
+
+**Closes:**
+- Chunk 4 — Admin authoring UI για announcements (`/announcements` page)
+- 🟣 Permission module foundation για future per-action granular checks
+
+**Production-verified:** create/edit/delete chain με smoke test από browser DevTools console + page-level testing. List ordering pinned-first preserved. department_id null handling για global announcements. Edit pre-fill correct, key-based remount switches targets cleanly.
+
+Net stats: +1,277 lines, 10 files (6 new + 4 modified).
 
 ### feat/portal-announcements (PR #92, merged 2026-05-16)
 
