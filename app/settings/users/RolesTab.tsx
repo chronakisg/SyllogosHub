@@ -7,6 +7,8 @@ import {
   rowsToMatrix,
   type MatrixState,
 } from "@/components/PermissionMatrix";
+import { getBrowserClient } from "@/lib/supabase/client";
+import type { Department } from "@/lib/supabase/types";
 
 type RoleListItem = {
   id: string;
@@ -18,10 +20,11 @@ type RoleListItem = {
   permission_count: number;
 };
 
-export function RolesTab({ clubId: _clubId }: { clubId: string }) {
+export function RolesTab({ clubId }: { clubId: string }) {
   const [roles, setRoles] = useState<RoleListItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [matrix, setMatrix] = useState<MatrixState>(buildEmptyMatrix);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,9 +50,28 @@ export function RolesTab({ clubId: _clubId }: { clubId: string }) {
     }
   }, []);
 
+  const loadDepartments = useCallback(async () => {
+    try {
+      const supabase = getBrowserClient();
+      const { data, error } = await supabase
+        .from("departments")
+        .select("*")
+        .eq("club_id", clubId)
+        .eq("active", true)
+        .order("display_order", { ascending: true });
+      if (error) throw error;
+      setDepartments((data ?? []) as Department[]);
+    } catch (e) {
+      // Silent fail — empty dropdown is acceptable fallback
+      console.error("[RolesTab] loadDepartments error", e);
+      setDepartments([]);
+    }
+  }, [clubId]);
+
   useEffect(() => {
     void loadRoles();
-  }, [loadRoles]);
+    void loadDepartments();
+  }, [loadRoles, loadDepartments]);
 
   const loadPermissions = useCallback(async (roleId: string) => {
     setError(null);
@@ -257,7 +279,11 @@ export function RolesTab({ clubId: _clubId }: { clubId: string }) {
               </button>
             </div>
 
-            <PermissionMatrix matrix={matrix} onChange={setMatrix} />
+            <PermissionMatrix
+              matrix={matrix}
+              onChange={setMatrix}
+              availableDepartments={departments}
+            />
           </>
         )}
       </section>
