@@ -58,7 +58,7 @@ export function RolesTab({ clubId }: { clubId: string }) {
         .select("*")
         .eq("club_id", clubId)
         .eq("active", true)
-        .order("display_order", { ascending: true });
+        .order("name", { ascending: true });
       if (error) throw error;
       setDepartments((data ?? []) as Department[]);
     } catch (e) {
