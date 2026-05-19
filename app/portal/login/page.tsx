@@ -104,7 +104,8 @@ function PortalLoginView() {
         return;
       }
       await supabase.auth.getSession();
-      router.replace("/portal/profile");
+      const isMobile = window.matchMedia("(max-width: 768px)").matches;
+      router.replace(isMobile ? "/portal" : "/");
       router.refresh();
     } catch {
       setPasswordError("Σφάλμα δικτύου");
