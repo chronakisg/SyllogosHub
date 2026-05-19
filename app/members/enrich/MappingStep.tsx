@@ -12,6 +12,7 @@
 
 import { useMemo, useState, type Dispatch } from "react";
 
+import type { MatchableMember } from "@/lib/enrich/match";
 import { normalizeRow } from "@/lib/enrich/normalize";
 import type { ColumnTarget } from "@/lib/enrich/types";
 
@@ -68,11 +69,15 @@ export function MappingStep({ state, dispatch }: Props) {
         setError(detail?.error ?? `Αποτυχία (HTTP ${response.status}).`);
         return;
       }
-      const data = (await response.json()) as { perRow: MatchedRow[] };
+      const data = (await response.json()) as {
+        perRow: MatchedRow[];
+        allMembers: MatchableMember[];
+      };
       dispatch({
         type: "MATCH_LOADED",
         normalizedRows,
         perRow: data.perRow,
+        allMembers: data.allMembers,
       });
     } catch {
       setError("Σφάλμα δικτύου — δοκίμασε ξανά.");

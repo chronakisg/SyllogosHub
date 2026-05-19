@@ -10,12 +10,13 @@
 // step guards: actions που δεν ταιριάζουν με το current step
 // επιστρέφουν unchanged state αντί να crash-άρουν.
 
+import { buildInitialDecision } from "@/lib/enrich/autoDecision";
 import { autoDetectMapping } from "@/lib/enrich/columnMapper";
+import type { MatchableMember } from "@/lib/enrich/match";
 import type { ParsedSheet, ParseResult } from "@/lib/enrich/parseExcel";
 import type {
   ColumnTarget,
   EnrichmentDecision,
-  ExcelRow,
   MappedColumn,
   MatchCandidate,
   NormalizedExcelRow,
@@ -72,6 +73,7 @@ export type WizardState =
       filename: string;
       normalizedRows: NormalizedExcelRow[];
       perRow: MatchedRow[];
+      allMembers: MatchableMember[];
       decisions: Map<number, EnrichmentDecision>;
       cursor: number;
     }
@@ -79,7 +81,11 @@ export type WizardState =
       step: "summary";
       filename: string;
       result: CommitResponse;
-      originalRows: ExcelRow[];
+      /**
+       * Forwarded από review state. SummaryStep χρησιμοποιεί `.raw`
+       * των skipped rows για να φτιάξει το download CSV (plan §1.2).
+       */
+      normalizedRows: NormalizedExcelRow[];
     };
 
 // ──────────────────────────────────────────────────────────────────
@@ -94,13 +100,13 @@ export type WizardAction =
       type: "MATCH_LOADED";
       normalizedRows: NormalizedExcelRow[];
       perRow: MatchedRow[];
+      allMembers: MatchableMember[];
     }
   | { type: "SET_DECISION"; rowIndex: number; decision: EnrichmentDecision }
   | { type: "SET_CURSOR"; cursor: number }
   | {
       type: "COMMIT_DONE";
       result: CommitResponse;
-      originalRows: ExcelRow[];
     }
   | { type: "RESET" };
 
@@ -182,12 +188,32 @@ export function reducer(
 
     case "MATCH_LOADED": {
       if (state.step !== "mapping") return state;
+      const { normalizedRows, perRow, allMembers } = action;
+
+      // Pre-populate decisions για rows που έχουν high-confidence match
+      // με non-trivial auto-tick fields. Admin μπορεί να κάνει override
+      // per-row στο ReviewStep. Rows χωρίς auto-decision παραμένουν
+      // undecided → handleCommit defaults σε admin_skipped.
+      const initialDecisions = new Map<number, EnrichmentDecision>();
+      for (let i = 0; i < normalizedRows.length; i++) {
+        const row = normalizedRows[i];
+        const matched = perRow.find((r) => r.rowIndex === i);
+        const initial = buildInitialDecision(
+          i,
+          row,
+          matched?.candidates ?? [],
+          allMembers,
+        );
+        if (initial) initialDecisions.set(i, initial);
+      }
+
       return {
         step: "review",
         filename: state.filename,
-        normalizedRows: action.normalizedRows,
-        perRow: action.perRow,
-        decisions: new Map(),
+        normalizedRows,
+        perRow,
+        allMembers,
+        decisions: initialDecisions,
         cursor: 0,
       };
     }
@@ -212,7 +238,7 @@ export function reducer(
         step: "summary",
         filename: state.filename,
         result: action.result,
-        originalRows: action.originalRows,
+        normalizedRows: state.normalizedRows,
       };
     }
 

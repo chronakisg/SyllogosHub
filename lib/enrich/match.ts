@@ -56,9 +56,25 @@ const SCORE_MAX = 100;
 // ──────────────────────────────────────────────────────────────────
 
 /**
- * Subset του Member που χρειάζεται το scoring engine. Καλώντας
- * `.select(...)` με αυτά τα 7 columns στο match endpoint αποφεύγουμε
- * over-fetching και κρατάμε το payload μικρό.
+ * Supabase `.select(...)` string που μαζεύει ΟΛΑ τα MatchableMember
+ * columns σε ένα tuple — single source of truth για match.ts type +
+ * match endpoint query. Future column additions: ενημέρωσε ΚΑΙ
+ * MatchableMember Pick + αυτό το string ταυτόχρονα.
+ */
+export const MATCHABLE_SELECT =
+  "id, first_name, last_name, email, phone, father_name, address, " +
+  "birth_date, birthplace, residence, occupation, mother_name, maiden_name";
+
+/**
+ * Subset του Member που χρειάζεται το enrichment wizard:
+ * - 7 πρώτα fields: scoring engine (email, phone, ταυτότητα, address overlap)
+ * - 6 επόμενα: read-only carry για ReviewCard diff panel
+ *   (birth_date / birthplace / residence / occupation / mother_name /
+ *   maiden_name) — δεν συμβάλλουν στο scoring αλλά πρέπει να φτάσουν
+ *   στο UI για να εμφανιστούν existing values στο "(κενό) → νέα τιμή"
+ *
+ * Καλώντας `.select(MATCHABLE_SELECT)` αποφεύγουμε over-fetch (members
+ * πίνακας έχει >30 columns).
  */
 export type MatchableMember = Pick<
   Member,
@@ -69,6 +85,12 @@ export type MatchableMember = Pick<
   | "phone"
   | "father_name"
   | "address"
+  | "birth_date"
+  | "birthplace"
+  | "residence"
+  | "occupation"
+  | "mother_name"
+  | "maiden_name"
 >;
 
 // ──────────────────────────────────────────────────────────────────

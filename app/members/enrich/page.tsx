@@ -16,6 +16,8 @@ import { useRole } from "@/lib/hooks/useRole";
 
 import { INITIAL_STATE, reducer } from "./_state";
 import { MappingStep } from "./MappingStep";
+import { ReviewStep } from "./ReviewStep";
+import { SummaryStep } from "./SummaryStep";
 import { UploadStep } from "./UploadStep";
 
 export default function MemberEnrichWizardPage() {
@@ -52,33 +54,11 @@ export default function MemberEnrichWizardPage() {
       )}
 
       {state.step === "review" && (
-        <div className="rounded-lg border border-border bg-surface p-6 text-sm">
-          <p className="text-muted">
-            Review step — coming in Commit 4b.
-          </p>
-          <button
-            type="button"
-            onClick={() => dispatch({ type: "RESET" })}
-            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-background"
-          >
-            ← Επιστροφή
-          </button>
-        </div>
+        <ReviewStep state={state} dispatch={dispatch} />
       )}
 
       {state.step === "summary" && (
-        <div className="rounded-lg border border-border bg-surface p-6 text-sm">
-          <p className="text-muted">
-            Summary step — coming in Commit 4b.
-          </p>
-          <button
-            type="button"
-            onClick={() => dispatch({ type: "RESET" })}
-            className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-background"
-          >
-            ← Επιστροφή
-          </button>
-        </div>
+        <SummaryStep state={state} dispatch={dispatch} />
       )}
     </div>
   );

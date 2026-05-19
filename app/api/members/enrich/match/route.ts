@@ -26,6 +26,7 @@ import { getAdminClient } from "@/lib/supabase/admin";
 
 import {
   MATCH_THRESHOLD_SECONDARY,
+  MATCHABLE_SELECT,
   rankCandidates,
   type MatchableMember,
 } from "@/lib/enrich/match";
@@ -61,6 +62,12 @@ type PerRowResponse = {
 
 type RouteResponse = {
   perRow: PerRowResponse[];
+  /**
+   * Full members list επιστρέφεται για client-side manual member
+   * search στο ReviewCard (plan §4.2 fallback). 13-column lean shape
+   * — payload ~30KB για 244 members.
+   */
+  allMembers: MatchableMember[];
 };
 
 // ──────────────────────────────────────────────────────────────────
@@ -155,11 +162,11 @@ export async function POST(request: Request) {
   }
 
   // 5. Fetch all members του club σε μία query (lean .select() με μόνο
-  //    τα 7 MatchableMember columns — αποφεύγει over-fetch)
+  //    τα 13 MatchableMember columns — αποφεύγει over-fetch)
   const admin = getAdminClient();
   const { data: members, error: membersError } = await admin
     .from("members")
-    .select("id, first_name, last_name, email, phone, father_name, address")
+    .select(MATCHABLE_SELECT)
     .eq("club_id", ctx.clubId);
 
   if (membersError) {
@@ -173,7 +180,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const matchable = (members ?? []) as MatchableMember[];
+  // Supabase types δεν infer-άρουν shape από non-literal select string —
+  // double-cast (unknown → typed) είναι ο canonical workaround.
+  const matchable = (members ?? []) as unknown as MatchableMember[];
 
   // 6. Per-row ranking + filtering
   //    rankCandidates επιστρέφει sorted desc· εδώ απλώς φιλτράρουμε
@@ -188,6 +197,6 @@ export async function POST(request: Request) {
     return { rowIndex: row.rowIndex, candidates };
   });
 
-  const response: RouteResponse = { perRow };
+  const response: RouteResponse = { perRow, allMembers: matchable };
   return NextResponse.json(response);
 }
