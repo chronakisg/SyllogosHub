@@ -147,7 +147,6 @@ export default function AnnouncementsPage() {
         .from("departments")
         .select("*")
         .eq("club_id", activeClubId)
-        .order("display_order", { ascending: true })
         .order("name", { ascending: true });
 
       if (cancelled) return;

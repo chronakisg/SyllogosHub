@@ -4,7 +4,6 @@ import Link from "next/link";
 import {
   useCallback,
   useEffect,
-  useMemo,
   useState,
   type FormEvent,
   type ReactNode,
@@ -26,15 +25,13 @@ const inputClass =
 type Form = {
   name: string;
   description: string;
-  display_order: string;
   active: boolean;
 };
 
-function emptyForm(nextOrder: number): Form {
+function emptyForm(): Form {
   return {
     name: "",
     description: "",
-    display_order: String(nextOrder),
     active: true,
   };
 }
@@ -49,7 +46,7 @@ export default function DepartmentsPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Department | null>(null);
-  const [form, setForm] = useState<Form>(emptyForm(0));
+  const [form, setForm] = useState<Form>(emptyForm());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [leadersTarget, setLeadersTarget] = useState<Department | null>(null);
@@ -63,7 +60,6 @@ export default function DepartmentsPage() {
           .from("departments")
           .select("*")
           .eq("club_id", clubId)
-          .order("display_order", { ascending: true })
           .order("name", { ascending: true }),
         supabase
           .from("member_departments")
@@ -91,17 +87,9 @@ export default function DepartmentsPage() {
     load();
   }, [load, clubLoading]);
 
-  const nextOrder = useMemo(
-    () =>
-      departments.length === 0
-        ? 1
-        : Math.max(...departments.map((d) => d.display_order)) + 1,
-    [departments]
-  );
-
   function openCreate() {
     setEditing(null);
-    setForm(emptyForm(nextOrder));
+    setForm(emptyForm());
     setFormError(null);
     setModalOpen(true);
   }
@@ -111,7 +99,6 @@ export default function DepartmentsPage() {
     setForm({
       name: d.name,
       description: d.description ?? "",
-      display_order: String(d.display_order),
       active: d.active,
     });
     setFormError(null);
@@ -144,7 +131,6 @@ export default function DepartmentsPage() {
       setFormError("Το όνομα είναι υποχρεωτικό.");
       return;
     }
-    const order = parseInt(form.display_order, 10) || 0;
     setSaving(true);
     try {
       const supabase = getBrowserClient();
@@ -152,7 +138,6 @@ export default function DepartmentsPage() {
         const update: DepartmentUpdate = {
           name,
           description: form.description.trim() || null,
-          display_order: order,
           active: form.active,
         };
         const { error: uErr } = await supabase
@@ -166,7 +151,6 @@ export default function DepartmentsPage() {
           club_id: clubId,
           name,
           description: form.description.trim() || null,
-          display_order: order,
           active: form.active,
         };
         const { error: iErr } = await supabase
@@ -197,34 +181,6 @@ export default function DepartmentsPage() {
       await load();
     } catch (err) {
       setError(errorMessage(err, "Σφάλμα ενημέρωσης κατάστασης."));
-    }
-  }
-
-  async function move(d: Department, direction: -1 | 1) {
-    if (!clubId) return;
-    const sorted = [...departments].sort(
-      (a, b) => a.display_order - b.display_order
-    );
-    const idx = sorted.findIndex((x) => x.id === d.id);
-    const swap = sorted[idx + direction];
-    if (!swap) return;
-    try {
-      const supabase = getBrowserClient();
-      const { error: e1 } = await supabase
-        .from("departments")
-        .update({ display_order: swap.display_order })
-        .eq("id", d.id)
-        .eq("club_id", clubId);
-      if (e1) throw e1;
-      const { error: e2 } = await supabase
-        .from("departments")
-        .update({ display_order: d.display_order })
-        .eq("id", swap.id)
-        .eq("club_id", clubId);
-      if (e2) throw e2;
-      await load();
-    } catch (err) {
-      setError(errorMessage(err, "Σφάλμα αλλαγής σειράς."));
     }
   }
 
@@ -299,7 +255,6 @@ export default function DepartmentsPage() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-border bg-background/40 text-xs uppercase tracking-wider text-muted">
               <tr>
-                <th className="px-3 py-2 w-12">#</th>
                 <th className="px-3 py-2">Όνομα</th>
                 <th className="px-3 py-2">Περιγραφή</th>
                 <th className="px-3 py-2 text-right">Μέλη</th>
@@ -308,9 +263,8 @@ export default function DepartmentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {departments.map((d, idx) => (
+              {departments.map((d) => (
                 <tr key={d.id}>
-                  <td className="px-3 py-2 text-muted">{d.display_order}</td>
                   <td className="px-3 py-2 font-medium">{d.name}</td>
                   <td className="px-3 py-2 max-w-md truncate text-xs text-muted">
                     {d.description ?? "—"}
@@ -331,26 +285,6 @@ export default function DepartmentsPage() {
                   </td>
                   <td className="px-3 py-2 text-right">
                     <div className="inline-flex justify-end gap-1">
-                      <button
-                        type="button"
-                        onClick={() => move(d, -1)}
-                        disabled={idx === 0}
-                        className="rounded-md border border-border px-2 py-1 text-[11px] transition hover:bg-foreground/5 disabled:opacity-40"
-                        title="Μετακίνηση πάνω"
-                        aria-label="Μετακίνηση πάνω"
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => move(d, 1)}
-                        disabled={idx === departments.length - 1}
-                        className="rounded-md border border-border px-2 py-1 text-[11px] transition hover:bg-foreground/5 disabled:opacity-40"
-                        title="Μετακίνηση κάτω"
-                        aria-label="Μετακίνηση κάτω"
-                      >
-                        ↓
-                      </button>
                       <button
                         type="button"
                         onClick={() => openEdit(d)}
@@ -464,29 +398,17 @@ function DepartmentModal({
               className={inputClass}
             />
           </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Σειρά Εμφάνισης">
-              <input
-                type="number"
-                value={form.display_order}
-                onChange={(e) =>
-                  setForm((s) => ({ ...s, display_order: e.target.value }))
-                }
-                className={inputClass}
-              />
-            </Field>
-            <label className="flex items-end gap-2 pb-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.active}
-                onChange={(e) =>
-                  setForm((s) => ({ ...s, active: e.target.checked }))
-                }
-                className="h-4 w-4 rounded border-border"
-              />
-              Ενεργό
-            </label>
-          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.active}
+              onChange={(e) =>
+                setForm((s) => ({ ...s, active: e.target.checked }))
+              }
+              className="h-4 w-4 rounded border-border"
+            />
+            Ενεργό
+          </label>
           {formError && (
             <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
               {formError}
