@@ -76,9 +76,9 @@ export function canDo(
     }
     if (p.scope === "department") {
       if (
-        p.scope_value &&
+        p.scope_department_id &&
         opts.resourceDepartment &&
-        p.scope_value === opts.resourceDepartment
+        p.scope_department_id === opts.resourceDepartment
       ) {
         return true;
       }
@@ -152,7 +152,7 @@ export function useRole(): RoleState {
                     module,
                     action,
                     scope,
-                    scope_value,
+                    scope_department_id,
                     created_at
                   )
                 )

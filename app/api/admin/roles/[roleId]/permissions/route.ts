@@ -46,7 +46,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 // ─────────── PATCH: full replace permissions (delete + insert) ───────────
-// Body: { permissions: Array<{ module, action, scope, scope_value? }> }
+// Body: { permissions: Array<{ module, action, scope, scope_department_id? }> }
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     const ctx = await requireAdmin();
@@ -57,7 +57,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         module: string;
         action: string;
         scope: string;
-        scope_value?: string | null;
+        scope_department_id?: string | null;
       }>;
     };
 
@@ -88,9 +88,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           { status: 400 }
         );
       }
-      if (p.scope === "department" && !p.scope_value?.trim()) {
+      if (p.scope === "department" && !p.scope_department_id?.trim()) {
         return NextResponse.json(
-          { error: "Department scope απαιτεί scope_value" },
+          { error: "Department scope απαιτεί scope_department_id" },
           { status: 400 }
         );
       }
@@ -114,7 +114,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         module: p.module as PermissionModule,
         action: p.action as PermissionAction,
         scope: p.scope as PermissionScope,
-        scope_value: p.scope_value?.trim() || null,
+        scope_department_id: p.scope_department_id?.trim() || null,
       }));
 
       const { error: insertError } = await supabase

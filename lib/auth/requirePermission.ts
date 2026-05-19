@@ -85,7 +85,7 @@ export async function requirePermission(
           id,
           name,
           member_role_permissions (
-            id, role_id, module, action, scope, scope_value, created_at
+            id, role_id, module, action, scope, scope_department_id, created_at
           )
         )
       `)

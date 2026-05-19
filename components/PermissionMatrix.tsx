@@ -13,13 +13,13 @@ import type {
 export type CellState = {
   enabled: boolean;
   scope: PermissionScope;
-  scope_value: string;
+  scope_department_id: string;
 };
 
 const EMPTY_CELL: CellState = {
   enabled: false,
   scope: "all",
-  scope_value: "",
+  scope_department_id: "",
 };
 
 export type CellKey = `${PermissionModule}:${PermissionAction}`;
@@ -73,7 +73,7 @@ export function rowsToMatrix(rows: MemberPermission[]): MatrixState {
     map.set(cellKey(r.module, r.action), {
       enabled: true,
       scope: r.scope,
-      scope_value: r.scope_value ?? "",
+      scope_department_id: r.scope_department_id ?? "",
     });
   }
   return map;
@@ -116,14 +116,21 @@ export function CellEditor({
           >
             <option value="all">Όλα</option>
             <option value="own">Δικά μου</option>
-            <option value="department">Τμήμα</option>
+            {/* TODO PR ζ.3: enable when department dropdown UI ships */}
+            <option
+              value="department"
+              disabled
+              title="Θα ενεργοποιηθεί στο PR ζ.3 — Department leader assignment"
+            >
+              Τμήμα
+            </option>
           </select>
           {cell.scope === "department" && (
             <input
               type="text"
-              value={cell.scope_value}
+              value={cell.scope_department_id}
               disabled={disabled}
-              onChange={(e) => onChange({ scope_value: e.target.value })}
+              onChange={(e) => onChange({ scope_department_id: e.target.value })}
               placeholder="π.χ. Χορευτικό"
               className={inputClass}
             />
