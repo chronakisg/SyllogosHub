@@ -122,7 +122,7 @@ export async function requirePermission(
   );
 
   // 6. Compute permissions using shared logic
-  const userPermissions = computePermissions({
+  const { permissions: userPermissions } = computePermissions({
     isPresident: resolved.isPresident,
     isSystemAdmin: resolved.isSystemAdmin,
     rolePermissions,

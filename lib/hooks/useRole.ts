@@ -6,11 +6,11 @@ import type {
   MemberPermission,
   MemberRolePermission,
   PermissionAction,
-  PermissionModule,
   UserRoleName,
 } from "@/lib/supabase/types";
 import {
   type Permission,
+  type ScopedPermission,
   computePermissions,
 } from "@/lib/auth/permissions";
 
@@ -30,6 +30,7 @@ export type RoleState = {
   isBoardMember: boolean;
   boardPosition: string | null;
   permissions: Permission[];
+  scoped: ScopedPermission[];
   customPermissions: MemberPermission[];
   assignedRoles: { id: string; name: string }[];
   rolePermissions: MemberRolePermission[];
@@ -48,6 +49,7 @@ const INITIAL: RoleState = {
   isBoardMember: false,
   boardPosition: null,
   permissions: [],
+  scoped: [],
   customPermissions: [],
   assignedRoles: [],
   rolePermissions: [],
@@ -62,7 +64,7 @@ export type CanDoOpts = {
 
 export function canDo(
   state: RoleState,
-  module: PermissionModule,
+  module: Permission,
   action: PermissionAction,
   opts: CanDoOpts = {}
 ): boolean {
@@ -185,7 +187,7 @@ export function useRole(): RoleState {
         }
         if (cancelled) return;
 
-        const permissions = computePermissions({
+        const { permissions, scoped } = computePermissions({
           isPresident,
           isSystemAdmin,
           rolePermissions,
@@ -205,6 +207,7 @@ export function useRole(): RoleState {
           isBoardMember,
           boardPosition,
           permissions,
+          scoped,
           customPermissions,
           assignedRoles,
           rolePermissions,

@@ -1404,6 +1404,41 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
 ## 🟢 Nice to Have / Future
 
+- [ ] **🟢 Permission types unification (drift cleanup)**
+
+  Stack: 🟣 Permission system · Tech Debt
+
+  Discovered: 2026-05-19 (PR ζ.2 Commit 1 pre-flight)
+
+  `PermissionAction` και `PermissionScope` ορίζονται σε ΚΑΙ τα
+  δύο: `lib/supabase/types.ts:730-732` (DB-derived) +
+  `lib/auth/permissions.ts:44-45` (νέα auth domain hub).
+  Identical literal unions, TypeScript-compatible αλλά formally
+  duplicate symbols.
+
+  **Drift risk**: αν αύριο προστεθεί 5η action ή 4η scope σε
+  ένα από τα δύο και ξεχαστεί το άλλο, divergence + site-specific
+  compile errors.
+
+  **Bonus duplicate**: `ALL_ACTIONS` ορίζεται σε `lib/auth/permissions.ts:47`
+  ΚΑΙ `lib/admin/seedClub.ts:61` — τρίτο σημείο unify-able.
+
+  **Cleanup plan (S, ~1 commit)**:
+  1. Drop ορισμοί από `lib/supabase/types.ts:730-732`
+  2. Update 4 files να φέρουν τα types από `lib/auth/permissions.ts`:
+     - components/PermissionMatrix.tsx
+     - lib/admin/seedClub.ts (+ drop local ALL_ACTIONS)
+     - lib/hooks/useRole.ts
+     - app/api/admin/roles/[roleId]/permissions/route.ts
+  3. Verify tsc + build clean
+
+  **Why not done σε PR ζ.2**: scope creep — τα 4 files δεν έχουν
+  σχέση με τον engine wire-up. Inline comment στο
+  `lib/auth/permissions.ts` σημαίνει το duplication μέχρι
+  το cleanup.
+
+  Estimated: S
+
 ### Super Admin & Multi-tenancy
 
 - [ ] **Standalone syllogoshub.gr + ξεχωριστό Super Admin app**
