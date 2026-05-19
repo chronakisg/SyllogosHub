@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRole } from "@/lib/hooks/useRole";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
@@ -51,6 +51,49 @@ export default function AnnouncementsPage() {
 
   // Departments (page-level, fetched once)
   const [departments, setDepartments] = useState<Department[]>([]);
+
+  // Derive user's permission scope για announcements:create
+  // (από role.scoped που γεμίζει το PR ζ.2 #97 engine).
+  const canPostGlobal = useMemo(
+    () =>
+      role.scoped.some(
+        (p) =>
+          p.module === "announcements" &&
+          p.action === "create" &&
+          p.scope === "all"
+      ),
+    [role.scoped]
+  );
+
+  const allowedDeptIds = useMemo(
+    () =>
+      new Set(
+        role.scoped
+          .filter(
+            (p) =>
+              p.module === "announcements" &&
+              p.action === "create" &&
+              p.scope === "department" &&
+              p.scope_department_id
+          )
+          .map((p) => p.scope_department_id as string)
+      ),
+    [role.scoped]
+  );
+
+  // Filter departments visible στο form modal:
+  // - canPostGlobal: όλα τα departments (admin/president/scope='all')
+  // - else: μόνο τα departments όπου ο user είναι ομαδάρχης
+  const availableDepartments = useMemo(
+    () =>
+      canPostGlobal
+        ? departments
+        : departments.filter((d) => allowedDeptIds.has(d.id)),
+    [canPostGlobal, departments, allowedDeptIds]
+  );
+
+  // Disable create action αν δεν μπορεί να γράψει πουθενά
+  const canCreate = canPostGlobal || availableDepartments.length > 0;
 
   // Form modal state
   const [formModal, setFormModal] = useState<FormModalState | null>(null);
@@ -228,7 +271,13 @@ export default function AnnouncementsPage() {
             setSaveError(null);
             setFormModal({ mode: "create" });
           }}
-          className="shrink-0 rounded-lg bg-[#800000] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#660000]"
+          disabled={!canCreate}
+          title={
+            canCreate
+              ? undefined
+              : "Δεν έχετε δικαίωμα δημιουργίας ανακοινώσεων"
+          }
+          className="shrink-0 rounded-lg bg-[#800000] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#660000] disabled:cursor-not-allowed disabled:opacity-50"
         >
           + Νέα ανακοίνωση
         </button>
@@ -283,7 +332,8 @@ export default function AnnouncementsPage() {
           key={formModal.initial?.id ?? "create"}
           mode={formModal.mode}
           initial={formModal.initial}
-          departments={departments}
+          departments={availableDepartments}
+          canPostGlobal={canPostGlobal}
           isSaving={saving}
           saveError={saveError}
           onClose={() => {
