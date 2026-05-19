@@ -13,6 +13,7 @@ import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
 import { AccessDenied } from "@/lib/auth/AccessDenied";
+import { LeadersModal } from "./LeadersModal";
 import type {
   Department,
   DepartmentInsert,
@@ -51,6 +52,7 @@ export default function DepartmentsPage() {
   const [form, setForm] = useState<Form>(emptyForm(0));
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [leadersTarget, setLeadersTarget] = useState<Department | null>(null);
 
   const load = useCallback(async () => {
     if (!clubId) return;
@@ -120,6 +122,14 @@ export default function DepartmentsPage() {
     if (saving) return;
     setModalOpen(false);
     setEditing(null);
+  }
+
+  function openLeaders(d: Department) {
+    setLeadersTarget(d);
+  }
+
+  function closeLeaders() {
+    setLeadersTarget(null);
   }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -352,6 +362,15 @@ export default function DepartmentsPage() {
                       </button>
                       <button
                         type="button"
+                        onClick={() => openLeaders(d)}
+                        className="rounded-md border border-border px-2 py-1 text-[11px] transition hover:bg-foreground/5"
+                        title="Ομαδάρχες"
+                        aria-label="Διαχείριση ομαδαρχών"
+                      >
+                        👥
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleDelete(d)}
                         className="rounded-md border border-danger/30 px-2 py-1 text-[11px] text-danger transition hover:bg-danger/10"
                         title="Διαγραφή"
@@ -377,6 +396,14 @@ export default function DepartmentsPage() {
           formError={formError}
           onClose={closeModal}
           onSubmit={handleSubmit}
+        />
+      )}
+
+      {leadersTarget && clubId && (
+        <LeadersModal
+          department={leadersTarget}
+          clubId={clubId}
+          onClose={closeLeaders}
         />
       )}
     </div>
