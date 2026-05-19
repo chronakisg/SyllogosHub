@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-19 (PR ζ.1 (#?) merged — feat/department-leaders-schema / Department Leaders schema + scope_department_id migration)
+> Last updated: 2026-05-19 (PR ζ.2 (#?) merged — feat/permission-scope-engine / Permission scope engine wire-up: ScopedPermission, dual computePermissions, canDo resurrection, requirePermission scope-aware overload)
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -1015,7 +1015,7 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   - UI: στο /announcements admin page, ομαδάρχης βλέπει μόνο
     τα δικά του departments στο dropdown
 
-  **🆕 Permission scope system wire-up — Schema ✅ (PR ζ.1) / Engine 🔜 (PR ζ.2):**
+  **✅ Permission scope system wire-up — Schema ✅ (PR ζ.1) / Engine ✅ (PR ζ.2):**
 
   > **PR ζ.1 status (2026-05-19):** Schema half complete:
   > - scope_value (text) → scope_department_id (uuid FK → departments)
@@ -1024,11 +1024,22 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   > - 12 downstream call sites synced με pure rename (no logic change)
   > - <option value="department"> disabled σαν UI safety guard
   >
-  > **Engine half (PR ζ.2) εκκρεμεί:**
-  > - computePermissions να επιστρέφει scoped structure (όχι flat)
-  > - canDo resurrection (currently dead code, 0 callers)
-  > - requirePermission να δέχεται optional resourceDepartmentId
-  > - 22 sites με permissions.includes() — backward-compat shim
+  > **PR ζ.2 status (2026-05-19):** Engine half complete:
+  > - ScopedPermission type introduced (lib/auth/permissions.ts)
+  > - computePermissions returns dual {permissions, scoped} shape
+  > - RoleState.scoped + PermissionContext.scoped fields για rich consumer access
+  > - canDo body rewritten: iterates state.scoped (fixes silent dead-code
+  >   bug που έβλεπε ΜΟΝΟ customPermissions, όχι rolePermissions)
+  > - CanDoOpts.resourceDepartment → resourceDepartmentId (semantic clarity)
+  > - requirePermission overload: legacy variadic preserved + new canonical
+  >   form (permission, { action?, resourceDepartmentId? })
+  > - Admin/President short-circuit synthesizes full-grant scoped matrix
+  > - Universal calendar grant moved σε scoped layer (synthetic row)
+  > - Backward-compat 100%: 21 permissions.includes() sites + 6 requirePermission
+  >   call sites untouched
+  > - Drift safety net: PermissionAction + PermissionScope duplicate definitions
+  >   between lib/auth/permissions.ts και lib/supabase/types.ts → 🟢 follow-up
+  >   entry "Permission types unification" στο Nice to Have section
 
   Inspection κατά το PR στ' (#94) planning αποκάλυψε ότι το scope system είναι
   half-baked:
@@ -1042,17 +1053,24 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
     (3) matches `scope_value` by name όχι UUID
   - `hasPermission` helper επίσης zero callers
 
-  Wire-up work required (πριν ομαδάρχης writes activate):
-  1. Migration: `scope_value` column normalization → text name to UUID FK
-     (`scope_value uuid references departments(id)`)
-  2. `computePermissions` returns scoped structure αντί για flat array
-  3. `requirePermission` accepts optional `resourceDepartmentId` arg +
-     server-side scope match
-  4. `canDo` rewrite: include rolePermissions, UUID matching
-  5. Existing call sites (10+ files χρησιμοποιούν
-     `role.permissions.includes("X")`) — backward-compat path ή migration
-  6. UI integration: announcement form modal filters department dropdown
-     για ομαδάρχη
+  Wire-up work breakdown:
+  1. ✅ PR ζ.1 (#96): Migration — `scope_value` text → `scope_department_id`
+     uuid FK references departments(id), consistency CHECK constraint
+  2. ✅ PR ζ.2 Commit 1 (c6b5a36): `computePermissions` returns dual
+     {permissions, scoped} shape
+  3. ✅ PR ζ.2 Commit 3 (860e177): `requirePermission` accepts optional
+     opts={action, resourceDepartmentId} via TS overload, scope-aware
+     check path με backward-compat variadic form
+  4. ✅ PR ζ.2 Commit 2 (03a3d71): `canDo` body rewrite — iterates
+     state.scoped (includes rolePermissions + customPermissions),
+     UUID matching, dead-code bug fixed
+  5. ✅ PR ζ.2 Commit 1: 21 existing `role.permissions.includes("X")`
+     call sites preserved via state.permissions derived view (zero edits
+     to call sites required)
+  6. 🔜 PR ζ.3 / ζ.4: UI integration — announcement form modal filters
+     department dropdown για ομαδάρχη, admin assignment screen για
+     department leader management, re-enable disabled <option value="department">
+     στο PermissionMatrix.tsx
 
   Bundling decision: αυτό + το `department_leaders` table + ομαδάρχης UI
   πάνε όλα στο PR ζ' (single coherent slice).
@@ -1403,6 +1421,41 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   - Estimated: S (decide source of truth + label sync)
 
 ## 🟢 Nice to Have / Future
+
+- [ ] **🟢 Permission types unification (drift cleanup)**
+
+  Stack: 🟣 Permission system · Tech Debt
+
+  Discovered: 2026-05-19 (PR ζ.2 Commit 1 pre-flight)
+
+  `PermissionAction` και `PermissionScope` ορίζονται σε ΚΑΙ τα
+  δύο: `lib/supabase/types.ts:730-732` (DB-derived) +
+  `lib/auth/permissions.ts:44-45` (νέα auth domain hub).
+  Identical literal unions, TypeScript-compatible αλλά formally
+  duplicate symbols.
+
+  **Drift risk**: αν αύριο προστεθεί 5η action ή 4η scope σε
+  ένα από τα δύο και ξεχαστεί το άλλο, divergence + site-specific
+  compile errors.
+
+  **Bonus duplicate**: `ALL_ACTIONS` ορίζεται σε `lib/auth/permissions.ts:47`
+  ΚΑΙ `lib/admin/seedClub.ts:61` — τρίτο σημείο unify-able.
+
+  **Cleanup plan (S, ~1 commit)**:
+  1. Drop ορισμοί από `lib/supabase/types.ts:730-732`
+  2. Update 4 files να φέρουν τα types από `lib/auth/permissions.ts`:
+     - components/PermissionMatrix.tsx
+     - lib/admin/seedClub.ts (+ drop local ALL_ACTIONS)
+     - lib/hooks/useRole.ts
+     - app/api/admin/roles/[roleId]/permissions/route.ts
+  3. Verify tsc + build clean
+
+  **Why not done σε PR ζ.2**: scope creep — τα 4 files δεν έχουν
+  σχέση με τον engine wire-up. Inline comment στο
+  `lib/auth/permissions.ts` σημαίνει το duplication μέχρι
+  το cleanup.
+
+  Estimated: S
 
 ### Super Admin & Multi-tenancy
 
@@ -1919,7 +1972,100 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
 ## ✅ Recently Done
 
-### feat/department-leaders-schema (PR ζ.1, #?, committed 2026-05-19)
+### feat/permission-scope-engine (PR ζ.2, #?, committed 2026-05-19)
+
+Permission scope engine wire-up — engine half του scope system. Schema
+half είχε γίνει στο PR ζ.1 (#96). Zero behavior change για 21 σημερινά
+permissions.includes() call sites + 6 requirePermission call sites —
+fully backward-compat μέσω derived views και TS overloads.
+
+**Commits (3):**
+- `c6b5a36` feat(permissions): ScopedPermission + dual computePermissions
+- `03a3d71` feat(permissions): canDo body rewrite + opts rename
+- `860e177` feat(permissions): requirePermission scope-aware overload
+
+**Types extensions (lib/auth/permissions.ts):**
+- [x] New `ScopedPermission { module, action, scope, scope_department_id }`
+- [x] New `PermissionAction = 'read'|'create'|'edit'|'delete'`
+- [x] New `PermissionScope = 'all'|'own'|'department'`
+- [x] New `ALL_ACTIONS` constant
+- [x] REMOVED `MODULE_TO_PERMISSION` (identity map, dead weight)
+- [x] Drift safety: identical literal unions σε lib/supabase/types.ts
+      με inline NOTE comment + follow-up 🟢 ROADMAP entry
+
+**computePermissions rewrite (Commit 1):**
+- [x] Returns `{ permissions: Permission[], scoped: ScopedPermission[] }`
+- [x] `permissions[]` = unique modules για backward-compat
+- [x] `scoped[]` = rich data preserving module + action + scope + dept_id
+- [x] Admin/President short-circuit synthesizes ALL_PERMISSIONS × ALL_ACTIONS
+      × scope='all' matrix
+- [x] Universal calendar grant → synthetic scoped row (αντί set.add only)
+
+**useRole.ts extensions (Commit 1 + 2):**
+- [x] `RoleState.scoped: ScopedPermission[]` field added
+- [x] `INITIAL.scoped: []` hydration
+- [x] `resolveRole` destructures `{ permissions, scoped }` + passes both
+      στο setState
+- [x] `canDo` body rewrite: iterates `state.scoped` αντί `state.customPermissions`
+- [x] `CanDoOpts.resourceDepartment` → `resourceDepartmentId` (rename, 0 callers)
+- [x] canDo signature: `module: PermissionModule` → `module: Permission`
+      (cleaner DX, identical union)
+- [x] Removed unused `PermissionModule` import
+
+**requirePermission extensions (Commit 3):**
+- [x] New `RequirePermissionOpts { action?, resourceDepartmentId? }` type
+- [x] `PermissionContext.scoped: ScopedPermission[]` field (parallel με RoleState)
+- [x] Function overloads: legacy variadic preserved + new canonical form
+- [x] Detection logic: `args[length-1]` type check (object → opts form,
+      string → variadic form)
+- [x] Dual-path check: scope-aware όταν opts present, legacy module-only otherwise
+- [x] Admin/President short-circuit synthesizes full-grant scoped matrix
+- [x] Error message enrichment: 403 includes "(action: X, dept: Y)" hint
+- [x] `'own'` scope conservative-reject (future PR με resourceOwnerId)
+
+**Architectural decisions:**
+- **Dual output αντί 2 functions:** Single source of truth, drift-free.
+  `permissions[]` και `scoped[]` πάντα σύγχρονα by construction.
+- **TS overloads αντί type union arg:** Preserves variadic legacy
+  signature σε compile time (όλα τα 6 existing calls υπογράφουν σαν
+  overload #1, νέα use cases υπογράφουν σαν overload #2). Type narrowing
+  γίνεται στο implementation.
+- **Conservative `'own'` scope reject:** Server-side `'own'` enforcement
+  θέλει resourceOwnerId context που είναι use-case-specific. Defer μέχρι
+  first concrete consumer (πιθανώς PR η' Member Portal writes).
+- **Drift safety inline comment + ROADMAP entry:** `PermissionAction` +
+  `PermissionScope` definitions duplicated σε ΚΑΙ τα 2 places (auth domain
+  hub + DB types). Cleanup deferred σε separate S PR για scope discipline.
+- **3-commit split αντί atomic:** Bisect-friendly, each commit revertable.
+  Commit 1 = types+state (no behavior change), Commit 2 = canDo dead-code
+  fix (0 callers, safe), Commit 3 = requirePermission overload (backward-compat
+  preserved).
+
+**Bug fixes:**
+- canDo silent dead-code: iterated μόνο `state.customPermissions`
+  (member_permissions table, 0 rows σε production). Now iterates
+  unified `state.scoped` (includes 83 rows από member_role_permissions).
+- requirePermission overload signature mismatch: tightened legacy
+  variadic από `...permissions: Permission[]` σε `permission: Permission,
+  ...rest: Permission[]` ώστε το TS να enforce ≥1 σε compile-time αντί
+  runtime 500.
+
+**Verified:**
+- npx tsc --noEmit: zero errors
+- npm run build: ✓ Compiled successfully
+- npm run lint: baseline preserved (31 errors + 105 warnings, all
+  pre-existing σε unrelated files)
+- Backward-compat: 21 client `permissions.includes()` sites + 6 server
+  `requirePermission` sites untouched, all type-clean
+
+**Connects με:** PR ζ.1 (#96 — schema foundation). Unlocks PR ζ.3 (admin
+UI for department leader assignment + re-enable dropdown) και PR ζ.4
+(announcements first scope-aware consumer).
+
+**Net stats:** +281/-37 over 4 files (permissions.ts +118/-24,
+useRole.ts +15+9=+24/-10, requirePermission.ts +122/-9 + ROADMAP +35).
+
+### feat/department-leaders-schema (PR ζ.1, #96, merged 2026-05-19)
 
 Schema foundation για ομαδάρχης concept + per-department permission scope. Migration 0029 (applied to production μέσω SQL Editor πριν code merge — 2-stage delivery process from PR #92 incident).
 

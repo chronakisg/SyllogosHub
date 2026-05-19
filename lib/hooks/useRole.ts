@@ -6,11 +6,11 @@ import type {
   MemberPermission,
   MemberRolePermission,
   PermissionAction,
-  PermissionModule,
   UserRoleName,
 } from "@/lib/supabase/types";
 import {
   type Permission,
+  type ScopedPermission,
   computePermissions,
 } from "@/lib/auth/permissions";
 
@@ -30,6 +30,7 @@ export type RoleState = {
   isBoardMember: boolean;
   boardPosition: string | null;
   permissions: Permission[];
+  scoped: ScopedPermission[];
   customPermissions: MemberPermission[];
   assignedRoles: { id: string; name: string }[];
   rolePermissions: MemberRolePermission[];
@@ -48,6 +49,7 @@ const INITIAL: RoleState = {
   isBoardMember: false,
   boardPosition: null,
   permissions: [],
+  scoped: [],
   customPermissions: [],
   assignedRoles: [],
   rolePermissions: [],
@@ -57,33 +59,43 @@ const SIGNED_OUT: RoleState = { ...INITIAL, loading: false };
 
 export type CanDoOpts = {
   resourceOwnerId?: string | null;
-  resourceDepartment?: string | null;
+  resourceDepartmentId?: string | null;
 };
 
 export function canDo(
   state: RoleState,
-  module: PermissionModule,
+  module: Permission,
   action: PermissionAction,
   opts: CanDoOpts = {}
 ): boolean {
+  // Short-circuit: admin/president always allowed
   if (state.isSystemAdmin || state.isPresident) return true;
-  for (const p of state.customPermissions) {
+
+  // Iterate unified scoped permissions (role-based + custom +
+  // synthetic calendar grant from computePermissions)
+  for (const p of state.scoped) {
     if (p.module !== module) continue;
     if (p.action !== action) continue;
+
     if (p.scope === "all") return true;
+
     if (p.scope === "own") {
-      if (state.memberId && opts.resourceOwnerId === state.memberId) return true;
+      if (state.memberId && opts.resourceOwnerId === state.memberId) {
+        return true;
+      }
     }
+
     if (p.scope === "department") {
       if (
         p.scope_department_id &&
-        opts.resourceDepartment &&
-        p.scope_department_id === opts.resourceDepartment
+        opts.resourceDepartmentId &&
+        p.scope_department_id === opts.resourceDepartmentId
       ) {
         return true;
       }
     }
   }
+
   return false;
 }
 
@@ -185,7 +197,7 @@ export function useRole(): RoleState {
         }
         if (cancelled) return;
 
-        const permissions = computePermissions({
+        const { permissions, scoped } = computePermissions({
           isPresident,
           isSystemAdmin,
           rolePermissions,
@@ -205,6 +217,7 @@ export function useRole(): RoleState {
           isBoardMember,
           boardPosition,
           permissions,
+          scoped,
           customPermissions,
           assignedRoles,
           rolePermissions,
