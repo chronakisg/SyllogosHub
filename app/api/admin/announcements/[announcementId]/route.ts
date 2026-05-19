@@ -9,9 +9,49 @@ type Params = { params: Promise<{ announcementId: string }> };
 // ─────────── PATCH: update announcement ───────────
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
-    const ctx = await requirePermission("announcements");
     const { announcementId } = await params;
-    const body = await req.json();
+    if (!announcementId) {
+      return NextResponse.json(
+        { error: "Λείπει announcementId" },
+        { status: 400 }
+      );
+    }
+
+    // 1. Parse body
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Μη έγκυρο JSON body" },
+        { status: 400 }
+      );
+    }
+
+    // 2. Initial soft-gate (read permission required για να query το record)
+    const ctx = await requirePermission("announcements", { action: "read" });
+
+    const supabase = await getServerClient();
+
+    // 3. Load existing announcement (defensive club-scoped) — need
+    //    department_id για scope-aware edit check παρακάτω.
+    const { data: existing, error: loadErr } = await supabase
+      .from("announcements")
+      .select("id, department_id")
+      .eq("id", announcementId)
+      .eq("club_id", ctx.clubId)
+      .maybeSingle();
+    if (loadErr) {
+      return NextResponse.json({ error: loadErr.message }, { status: 500 });
+    }
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Η ανακοίνωση δεν βρέθηκε" },
+        { status: 404 }
+      );
+    }
+
+    // 4. Validate + extract update fields από body
     const {
       title,
       body: announcementBody,
@@ -25,25 +65,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       pinned?: boolean;
       published?: boolean;
     };
-
-    const supabase = await getServerClient();
-
-    // Load-first με scope check (anti-cross-tenant)
-    const { data: existing, error: loadErr } = await supabase
-      .from("announcements")
-      .select("id")
-      .eq("id", announcementId)
-      .eq("club_id", ctx.clubId)
-      .maybeSingle();
-    if (loadErr) {
-      return NextResponse.json({ error: loadErr.message }, { status: 500 });
-    }
-    if (!existing) {
-      return NextResponse.json(
-        { error: "Η ανακοίνωση δεν βρέθηκε" },
-        { status: 404 }
-      );
-    }
 
     // Build partial update object
     const updates: AnnouncementUpdate = {};
@@ -68,27 +89,59 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       updates.body = announcementBody.trim();
     }
 
-    if (department_id !== undefined) {
-      const normalized =
-        department_id === "" || department_id === null ? null : department_id;
-      if (normalized !== null) {
-        const { data: dept, error: deptErr } = await supabase
-          .from("departments")
-          .select("id")
-          .eq("id", normalized)
-          .eq("club_id", ctx.clubId)
-          .maybeSingle();
-        if (deptErr) {
-          return NextResponse.json({ error: deptErr.message }, { status: 500 });
-        }
-        if (!dept) {
-          return NextResponse.json(
-            { error: "Άκυρο τμήμα" },
-            { status: 400 }
-          );
-        }
+    // Normalize new dept_id: undefined = no change, "" / null = becoming global
+    const newDeptIdNormalized: string | null | undefined =
+      department_id === undefined
+        ? undefined
+        : department_id === "" || department_id === null
+          ? null
+          : department_id;
+
+    // 5. Edit permission check για existing announcement's audience
+    const existingDeptId = existing.department_id;
+    await (existingDeptId
+      ? requirePermission("announcements", {
+          action: "edit",
+          resourceDepartmentId: existingDeptId,
+        })
+      : requirePermission("announcements", { action: "edit" }));
+
+    // 6. Αν body αλλάζει το department_id (target audience),
+    //    edit permission check για το νέο dept επίσης.
+    const deptIsChanging =
+      newDeptIdNormalized !== undefined &&
+      newDeptIdNormalized !== existingDeptId;
+
+    if (deptIsChanging) {
+      await (newDeptIdNormalized
+        ? requirePermission("announcements", {
+            action: "edit",
+            resourceDepartmentId: newDeptIdNormalized,
+          })
+        : requirePermission("announcements", { action: "edit" }));
+    }
+
+    // 7. Verify new dept belongs to club (αν provided & non-null)
+    if (newDeptIdNormalized !== undefined && newDeptIdNormalized !== null) {
+      const { data: dept, error: deptErr } = await supabase
+        .from("departments")
+        .select("id")
+        .eq("id", newDeptIdNormalized)
+        .eq("club_id", ctx.clubId)
+        .maybeSingle();
+      if (deptErr) {
+        return NextResponse.json({ error: deptErr.message }, { status: 500 });
       }
-      updates.department_id = normalized;
+      if (!dept) {
+        return NextResponse.json(
+          { error: "Άκυρο τμήμα" },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (newDeptIdNormalized !== undefined) {
+      updates.department_id = newDeptIdNormalized;
     }
 
     if (pinned !== undefined) updates.pinned = pinned;
@@ -101,7 +154,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       );
     }
 
-    // Apply update
+    // 8. Apply update
     const { data: row, error } = await supabase
       .from("announcements")
       .update(updates)
@@ -149,14 +202,24 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 // ─────────── DELETE: hard delete announcement ───────────
 export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
-    const ctx = await requirePermission("announcements");
     const { announcementId } = await params;
+    if (!announcementId) {
+      return NextResponse.json(
+        { error: "Λείπει announcementId" },
+        { status: 400 }
+      );
+    }
+
+    // 1. Initial soft-gate (read permission για να query record)
+    const ctx = await requirePermission("announcements", { action: "read" });
+
     const supabase = await getServerClient();
 
-    // Load-first με scope check + title για response
+    // 2. Load existing announcement (defensive club-scoped) — need
+    //    department_id για scope-aware delete check παρακάτω.
     const { data: existing, error: loadErr } = await supabase
       .from("announcements")
-      .select("id, title")
+      .select("id, title, department_id")
       .eq("id", announcementId)
       .eq("club_id", ctx.clubId)
       .maybeSingle();
@@ -170,6 +233,16 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
       );
     }
 
+    // 3. Delete permission check για το existing audience
+    const existingDeptId = existing.department_id;
+    await (existingDeptId
+      ? requirePermission("announcements", {
+          action: "delete",
+          resourceDepartmentId: existingDeptId,
+        })
+      : requirePermission("announcements", { action: "delete" }));
+
+    // 4. Delete + return
     const { error } = await supabase
       .from("announcements")
       .delete()
