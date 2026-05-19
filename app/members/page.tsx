@@ -1124,6 +1124,15 @@ function MembersPageContent() {
           </button>
           <button
             type="button"
+            onClick={() => router.push('/members/enrich')}
+            disabled={!canEditMembers}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background disabled:opacity-50"
+            title="Ενημέρωση στοιχείων υπαρχόντων μελών από Excel"
+          >
+            Εισαγωγή
+          </button>
+          <button
+            type="button"
             onClick={exportToExcel}
             disabled={filtered.length === 0}
             className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background disabled:opacity-50"

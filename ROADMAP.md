@@ -717,6 +717,21 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
   Estimated: L
 
+### 👥 Members domain
+
+- [ ] **🟡 Generic Excel cross-reference enrichment wizard**
+  In progress — branch `feat/member-enrich-wizard`, 5 commits ready for PR.
+  Generic wizard για enrich existing members από οποιοδήποτε σκόρπιο
+  Excel/CSV. Manual yes/no per row + manual yes/no per field. Auto-decisions
+  για high-confidence matches (score ≥ 50) με admin override anywhere.
+  Skipped rows exported ως CSV (UTF-8 BOM) για manual handling στο /members.
+  New member creation explicitly out of scope (separation of concerns).
+  Foundation για future bulk enrichment workflows (dance class import,
+  multi-phone storage, resumable sessions).
+
+  Plan doc: `MEMBER_ENRICH_PLAN.md` στο repo root.
+  Files: `lib/enrich/*` (6), `app/api/members/enrich/*` (2), `app/members/enrich/*` (6).
+
 ### 🟣 Member Portal domain
 
 > Stack description βλ. 🏗️ Architectural Stacks → 🟣 Member Portal Stack.
@@ -1902,6 +1917,26 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   - Rollback SQL ΔΕΝ μπαίνει σε chat ως "comment to keep handy" (risky paste)
   - Document αυτές τις conventions σε `docs/MIGRATIONS.md` (όταν γίνει)
   - Estimated: S (write doc + add to README)
+
+### Enrichment future enhancements
+
+- [ ] **🟢 Dance enrollment import wizard** (Chunk 4)
+  Separate wizard για ΜΟΥΣΙΚΟΧΟΡΕΥΤΙΚΑ format που auto-enrolls members
+  σε classes. Reuses matching engine από `lib/enrich/match.ts`.
+  Depends on: classes/enrollments schema (TBD).
+
+- [ ] **🟢 Multi-phone storage**
+  `members.phone_alt` column ή jsonb array για households που μοιράζονται
+  σταθερό τηλέφωνο αλλά έχουν δικά τους κινητά. Surfaced από real data:
+  22 phones shared 2-4 ways στο import dataset.
+
+- [ ] **🟢 Resumable enrichment sessions**
+  `import_sessions` table για paused/resumed admin reviews >100 rows.
+  Currently in-memory only — admin κλείνει tab → χάνει progress.
+
+- [ ] **🟢 Email overwrite με auto re-verification**
+  Όταν member portal re-verification flow γίνει polished, unlock το
+  email overwrite στο enrichment wizard (currently fill-only μόνο).
 
 ## 🔧 Tech Debt
 
