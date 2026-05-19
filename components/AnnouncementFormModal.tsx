@@ -31,6 +31,7 @@ interface AnnouncementFormModalProps {
   mode: "create" | "edit";
   initial?: AnnouncementFormInitial;
   departments: Department[];
+  canPostGlobal: boolean;
   isSaving: boolean;
   saveError: string | null;
   onClose: () => void;
@@ -49,6 +50,7 @@ export default function AnnouncementFormModal({
   mode,
   initial,
   departments,
+  canPostGlobal,
   isSaving,
   saveError,
   onClose,
@@ -210,7 +212,9 @@ export default function AnnouncementFormModal({
                 disabled={isSaving}
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-foreground focus:outline-none disabled:opacity-60"
               >
-                <option value="">Όλος ο σύλλογος</option>
+                {canPostGlobal && (
+                  <option value="">Όλος ο σύλλογος</option>
+                )}
                 {departments.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name}

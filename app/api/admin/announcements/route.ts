@@ -6,10 +6,28 @@ import { formatMemberName } from "@/lib/utils/attendees";
 // ─────────── GET: list all announcements του club ───────────
 export async function GET() {
   try {
-    const ctx = await requirePermission("announcements");
+    const ctx = await requirePermission("announcements", { action: "read" });
     const supabase = await getServerClient();
 
-    const { data: rowsRaw, error } = await supabase
+    // Derive allowed department scope από ctx.scoped (PR ζ.2 engine)
+    const annScoped = ctx.scoped.filter(
+      (p) => p.module === "announcements" && p.action === "read"
+    );
+    const hasAllScope = annScoped.some((p) => p.scope === "all");
+    const allowedDeptIds = hasAllScope
+      ? null
+      : annScoped
+          .filter((p) => p.scope === "department" && p.scope_department_id)
+          .map((p) => p.scope_department_id as string);
+
+    // Edge case: user has read permission αλλά zero scope rows
+    // satisfied (πχ μόνο 'own' scope σε άλλο context). Defensive
+    // empty return.
+    if (!hasAllScope && allowedDeptIds && allowedDeptIds.length === 0) {
+      return NextResponse.json({ announcements: [] });
+    }
+
+    let query = supabase
       .from("announcements")
       .select(
         `id, title, body, pinned, published, created_at,
@@ -18,7 +36,13 @@ export async function GET() {
          created_by,
          members!announcements_created_by_fkey ( first_name, last_name )`
       )
-      .eq("club_id", ctx.clubId)
+      .eq("club_id", ctx.clubId);
+
+    if (!hasAllScope && allowedDeptIds) {
+      query = query.in("department_id", allowedDeptIds);
+    }
+
+    const { data: rowsRaw, error } = await query
       .order("pinned", { ascending: false })
       .order("created_at", { ascending: false });
 
@@ -55,8 +79,17 @@ export async function GET() {
 // ─────────── POST: create new announcement ───────────
 export async function POST(req: NextRequest) {
   try {
-    const ctx = await requirePermission("announcements");
-    const body = await req.json();
+    // 1. Parse body FIRST (πριν permission — χρειαζόμαστε dept_id)
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Μη έγκυρο JSON body" },
+        { status: 400 }
+      );
+    }
+
     const {
       title,
       body: announcementBody,
@@ -90,6 +123,16 @@ export async function POST(req: NextRequest) {
       department_id === "" || department_id === undefined
         ? null
         : department_id;
+
+    // 2. Scope-aware permission check (με γνωστό target audience)
+    // normalizedDeptId === null → απαιτεί scope='all' (global)
+    // normalizedDeptId === "<X>" → scope='all' OR scope='department'+match
+    const ctx = normalizedDeptId
+      ? await requirePermission("announcements", {
+          action: "create",
+          resourceDepartmentId: normalizedDeptId,
+        })
+      : await requirePermission("announcements", { action: "create" });
 
     const supabase = await getServerClient();
 
