@@ -719,8 +719,8 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
 ### 👥 Members domain
 
-- [ ] **🟡 Generic Excel cross-reference enrichment wizard**
-  In progress — branch `feat/member-enrich-wizard`, 5 commits ready for PR.
+- [x] **🟡 Generic Excel cross-reference enrichment wizard**
+  ✅ Delivered PR #102 (2026-05-19).
   Generic wizard για enrich existing members από οποιοδήποτε σκόρπιο
   Excel/CSV. Manual yes/no per row + manual yes/no per field. Auto-decisions
   για high-confidence matches (score ≥ 50) με admin override anywhere.
