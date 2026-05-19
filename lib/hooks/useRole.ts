@@ -59,7 +59,7 @@ const SIGNED_OUT: RoleState = { ...INITIAL, loading: false };
 
 export type CanDoOpts = {
   resourceOwnerId?: string | null;
-  resourceDepartment?: string | null;
+  resourceDepartmentId?: string | null;
 };
 
 export function canDo(
@@ -68,24 +68,34 @@ export function canDo(
   action: PermissionAction,
   opts: CanDoOpts = {}
 ): boolean {
+  // Short-circuit: admin/president always allowed
   if (state.isSystemAdmin || state.isPresident) return true;
-  for (const p of state.customPermissions) {
+
+  // Iterate unified scoped permissions (role-based + custom +
+  // synthetic calendar grant from computePermissions)
+  for (const p of state.scoped) {
     if (p.module !== module) continue;
     if (p.action !== action) continue;
+
     if (p.scope === "all") return true;
+
     if (p.scope === "own") {
-      if (state.memberId && opts.resourceOwnerId === state.memberId) return true;
+      if (state.memberId && opts.resourceOwnerId === state.memberId) {
+        return true;
+      }
     }
+
     if (p.scope === "department") {
       if (
         p.scope_department_id &&
-        opts.resourceDepartment &&
-        p.scope_department_id === opts.resourceDepartment
+        opts.resourceDepartmentId &&
+        p.scope_department_id === opts.resourceDepartmentId
       ) {
         return true;
       }
     }
   }
+
   return false;
 }
 
