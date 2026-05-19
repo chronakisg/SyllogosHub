@@ -36,5 +36,5 @@ export default async function AuthCallbackPage({
     redirect("/portal/login?error=member_not_found");
   }
 
-  redirect("/portal/profile");
+  redirect("/");
 }
