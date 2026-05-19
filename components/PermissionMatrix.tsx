@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import type {
+  Department,
   MemberPermission,
   PermissionAction,
   PermissionModule,
@@ -88,10 +89,12 @@ export function CellEditor({
   cell,
   onChange,
   disabled = false,
+  availableDepartments = [],
 }: {
   cell: CellState;
   onChange: (patch: Partial<CellState>) => void;
   disabled?: boolean;
+  availableDepartments?: Pick<Department, "id" | "name">[];
 }) {
   return (
     <div className="flex flex-col items-stretch gap-1">
@@ -116,24 +119,28 @@ export function CellEditor({
           >
             <option value="all">Όλα</option>
             <option value="own">Δικά μου</option>
-            {/* TODO PR ζ.3: enable when department dropdown UI ships */}
-            <option
-              value="department"
-              disabled
-              title="Θα ενεργοποιηθεί στο PR ζ.3 — Department leader assignment"
-            >
-              Τμήμα
-            </option>
+            <option value="department">Τμήμα</option>
           </select>
           {cell.scope === "department" && (
-            <input
-              type="text"
+            <select
               value={cell.scope_department_id}
-              disabled={disabled}
+              disabled={disabled || availableDepartments.length === 0}
               onChange={(e) => onChange({ scope_department_id: e.target.value })}
-              placeholder="π.χ. Χορευτικό"
               className={inputClass}
-            />
+            >
+              {availableDepartments.length === 0 ? (
+                <option value="">(Δεν υπάρχουν τμήματα)</option>
+              ) : (
+                <>
+                  <option value="">— Επιλέξτε τμήμα —</option>
+                  {availableDepartments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </>
+              )}
+            </select>
           )}
         </>
       )}
@@ -149,12 +156,14 @@ export function PermissionMatrix({
   readOnly = false,
   title,
   subtitle,
+  availableDepartments = [],
 }: {
   matrix: MatrixState;
   onChange: (next: MatrixState) => void;
   readOnly?: boolean;
   title?: string;
   subtitle?: ReactNode;
+  availableDepartments?: Pick<Department, "id" | "name">[];
 }) {
   function updateCell(
     module: PermissionModule,
@@ -205,6 +214,7 @@ export function PermissionMatrix({
                         cell={cell}
                         disabled={readOnly}
                         onChange={(patch) => updateCell(mod.id, a.id, patch)}
+                        availableDepartments={availableDepartments}
                       />
                     </td>
                   );
@@ -219,7 +229,7 @@ export function PermissionMatrix({
         Scope: <strong>Όλα</strong> = πρόσβαση παντού,{" "}
         <strong>Δικά μου</strong> = μόνο records που του ανήκουν,{" "}
         <strong>Τμήμα</strong> = μόνο records του συγκεκριμένου τμήματος
-        (συμπληρώστε όνομα).
+        (επιλέξτε από το dropdown).
       </p>
     </div>
   );
