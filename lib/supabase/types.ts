@@ -193,6 +193,22 @@ export type DepartmentInsert = {
 
 export type DepartmentUpdate = Partial<Omit<Department, "id" | "created_at">>;
 
+export type DepartmentLeader = {
+  department_id: string;
+  member_id: string;
+  role: DepartmentRole;
+  started_at: string;
+};
+
+export type DepartmentLeaderInsert = {
+  department_id: string;
+  member_id: string;
+  role?: DepartmentRole;
+  started_at?: string;
+};
+
+export type DepartmentLeaderUpdate = Partial<Omit<DepartmentLeader, "department_id" | "member_id">>;
+
 export type MemberDepartment = {
   id: string;
   club_id: string | null;
@@ -722,7 +738,7 @@ export type MemberPermission = {
   module: PermissionModule;
   action: PermissionAction;
   scope: PermissionScope;
-  scope_value: string | null;
+  scope_department_id: string | null;
   created_at: string;
 };
 
@@ -733,7 +749,7 @@ export type MemberPermissionInsert = {
   module: PermissionModule;
   action: PermissionAction;
   scope?: PermissionScope;
-  scope_value?: string | null;
+  scope_department_id?: string | null;
   created_at?: string;
 };
 
@@ -775,7 +791,7 @@ export type MemberRolePermission = {
   module: PermissionModule;
   action: PermissionAction;
   scope: PermissionScope;
-  scope_value: string | null;
+  scope_department_id: string | null;
   created_at: string;
 };
 
@@ -785,7 +801,7 @@ export type MemberRolePermissionInsert = {
   module: PermissionModule;
   action: PermissionAction;
   scope?: PermissionScope;
-  scope_value?: string | null;
+  scope_department_id?: string | null;
   created_at?: string;
 };
 
@@ -1053,6 +1069,27 @@ export type Database = {
             columns: ["department_id"];
             isOneToOne: false;
             referencedRelation: "departments";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      department_leaders: {
+        Row: DepartmentLeader;
+        Insert: DepartmentLeaderInsert;
+        Update: DepartmentLeaderUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "department_leaders_department_id_fkey";
+            columns: ["department_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "department_leaders_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
             referencedColumns: ["id"];
           },
         ];

@@ -84,7 +84,7 @@ export function RolesTab({ clubId: _clubId }: { clubId: string }) {
       module: string;
       action: string;
       scope: string;
-      scope_value: string | null;
+      scope_department_id: string | null;
     }> = [];
 
     matrix.forEach((cell, key) => {
@@ -94,7 +94,7 @@ export function RolesTab({ clubId: _clubId }: { clubId: string }) {
         module,
         action,
         scope: cell.scope,
-        scope_value: cell.scope === "department" ? cell.scope_value : null,
+        scope_department_id: cell.scope === "department" ? cell.scope_department_id : null,
       });
     });
 

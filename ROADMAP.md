@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-18 (PR στ' (#94) merged — feat/admin-announcements / Admin Announcements: full CRUD UI + permission module 0028)
+> Last updated: 2026-05-19 (PR ζ.1 (#?) merged — feat/department-leaders-schema / Department Leaders schema + scope_department_id migration)
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -968,7 +968,7 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
   Estimated: L (UI work post-schema — σπασμένο σε 4-5 PRs)
 
-- [ ] **🟡 Department Leaders concept (schema prerequisite)**
+- [x] **🟡 Department Leaders concept — Schema ✅ (PR ζ.1) / UI 🔜 (PR ζ.3)**
 
   Stack: 🟣 Member Portal · Schema evolution prerequisite
 
@@ -1015,7 +1015,20 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   - UI: στο /announcements admin page, ομαδάρχης βλέπει μόνο
     τα δικά του departments στο dropdown
 
-  **🆕 Permission scope system wire-up (prerequisite finding από PR στ' (#94)):**
+  **🆕 Permission scope system wire-up — Schema ✅ (PR ζ.1) / Engine 🔜 (PR ζ.2):**
+
+  > **PR ζ.1 status (2026-05-19):** Schema half complete:
+  > - scope_value (text) → scope_department_id (uuid FK → departments)
+  > - Consistency CHECK constraint (scope='department' ⟺ dept_id NOT NULL)
+  > - department_leaders table foundation
+  > - 12 downstream call sites synced με pure rename (no logic change)
+  > - <option value="department"> disabled σαν UI safety guard
+  >
+  > **Engine half (PR ζ.2) εκκρεμεί:**
+  > - computePermissions να επιστρέφει scoped structure (όχι flat)
+  > - canDo resurrection (currently dead code, 0 callers)
+  > - requirePermission να δέχεται optional resourceDepartmentId
+  > - 22 sites με permissions.includes() — backward-compat shim
 
   Inspection κατά το PR στ' (#94) planning αποκάλυψε ότι το scope system είναι
   half-baked:
@@ -1905,6 +1918,59 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   Estimated: S (~30 minutes — comment additions σε 3 αρχεία)
 
 ## ✅ Recently Done
+
+### feat/department-leaders-schema (PR ζ.1, #?, committed 2026-05-19)
+
+Schema foundation για ομαδάρχης concept + per-department permission scope. Migration 0029 (applied to production μέσω SQL Editor πριν code merge — 2-stage delivery process from PR #92 incident).
+
+**Commits (1):**
+- `ff94789` feat(schema): department_leaders + scope_department_id (PR ζ.1)
+
+**Schema (Migration 0029):**
+- [x] department_leaders table (composite PK, FK CASCADE, role enum 'leader'|'assistant')
+- [x] member_role_permissions: scope_value (text, unused) → scope_department_id (uuid FK)
+- [x] member_permissions: same rename + FK
+- [x] Both tables: consistency CHECK (scope='department' ⟺ scope_department_id NOT NULL)
+- [x] Defensive snapshots (member_role_permissions_backup_20260519_pre_dept_scope + member_permissions equivalent)
+- [x] RLS off σε department_leaders (consistent με project pattern)
+- [x] Index στο member_id για reverse lookup
+
+**Types (hand-crafted):**
+- [x] DepartmentLeader / Insert / Update + Database table entry με 2 FK Relationships
+- [x] 4× scope_value → scope_department_id field renames στα Row + Insert types
+
+**Downstream call site sync (pure rename, no logic change):**
+- [x] lib/hooks/useRole.ts — 1 select string + 2 canDo field accesses
+- [x] lib/auth/requirePermission.ts — 1 select string
+- [x] app/settings/users/RolesTab.tsx — 1 type field + 1 payload key
+- [x] components/PermissionMatrix.tsx — CellState + EMPTY_CELL + fromRows + input bindings
+- [x] app/api/admin/roles/[roleId]/permissions/route.ts — body type + validation + DB insert column
+
+**Architectural decisions:**
+- **Pure rename + safety guard, όχι UI refit:** το παλιό text input "Χορευτικό" δεν θα δούλευε με UUID schema, αλλά αντί να φτιάξουμε νέο dropdown UI στο ίδιο PR (scope creep), προσθέσαμε `disabled` στο <option value="department"> με tooltip "Θα ενεργοποιηθεί στο PR ζ.3". Real dropdown UI έρχεται στο ζ.3 όταν φτιάξουμε admin assignment screen.
+- **Composite PK (department_id, member_id) στο department_leaders:** επιτρέπει 1 μέλος σε πολλά τμήματα + πολλούς ομαδάρχες ανά τμήμα. Schema-level enforcement χωρίς complex UNIQUE indexes.
+- **ON DELETE CASCADE σε όλα τα FKs:** αν διαγραφεί τμήμα, σβήνονται automatically τα leader assignments + scoped permissions. Αποφυγή orphan rows + DB errors κατά department deletion.
+- **Consistency CHECK constraint:** scope='department' XOR scope_department_id IS NULL. Πιάνει app bugs σε insert/update time, όχι 6 μήνες μετά.
+- **Single atomic commit:** όλα tightly coupled (schema + types + downstream). Bisect-friendly revert αν χρειαστεί.
+- **Migration delivery 2-stage:** SQL execution στο production ΠΡΙΝ το code merge — 5 verification queries (V1-V5) με documented expected outputs. Pattern από PR #92 incident.
+
+**Pre-flight discoveries (deferred to ζ.2/ζ.3):**
+- canDo + hasPermission = dead code (zero callers). Resurrection + scope-aware rewrite στο ζ.2.
+- computePermissions discards scope columns από DB. Restructure στο ζ.2.
+- 22 sites χρησιμοποιούν permissions.includes() (module-level only). Backward-compat shim στο ζ.2.
+- text → UUID input UI για department scope (PR ζ.3 dropdown με departments table data).
+- Production CHECK constraint drift από pre-flight ήταν λάθος — το PR #94 migration 0028 ήδη είχε συγχρονίσει 'audit' + 'announcements' σε ΚΑΙ τα 2 tables. No drift after all.
+
+**Production-verified (V1-V5, 2026-05-19):**
+- V1: department_leaders count = 0 ✓
+- V2: scope_value DROPPED, scope_department_id ADDED σε ΚΑΙ τα 2 tables ✓
+- V3: row counts unchanged (83 + 0) ✓
+- V4: defensive snapshots preserved (83 + 0) ✓
+- V5: all 83 existing rows satisfy new CHECK (scope='all', dept_id NULL) ✓
+
+**Connects με:** PR στ' (#94 — announcements module ως ζ.4 first consumer). ROADMAP: closes Department Leaders schema half + Permission scope system schema half.
+
+**Net stats:** +175/-21, 7 files (1 new migration + 6 modified).
 
 ### feat/admin-announcements (PR στ' #94, merged 2026-05-18)
 
