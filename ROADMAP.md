@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-19 (PR ζ.3 (#?) merged — feat/department-leaders-ui / Department Leaders admin UI: leader assignment modal, REST API endpoints, PermissionMatrix departments dropdown wire-up)
+> Last updated: 2026-05-19 (PR ζ.4 (#?) merged — feat/announcements-scope-aware / Announcements first scope-aware consumer: server-side audience guards + UI page-level scope derivation. ομαδάρχης concept fully shipped — Schema (ζ.1 #96) + Engine (ζ.2 #97) + Admin UI (ζ.3 #98) + First consumer (ζ.4))
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -1074,9 +1074,17 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
      - PermissionMatrix departments dropdown wire-up: re-enabled
        <option value="department">, replaced free-text με <select>
        populated από active departments
-  7. 🔜 PR ζ.4: Announcement form scope-aware audience filtering
-     για ομαδάρχη που στέλνει σε δικό του τμήμα μόνο (first scope-aware
-     consumer του requirePermission overload)
+  7. ✅ PR ζ.4: Announcements first scope-aware consumer
+     - Server-side guards (Commit 1 dc15d0b): GET filter με ctx.scoped
+       derivation, POST scope-aware ternary call βάσει normalized
+       dept_id, PATCH διπλό edit check (existing + new dept για move
+       prevention), DELETE scope check για existing dept
+     - UI scope derivation (Commit 2 7a01100): page useMemo για
+       canPostGlobal + allowedDeptIds + availableDepartments +
+       canCreate. Disabled "+ Νέα ανακοίνωση" button αν !canCreate.
+       Modal conditional render του "Όλος ο σύλλογος" option.
+     - First real production exercise του requirePermission overload
+       + ctx.scoped field (από PR ζ.2 #97)
 
   Bundling decision: αυτό + το `department_leaders` table + ομαδάρχης UI
   πάνε όλα στο PR ζ' (single coherent slice).
@@ -1976,9 +1984,145 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
   Estimated: S (~30 minutes — comment additions σε 3 αρχεία)
 
+## 🎯 ζ' Epic Complete (2026-05-19)
+
+ομαδάρχης concept από idea σε production-ready feature σε **μία
+session**:
+
+| Layer | PR | # | Commits | Net |
+|---|---|---|---|---|
+| Schema | ζ.1 | #96 | 2 | +244/-24 |
+| Engine | ζ.2 | #97 | 4 | +402/-60 |
+| Admin UI | ζ.3 | #98 | 4 | +961/-24 |
+| First consumer | ζ.4 | TBD | 3 | +279/-57 |
+| **Total** | — | **4 PRs** | **13 commits** | **+1886/-165** |
+
+**Key architectural patterns established:**
+- Migration delivery 2-stage process (production SQL → code merge)
+- Pre-flight read-only inspection πριν destructive ops
+- Dual return shape για zero-breaking refactor (computePermissions)
+- TS overload signatures για backward-compat signature evolution
+  (requirePermission)
+- Column rename multi-surface tracking (props/state/payloads/
+  validation/inserts beyond .select strings)
+- ScopedPermission rich data + flat derived view pattern
+- Server-side scope-aware guards με dual-path matching
+- Defensive empty-state UX (dropdown disable, button gate,
+  early-return queries)
+
+**Engine ready για future scope-aware consumers:**
+- Member portal audience-aware feeds
+- Event check-in for department-scoped staff
+- Audit log access (περιγραφή σε ROADMAP)
+- Anything με per-department permissioning
+
 ## ✅ Recently Done
 
-### feat/department-leaders-ui (PR ζ.3, #?, committed 2026-05-19)
+### feat/announcements-scope-aware (PR ζ.4, #?, committed 2026-05-19)
+
+Announcements module γίνεται ο πρώτος πραγματικός scope-aware
+consumer του permission engine. Server-side guards (Commit 1)
+χρησιμοποιούν τη νέα requirePermission overload από PR ζ.2 #97,
+και η UI (Commit 2) derives audience-aware affordances από
+role.scoped — πρώτη real consumer του field.
+
+**Commits (2):**
+- `dc15d0b` feat(announcements): scope-aware API guards (Commit 1/2)
+- `7a01100` feat(announcements): UI scope-aware audience filtering (Commit 2/2)
+
+**Server-side enforcement (Commit 1):**
+- [x] GET /api/admin/announcements: ctx.scoped derivation,
+      conditional .in("department_id", allowedDeptIds) filter,
+      defensive empty return αν zero scope rows
+- [x] POST: reordered (parse → validate → normalize → permission
+      check), scope-aware ternary call. ομαδάρχης μόνο για δικά
+      του τμήματα, όχι global.
+- [x] PATCH: read soft-gate, διπλό edit check για existing + new
+      dept όταν audience αλλάζει (move prevention)
+- [x] DELETE: read soft-gate, scope-aware delete check για
+      existing audience
+- [x] try/catch γύρω από req.json() για 400 σε invalid body
+      (was 500 via outer catch)
+
+**UI page-level derivation (Commit 2):**
+- [x] useMemo derived state: canPostGlobal, allowedDeptIds
+      (Set<string>), availableDepartments, canCreate
+- [x] Disabled "+ Νέα ανακοίνωση" button αν !canCreate, με
+      tooltip explanation
+- [x] AnnouncementFormModal mount passes filtered subset +
+      new canPostGlobal: boolean prop
+
+**Modal UX changes (Commit 2):**
+- [x] Required prop canPostGlobal: boolean
+- [x] Conditional render: "Όλος ο σύλλογος" option visible
+      μόνο αν canPostGlobal
+- [x] departments prop unchanged shape — parent passes filtered
+
+**Behavior matrix:**
+
+| User type           | GET list       | POST global | POST dept | Create button |
+|---------------------|----------------|-------------|-----------|---------------|
+| Admin/President     | All            | ✓           | ✓ any     | ✓             |
+| scope='all'         | All            | ✓           | ✓ any     | ✓             |
+| scope='dept'(X,Y)   | Only X, Y      | ✗ 403       | ✓ only XY | ✓             |
+| Zero permission     | 403            | 403         | 403       | ✗ disabled    |
+
+**Architectural decisions:**
+- **Page-level derivation, modal stays generic:** modal δεν ξέρει
+  role context. Page έχει role + departments — natural integration
+  point. Props-as-contract pattern.
+- **useMemo για 3 derived values:** re-render efficiency + stable
+  references για downstream consumers.
+- **Set<string> για allowedDeptIds:** O(1) lookup σε filter.
+- **Disable button αντί hide:** discoverable affordance + tooltip
+  explanation. Hide θα μπερδεύει users που νομίζουν ότι λείπει feature.
+- **Conditional render αντί disabled <option>:** cleaner UX —
+  user δεν βλέπει non-selectable items.
+- **canPostGlobal prop required (not optional):** explicit contract,
+  type-safe. No silent default που θα έσπαζε access control σιωπηλά.
+- **PATCH διπλό edit check:** prevents escape hatch όπου ομαδάρχης
+  του Λύρα παίρνει ανακοίνωση του Χορευτικού και την κάνει "Λύρα".
+  Σιωπηλό leak χωρίς αυτό.
+- **Read soft-gate στο PATCH/DELETE:** ελάχιστο gate για load. Αν
+  δεν έχει read, οπωσδήποτε δεν έχει edit/delete — early 403 αντί
+  unnecessary DB query.
+
+**Engine exercised σε production:**
+- requirePermission(perm, opts) canonical overload form
+- ctx.scoped field post-permission filtering
+- Admin/President short-circuit (engine returns full-grant scoped
+  matrix αυτόματα — UI κώδικας δουλεύει consistent χωρίς special case)
+- scope='all' / 'department' / 'own' ternary matching
+
+**Verified:**
+- npx tsc --noEmit: zero errors σε ΟΛΑ τα 2 commits
+- npm run build: ✓ Compiled successfully
+- npm run lint: baseline preserved (32 errors + 105 warnings)
+- Backward-compat: admin/president unaffected. ΟΛΑ τα 21 existing
+  permissions.includes() sites + 6 existing requirePermission
+  call sites untouched.
+
+**ομαδάρχης concept COMPLETE:**
+- ✅ Schema (PR ζ.1 #96)
+- ✅ Engine (PR ζ.2 #97)
+- ✅ Admin UI (PR ζ.3 #98)
+- ✅ First scope-aware consumer (this PR)
+
+End-to-end functional: admin assigns leaders → leaders get
+scope='department' role grants → ομαδάρχης γράφει ανακοινώσεις
+μόνο για το τμήμα του → portal members βλέπουν τα relevant
+στο feed τους.
+
+**Connects με:** PR ζ.1 (#96), PR ζ.2 (#97), PR ζ.3 (#98),
+PR στ' (#94 — announcements module που εδώ γίνεται scope-aware).
+
+**Net stats:** +220 / -50 σε 4 files:
+- app/api/admin/announcements/route.ts (+48/-5)
+- app/api/admin/announcements/[announcementId]/route.ts (+114/-41)
+- app/announcements/page.tsx (+53/-3)
+- components/AnnouncementFormModal.tsx (+5/-1)
+
+### feat/department-leaders-ui (PR ζ.3, #98, merged 2026-05-19)
 
 Admin UI για department leader assignment + departments dropdown
 wire-up στο PermissionMatrix. Κλείνει το ομαδάρχης concept end-to-end:
