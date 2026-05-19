@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-19 (PR ζ.2 (#?) merged — feat/permission-scope-engine / Permission scope engine wire-up: ScopedPermission, dual computePermissions, canDo resurrection, requirePermission scope-aware overload)
+> Last updated: 2026-05-19 (PR ζ.3 (#?) merged — feat/department-leaders-ui / Department Leaders admin UI: leader assignment modal, REST API endpoints, PermissionMatrix departments dropdown wire-up)
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -968,7 +968,7 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
   Estimated: L (UI work post-schema — σπασμένο σε 4-5 PRs)
 
-- [x] **🟡 Department Leaders concept — Schema ✅ (PR ζ.1) / UI 🔜 (PR ζ.3)**
+- [x] **✅ Department Leaders concept — Schema ✅ (PR ζ.1) / UI ✅ (PR ζ.3)**
 
   Stack: 🟣 Member Portal · Schema evolution prerequisite
 
@@ -1067,10 +1067,16 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   5. ✅ PR ζ.2 Commit 1: 21 existing `role.permissions.includes("X")`
      call sites preserved via state.permissions derived view (zero edits
      to call sites required)
-  6. 🔜 PR ζ.3 / ζ.4: UI integration — announcement form modal filters
-     department dropdown για ομαδάρχη, admin assignment screen για
-     department leader management, re-enable disabled <option value="department">
-     στο PermissionMatrix.tsx
+  6. ✅ PR ζ.3: Admin UI για department leader management
+     - LeadersModal για assign/remove/change-role ομαδαρχών per τμήμα
+     - REST API endpoints για department_leaders CRUD (4 routes,
+       requireAdmin guard)
+     - PermissionMatrix departments dropdown wire-up: re-enabled
+       <option value="department">, replaced free-text με <select>
+       populated από active departments
+  7. 🔜 PR ζ.4: Announcement form scope-aware audience filtering
+     για ομαδάρχη που στέλνει σε δικό του τμήμα μόνο (first scope-aware
+     consumer του requirePermission overload)
 
   Bundling decision: αυτό + το `department_leaders` table + ομαδάρχης UI
   πάνε όλα στο PR ζ' (single coherent slice).
@@ -1972,7 +1978,123 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
 ## ✅ Recently Done
 
-### feat/permission-scope-engine (PR ζ.2, #?, committed 2026-05-19)
+### feat/department-leaders-ui (PR ζ.3, #?, committed 2026-05-19)
+
+Admin UI για department leader assignment + departments dropdown
+wire-up στο PermissionMatrix. Κλείνει το ομαδάρχης concept end-to-end:
+Schema (ζ.1 #96) + Engine (ζ.2 #97) + Admin UI (this PR).
+
+**Commits (3):**
+- `111a26d` feat(api): department_leaders CRUD endpoints
+- `23959ec` feat(ui): department leaders management modal
+- `63d23f5` feat(ui): PermissionMatrix departments dropdown wire-up
+
+**API endpoints (Commit 1, lib/auth requireAdmin gate):**
+- [x] GET    /api/admin/departments/[departmentId]/leaders
+      Returns leader assignments με member details join
+- [x] POST   /api/admin/departments/[departmentId]/leaders
+      Body: { member_id, role }. 409 σε duplicate (PostgreSQL 23505).
+- [x] PATCH  /api/admin/departments/[departmentId]/leaders/[memberId]
+      Body: { role: 'leader'|'assistant' }. 404 αν not found.
+- [x] DELETE /api/admin/departments/[departmentId]/leaders/[memberId]
+      204 No Content. 404 αν count = 0.
+- [x] Defensive club scoping: ctx.clubId check σε ΚΑΘΕ mutation
+- [x] Member club ownership verification στο POST
+
+**LeadersModal (Commit 2):**
+- [x] Self-contained component στο app/settings/departments/LeadersModal.tsx
+- [x] Inline member picker με Greek search normalization
+      (normalizeGreek από lib/utils/greekSearch)
+- [x] Excludes already-assigned members από picker results
+- [x] Role select (Ομαδάρχης / Βοηθός) at add-time
+- [x] Inline role change (PATCH) per leader στο list view
+- [x] Remove με confirmation prompt
+- [x] formatMemberName(memberObject) — single-arg shape από existing helper
+- [x] Direct fetch calls (no API wrapper) — pattern-consistent με RolesTab
+- [x] Conditional-render modal με backdrop + stopPropagation (όχι Portal)
+
+**/settings/departments page integration (Commit 2):**
+- [x] New button "👥" δίπλα στα existing ↑↓✏🗑 ανά department row
+- [x] State leadersTarget: Department | null
+- [x] Modal mount με clubId guard: {leadersTarget && clubId && <LeadersModal />}
+- [x] Zero behavior change σε existing edit/create/delete flows
+
+**PermissionMatrix wire-up (Commit 3):**
+- [x] Added Department import + Pick<Department, "id" | "name"> decoupling
+- [x] CellEditor + PermissionMatrix: new availableDepartments? prop
+      (optional με default [], backward-compat preserved)
+- [x] Re-enabled <option value="department"> (removed disabled + title
+      + TODO comment από PR ζ.1 safety guard)
+- [x] Replaced free-text input με <select>:
+      * Empty-state fallback: "(Δεν υπάρχουν τμήματα)" + disabled
+      * Normal state: placeholder + departments mapped
+- [x] Hint text updated: "συμπληρώστε όνομα" → "επιλέξτε από το dropdown"
+
+**RolesTab wire-up (Commit 3):**
+- [x] Added getBrowserClient + Department imports
+- [x] Component signature: dropped underscore από _clubId
+      (eliminates unused-param lint warning)
+- [x] New departments state + loadDepartments useCallback
+      (direct supabase fetch, filter active=true, sort by display_order)
+- [x] Silent fail σε error (empty dropdown είναι acceptable fallback)
+- [x] Parallel loadDepartments call σε useEffect alongside loadRoles
+- [x] PermissionMatrix mount: passes availableDepartments={departments}
+
+**Architectural decisions:**
+- **Department-centric UI placement:** Modal στο /settings/departments
+  αντί νέο tab στο /settings/users. Reasoning: ο admin σκέφτεται
+  ομαδάρχη ανά τμήμα ("ποιοι είναι ομαδάρχες του Χορευτικού;").
+  Reverse view (per-member) είναι future feature αν χρειαστεί.
+- **Decoupled department_leaders from role assignment:** Το table
+  είναι informational metadata ("ποιος είναι ομαδάρχης τίνος"). Το
+  permission enforcement γίνεται μέσω member_role_permissions.
+  scope_department_id (separate concern). Αν αύριο αλλάξουμε την
+  philosophy, το permission system δεν χαλάει.
+- **requireAdmin αντί requirePermission scope-aware:** Department
+  leadership είναι strategic decision. Μόνο President/SystemAdmin
+  μπορούν να ορίζουν ομαδάρχες, όχι όποιος έχει "members:edit".
+  ζ.4 announcements form θα είναι ο πρώτος πραγματικός scope-aware
+  consumer του requirePermission overload.
+- **Inline member picker (YAGNI):** Δεν υπάρχει shared MemberPicker
+  component σήμερα. Extract reusable μόνο όταν δεύτερος consumer
+  εμφανιστεί (πιθανώς ζ.4).
+- **Direct supabase fetch για departments read:** No new /api endpoint
+  γιατί είναι read-only client-side data. Pattern-consistent με
+  departments page + members page.
+- **Pick<Department, "id" | "name"> για PermissionMatrix prop:**
+  Decouple το reusable component από full DB schema. Future consumers
+  μπορούν να στείλουν minimal shape.
+- **Empty-state defensive UX:** Αν club δεν έχει active departments,
+  το dropdown disable-άρει με explanatory placeholder αντί να
+  σπάσει η UI.
+
+**Verified:**
+- npx tsc --noEmit: zero errors σε ΟΛΑ τα 3 commits
+- npm run build: ✓ Compiled successfully (νέα routes registered)
+- npm run lint: 32 errors + 105 warnings — 1 πέφτω warning vs PR ζ.2
+  end-state (eliminated _clubId unused-param). 1 new warning από
+  LeadersModal:91 (react-hooks/set-state-in-effect, pattern-consistent
+  με 10+ pre-existing instances σε codebase — future batch refactor).
+
+**ομαδάρχης concept fully unlocked end-to-end:**
+- Schema (PR ζ.1 #96) ✅
+- Engine (PR ζ.2 #97) ✅
+- Admin UI (this PR) ✅
+- First scope-aware consumer (PR ζ.4) 🔜
+
+**Connects με:** PR ζ.1 (#96) schema, PR ζ.2 (#97) engine. Unlocks
+PR ζ.4 (announcement audience filtering για ομαδάρχη — first real
+exercise του requirePermission scope-aware overload από ζ.2).
+
+**Net stats:** +832 lines / -17 lines, 6 files (4 new + 2 modified):
+- app/api/admin/departments/[departmentId]/leaders/route.ts +221 (NEW)
+- app/api/admin/departments/[departmentId]/leaders/[memberId]/route.ts +174 (NEW)
+- app/settings/departments/LeadersModal.tsx +360 (NEW)
+- app/settings/departments/page.tsx +27
+- components/PermissionMatrix.tsx +24/-14
+- app/settings/users/RolesTab.tsx +29/-3
+
+### feat/permission-scope-engine (PR ζ.2, #97, merged 2026-05-19)
 
 Permission scope engine wire-up — engine half του scope system. Schema
 half είχε γίνει στο PR ζ.1 (#96). Zero behavior change για 21 σημερινά
