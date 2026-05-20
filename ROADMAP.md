@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-21 (PR #118 — family link target role fix)
+> Last updated: 2026-05-21 (PR #117 — family link target role fix)
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -1486,7 +1486,7 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   - Add parents' names (members.parents field)
   - Prioritize existing family members στο top αν editing.family_id υπάρχει
 
-  Discovered alongside PR #118 (2026-05-21).
+  Discovered alongside PR #117 (2026-05-21).
 
 - [ ] **🟢 Permission types unification (drift cleanup)**
 
@@ -2144,7 +2144,7 @@ session**:
 
 ## ✅ Recently Done
 
-### feat/family-link-target-role-fix (PR #118, merged 2026-05-21)
+### feat/family-link-target-role-fix (PR #117, merged 2026-05-21)
 
 Hotfix για CHECK constraint violation σε link-mode save με solo target. Discovered στο PR #116 smoke testing — production blocker.
 
