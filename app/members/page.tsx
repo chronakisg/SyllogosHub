@@ -12,6 +12,7 @@ import { DateInput } from "@/components/DateInput";
 import { calculateAge, generateUuid } from "@/lib/utils/discounts";
 import { formatMemberName } from "@/lib/utils/attendees";
 import { normalizeGreek } from "@/lib/utils/greekSearch";
+import { surnameVariants } from "@/lib/utils/surnameVariants";
 import {
   formatRelativeDate,
   getVerificationState,
@@ -1932,6 +1933,42 @@ function MemberModal({
       .slice(0, 8);
   }, [members, familySearchDebounced, editing?.id]);
 
+  const surnameSuggestions = useMemo(() => {
+    if (!editing?.last_name || familySearchDebounced) {
+      return [] as { member: MemberWithDepartments; matchReason: "lastName" | "maidenName" }[];
+    }
+    const variants = surnameVariants(editing.last_name);
+    if (variants.length === 0) {
+      return [] as { member: MemberWithDepartments; matchReason: "lastName" | "maidenName" }[];
+    }
+    const tagged: {
+      member: MemberWithDepartments;
+      matchReason: "lastName" | "maidenName";
+    }[] = [];
+    for (const m of members) {
+      if (m.id === editing.id) continue;
+      const ln = normalizeGreek(m.last_name);
+      if (variants.some((v) => ln.startsWith(v))) {
+        tagged.push({ member: m, matchReason: "lastName" });
+        continue;
+      }
+      const mn = normalizeGreek(m.maiden_name ?? "");
+      if (mn && variants.some((v) => mn.startsWith(v))) {
+        tagged.push({ member: m, matchReason: "maidenName" });
+      }
+    }
+    tagged.sort((a, b) => {
+      const aSolo = a.member.family_id == null;
+      const bSolo = b.member.family_id == null;
+      if (aSolo !== bSolo) return aSolo ? -1 : 1;
+      return normalizeGreek(a.member.first_name).localeCompare(
+        normalizeGreek(b.member.first_name),
+        "el"
+      );
+    });
+    return tagged.slice(0, 8);
+  }, [editing, familySearchDebounced, members]);
+
   const linkedTarget = useMemo(
     () =>
       form.link_member_id
@@ -2507,6 +2544,42 @@ function MemberModal({
                         </li>
                       ))}
                     </ul>
+                  )}
+                  {!familySearchDebounced && surnameSuggestions.length > 0 && (
+                    <div>
+                      <p className="px-3 py-1 text-xs font-medium text-muted">
+                        Προτεινόμενα μέλη με ίδιο επίθετο
+                      </p>
+                      <ul className="max-h-40 overflow-y-auto rounded-lg border border-border">
+                        {surnameSuggestions.map(({ member: m, matchReason }) => (
+                          <li key={m.id}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setForm((s) => ({
+                                  ...s,
+                                  link_member_id: m.id,
+                                }));
+                              }}
+                              className="block w-full px-3 py-2 text-left text-sm hover:bg-foreground/5"
+                            >
+                              {m.last_name} {m.first_name}
+                              {matchReason === "maidenName" && m.maiden_name && (
+                                <span className="ml-2 text-[10px] text-muted">
+                                  (γεν. {m.maiden_name})
+                                </span>
+                              )}
+                              {m.family_id &&
+                                m.family_id !== editing?.family_id && (
+                                  <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">
+                                    Σε άλλη οικογένεια
+                                  </span>
+                                )}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                   {linkedTarget && (
                     <p className="rounded-md border border-accent/30 bg-accent/10 p-2 text-xs text-accent">

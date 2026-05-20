@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-21 (feat: family bidirectional unlink cleanup — Bug C, επόμενο PR)
+> Last updated: 2026-05-21 (feat: family link same-surname suggestions, επόμενο PR)
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -1474,6 +1474,10 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   - Add parents' names (members.parents field)
   - Prioritize existing family members στο top αν editing.family_id υπάρχει
 
+  Partial mitigation σε feat/family-link-same-surname-suggestions (επόμενο PR):
+  same-surname pre-population όταν search query empty + maiden_name matching +
+  "Σε άλλη οικογένεια" badge. Remaining: birth_date hint, parents' names display.
+
   Discovered alongside PR #118 (2026-05-21).
 
 - [ ] **🟢 Permission types unification (drift cleanup)**
@@ -2131,6 +2135,27 @@ session**:
 - Anything με per-department permissioning
 
 ## ✅ Recently Done
+
+### feat/family-link-same-surname-suggestions (επόμενο PR)
+
+Όταν user clicks "Σύνδεση με υπάρχον μέλος" και η search query είναι empty, εμφανίζει pre-populated suggestions με same-surname members (masculine + feminine variants) + maiden_name matches. Reduces user effort + helps disambiguation σε families με κοινό επίθετο.
+
+**Logic:**
+- Νέος helper `lib/utils/surnameVariants.ts` με Greek masculine/feminine patterns
+  (-ησ/-η, -οσ/-ου, -ασ/-α + reverse)
+- Memo `surnameSuggestions` τρέχει μόνο όταν empty query + editing.last_name έχει value
+- Match σε normalized last_name OR maiden_name
+- Sort: solo first, then cross-family; alphabetical within group
+- 8-item cap consistent με existing search
+
+**UI:**
+- Header: "Προτεινόμενα μέλη με ίδιο επίθετο"
+- Badge "(γεν. {maiden_name})" σε muted text για maiden_name matches
+- Badge "Σε άλλη οικογένεια" σε amber-100/amber-800 για cross-family hits
+
+**Constraints honored:** existing search/filter logic untouched; pre-population activates μόνο σε empty-query branch που πριν επέστρεφε [].
+
+**Partial mitigation** για 🟢 "Member search disambiguation" Nice-to-Have entry. Remaining mitigations (birth_date, parents' names) tracked εκεί.
 
 ### feat/family-bidirectional-unlink-cleanup (Bug C, επόμενο PR)
 
