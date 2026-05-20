@@ -464,11 +464,9 @@ function MembersPageContent() {
           .eq("club_id", clubId)
           .order("display_order", { ascending: true })
           .order("name", { ascending: true }),
-        // department_leaders has no club_id column — filter via joined dept
-        supabase
-          .from("department_leaders")
-          .select("member_id, departments!inner(club_id)")
-          .eq("departments.club_id", clubId),
+        // department_leaders has no club_id column — fetch all, then filter
+        // client-side via validDeptIds Set (built από allDepartments below).
+        supabase.from("department_leaders").select("member_id, department_id"),
       ]);
       if (mRes.error) throw mRes.error;
       if (mdRes.error) throw mdRes.error;
@@ -496,8 +494,13 @@ function MembersPageContent() {
           a.name.localeCompare(b.name, "el", { sensitivity: "base" })
         ),
       }));
+      // Tenant scope: allDepartments είναι ήδη filtered .eq("club_id", clubId).
+      // Filter leaders to only those in current-club departments.
+      const validDeptIds = new Set<string>(allDepartments.map((d) => d.id));
       const nextLeaderIds = new Set<string>(
-        (dlRes.data ?? []).map((r) => r.member_id),
+        (dlRes.data ?? [])
+          .filter((r) => validDeptIds.has(r.department_id))
+          .map((r) => r.member_id),
       );
 
       setError(null);
