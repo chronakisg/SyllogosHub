@@ -19,10 +19,17 @@ import type {
 
 import { ReviewCard } from "./ReviewCard";
 import {
+  computeVisibleIndices,
   type CommitResponse,
   type WizardAction,
   type WizardState,
 } from "./_state";
+
+function filterButtonClass(active: boolean): string {
+  return `rounded-md px-3 py-1 transition ${
+    active ? "bg-accent text-accent-foreground" : "hover:bg-background"
+  }`;
+}
 
 type ReviewStateOnly = Extract<WizardState, { step: "review" }>;
 
@@ -45,15 +52,28 @@ export function ReviewStep({ state, dispatch }: Props) {
     [state.perRow, state.cursor],
   );
 
+  // Visible row indices τρέχουν μόνο όταν αλλάζει το dataset (length),
+  // το decisions Map (νέο reference per dispatch), ή το active filter.
+  // Cursor moves δεν επηρεάζουν computation — narrow deps intentional.
+  const visibleIndices = useMemo(
+    () => computeVisibleIndices(state, state.filter),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.normalizedRows.length, state.decisions, state.filter],
+  );
+
   function handlePrev() {
-    if (state.cursor > 0) {
-      dispatch({ type: "SET_CURSOR", cursor: state.cursor - 1 });
+    const currentIdx = visibleIndices.indexOf(state.cursor);
+    if (currentIdx > 0) {
+      const prevCursor = visibleIndices[currentIdx - 1];
+      dispatch({ type: "SET_CURSOR", cursor: prevCursor });
     }
   }
 
   function handleNext() {
-    if (state.cursor < total - 1) {
-      dispatch({ type: "SET_CURSOR", cursor: state.cursor + 1 });
+    const currentIdx = visibleIndices.indexOf(state.cursor);
+    if (currentIdx >= 0 && currentIdx < visibleIndices.length - 1) {
+      const nextCursor = visibleIndices[currentIdx + 1];
+      dispatch({ type: "SET_CURSOR", cursor: nextCursor });
     }
   }
 
@@ -102,37 +122,66 @@ export function ReviewStep({ state, dispatch }: Props) {
     );
   }
 
-  const onLastRow = state.cursor >= total - 1;
+  const isFirstVisible =
+    visibleIndices.length === 0 || visibleIndices[0] === state.cursor;
+  const isLastVisible =
+    visibleIndices.length === 0 ||
+    visibleIndices[visibleIndices.length - 1] === state.cursor;
 
   return (
     <div className="space-y-4">
-      {/* Progress header */}
-      <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-border bg-surface p-3 text-sm">
+      {/* Progress header + filter toggle */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface p-3 text-sm">
         <span>
           Καρτέλα <strong>{state.cursor + 1}</strong> / {total}
         </span>
-        <span className="text-xs text-muted">
-          {decisionsCount} {decisionsCount === 1 ? "απόφαση" : "αποφάσεις"} ·{" "}
-          {remaining} {remaining === 1 ? "εκκρεμεί" : "εκκρεμούν"}
-        </span>
+        <div className="flex gap-1 rounded-lg border border-border p-1">
+          <button
+            type="button"
+            onClick={() => dispatch({ type: "SET_FILTER", filter: "all" })}
+            className={filterButtonClass(state.filter === "all")}
+          >
+            Όλες ({total})
+          </button>
+          <button
+            type="button"
+            onClick={() => dispatch({ type: "SET_FILTER", filter: "decided" })}
+            className={filterButtonClass(state.filter === "decided")}
+          >
+            Αποφάσεις ({decisionsCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => dispatch({ type: "SET_FILTER", filter: "pending" })}
+            className={filterButtonClass(state.filter === "pending")}
+          >
+            Εκκρεμότητες ({remaining})
+          </button>
+        </div>
       </div>
 
       {/* The card — key forces remount per cursor for fresh initial state */}
-      <ReviewCard
-        key={state.cursor}
-        rowIndex={state.cursor}
-        normalizedRow={currentRow}
-        candidates={currentMatched.candidates}
-        allMembers={state.allMembers}
-        decision={state.decisions.get(state.cursor)}
-        onDecisionChange={(d) =>
-          dispatch({
-            type: "SET_DECISION",
-            rowIndex: state.cursor,
-            decision: d,
-          })
-        }
-      />
+      {visibleIndices.length === 0 ? (
+        <div className="rounded-lg border border-border p-6 text-center text-sm text-muted">
+          Δεν υπάρχουν καρτέλες σε αυτό το φίλτρο.
+        </div>
+      ) : (
+        <ReviewCard
+          key={state.cursor}
+          rowIndex={state.cursor}
+          normalizedRow={currentRow}
+          candidates={currentMatched.candidates}
+          allMembers={state.allMembers}
+          decision={state.decisions.get(state.cursor)}
+          onDecisionChange={(d) =>
+            dispatch({
+              type: "SET_DECISION",
+              rowIndex: state.cursor,
+              decision: d,
+            })
+          }
+        />
+      )}
 
       {commitError && <p className="text-sm text-rose-600">{commitError}</p>}
 
@@ -142,7 +191,7 @@ export function ReviewStep({ state, dispatch }: Props) {
           <button
             type="button"
             onClick={handlePrev}
-            disabled={state.cursor === 0 || committing}
+            disabled={isFirstVisible || committing}
             className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-background disabled:opacity-50"
           >
             ← Προηγούμενο
@@ -150,7 +199,7 @@ export function ReviewStep({ state, dispatch }: Props) {
           <button
             type="button"
             onClick={handleNext}
-            disabled={onLastRow || committing}
+            disabled={isLastVisible || committing}
             className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm transition hover:bg-background disabled:opacity-50"
           >
             Επόμενο ⏭
