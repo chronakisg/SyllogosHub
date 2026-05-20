@@ -893,7 +893,10 @@ function MembersPageContent() {
         const supabase = getBrowserClient();
         const { error: updErr } = await supabase
           .from("members")
-          .update({ family_id: resolvedFamilyId })
+          .update({
+            family_id: resolvedFamilyId,
+            family_role: defaultFamilyRole(target.birth_date),
+          })
           .eq("id", target.id)
           .eq("club_id", clubId);
         if (updErr) {
