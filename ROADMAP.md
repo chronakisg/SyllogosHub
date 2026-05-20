@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-21 (PR #118 — family link target role fix)
+> Last updated: 2026-05-21 (feat: family bidirectional unlink cleanup — Bug C, επόμενο PR)
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -745,18 +745,6 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   Plan docs στο repo:
   - `MEMBER_ENRICH_PLAN.md` (base wizard architecture)
   - `MEMBER_ENRICH_FAMILY_PLAN.md` (family detection rules)
-
-- [ ] **🟡 Family bidirectional unlink cleanup — S**
-
-  Όταν user κάνει "Χωρίς οικογένεια" σε member ενός 2-person family, ο orphaned partner μένει με family_id pointing σε family χωρίς άλλα members. UX confusion: ο orphan νομίζει ότι έχει ακόμα οικογένεια.
-
-  **Logic:** στο client-side save path (app/members/page.tsx), όταν family_id αλλάζει από non-null σε null ή σε διαφορετικό id:
-  1. Capture old_family_id
-  2. After UPDATE: query count members με old_family_id
-  3. Αν count === 1: UPDATE survivor set family_id=null, family_role=null
-  4. Confirmation dialog πριν το save: "Αυτή η ενέργεια θα αφήσει τον/την [Όνομα] χωρίς οικογένεια. Συνέχεια;"
-
-  Discovered alongside PR #116 (2026-05-20). Deferred for separate concern.
 
 ### 🟣 Member Portal domain
 
@@ -2143,6 +2131,25 @@ session**:
 - Anything με per-department permissioning
 
 ## ✅ Recently Done
+
+### feat/family-bidirectional-unlink-cleanup (Bug C, επόμενο PR)
+
+Cleanup orphan single-survivor όταν user αφαιρεί member από family ενός 2-person family. Bug C από session 2026-05-20.
+
+**Logic:**
+- Fresh DB query για siblings count (multi-admin safe, όχι stale client state)
+- Confirmation dialog πριν το main UPDATE: "Αυτή η ενέργεια θα αφήσει τον/την [Όνομα] χωρίς οικογένεια. Συνέχεια;"
+- Cleanup UPDATE survivor's family_id+role σε null μετά main UPDATE success
+- Cleanup failure throws — όχι silent suppression (το anti-pattern που γέννησε το Bug C)
+
+**Triggers:**
+- "Χωρίς οικογένεια" σε member 2-person family
+- "Σύνδεση με υπάρχον μέλος" σε διαφορετική οικογένεια (orphans the original partner)
+- "Νέα οικογένεια" σε member που ήταν σε 2-person family
+
+**3+ person families:** no confirmation, no cleanup (family συνεχίζει).
+
+**UI debt:** window.confirm used. Switch σε branded dialog όταν existing pattern identified.
 
 ### feat/family-link-target-role-fix (PR #118, merged 2026-05-21)
 

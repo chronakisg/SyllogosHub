@@ -934,6 +934,46 @@ function MembersPageContent() {
     const wasNewFamily = form.family_mode === "new";
     const displayedName = `${last_name} ${first_name}`.trim();
 
+    // Bug C guard: detect orphan-single-survivor scenario
+    let pendingOrphanCleanup: {
+      survivorId: string;
+      survivorName: string;
+      oldFamilyId: string;
+    } | null = null;
+
+    if (editing && editing.family_id && editing.family_id !== resolvedFamilyId) {
+      // Fresh DB query — μην εμπιστευτείς stale client state σε multi-admin context
+      const supabase = getBrowserClient();
+      const { data: siblings, error: sibErr } = await supabase
+        .from("members")
+        .select("id, last_name, first_name")
+        .eq("family_id", editing.family_id)
+        .eq("club_id", clubId)
+        .neq("id", editing.id);
+
+      if (sibErr) {
+        setFormError("Αποτυχία ελέγχου οικογένειας: " + sibErr.message);
+        return;
+      }
+
+      if (siblings && siblings.length === 1) {
+        const survivor = siblings[0];
+        const survivorName = formatMemberName({
+          last_name: survivor.last_name,
+          first_name: survivor.first_name,
+        });
+        const ok = window.confirm(
+          `Αυτή η ενέργεια θα αφήσει τον/την ${survivorName} χωρίς οικογένεια. Συνέχεια;`
+        );
+        if (!ok) return;
+        pendingOrphanCleanup = {
+          survivorId: survivor.id,
+          survivorName,
+          oldFamilyId: editing.family_id,
+        };
+      }
+    }
+
     setSaving(true);
     try {
       const supabase = getBrowserClient();
@@ -946,6 +986,24 @@ function MembersPageContent() {
           .eq("id", editing.id)
           .eq("club_id", clubId);
         if (upErr) throw upErr;
+
+        // Bug C: orphan single survivor cleanup
+        if (pendingOrphanCleanup) {
+          const { error: cleanupErr } = await supabase
+            .from("members")
+            .update({ family_id: null, family_role: null })
+            .eq("id", pendingOrphanCleanup.survivorId)
+            .eq("club_id", clubId);
+
+          if (cleanupErr) {
+            // Main UPDATE επιτυχής, cleanup απέτυχε → partial state.
+            // Throw — no silent suppression (το anti-pattern που γέννησε το Bug C).
+            throw new Error(
+              `Η αποθήκευση επιτυχής, αλλά η εκκαθάριση οικογένειας για τον/την ${pendingOrphanCleanup.survivorName} απέτυχε: ${cleanupErr.message}. Παρακαλώ refresh + retry.`
+            );
+          }
+        }
+
         memberId = editing.id;
       } else {
         const insert: MemberInsert = {
