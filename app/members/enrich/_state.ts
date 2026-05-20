@@ -12,6 +12,7 @@
 
 import { buildInitialDecision } from "@/lib/enrich/autoDecision";
 import { autoDetectMapping } from "@/lib/enrich/columnMapper";
+import type { FamilyHint } from "@/lib/enrich/family";
 import type { MatchableMember } from "@/lib/enrich/match";
 import type { ParsedSheet, ParseResult } from "@/lib/enrich/parseExcel";
 import type {
@@ -41,6 +42,7 @@ export type ColumnMapping = Record<string, ColumnTarget>;
 export type MatchedRow = {
   rowIndex: number;
   candidates: MatchCandidate[];
+  familyHints: FamilyHint[];
 };
 
 /**
@@ -87,6 +89,12 @@ export type WizardState =
        * των skipped rows για να φτιάξει το download CSV (plan §1.2).
        */
       normalizedRows: NormalizedExcelRow[];
+      /**
+       * Forwarded από review state. SummaryStep διαβάζει
+       * `perRow[i].familyHints` για το `_likely_family_of` CSV column
+       * (see MEMBER_ENRICH_FAMILY_PLAN.md §7).
+       */
+      perRow: MatchedRow[];
     };
 
 // ──────────────────────────────────────────────────────────────────
@@ -258,6 +266,7 @@ export function reducer(
         filename: state.filename,
         result: action.result,
         normalizedRows: state.normalizedRows,
+        perRow: state.perRow,
       };
     }
 

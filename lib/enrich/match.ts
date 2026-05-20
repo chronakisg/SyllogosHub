@@ -210,7 +210,7 @@ export function rankCandidates(
 }
 
 // ──────────────────────────────────────────────────────────────────
-// tokenize — internal helper για address overlap
+// tokenize — helper για address overlap (exported για reuse σε family.ts)
 // ──────────────────────────────────────────────────────────────────
 
 /**
@@ -221,7 +221,7 @@ export function rankCandidates(
  * Threshold 3 chars αποφεύγει spurious matches σε connectors ("ΟΔ",
  * "ΑΡ.", numbers < 100).
  */
-function tokenize(s: string): string[] {
+export function tokenize(s: string): string[] {
   return normalizeGreek(s)
     .split(/[^\p{L}\p{N}]+/u)
     .filter((t) => t.length >= 3);

@@ -11,6 +11,7 @@
 import { type Dispatch } from "react";
 import { useRouter } from "next/navigation";
 
+import type { FamilyHint, FamilySignal } from "@/lib/enrich/family";
 import type { ExcelCellValue } from "@/lib/enrich/types";
 
 import {
@@ -23,6 +24,14 @@ import {
 // Explicit escape (όχι literal char) για να μην confuse-άρει diff tools.
 const BOM = "\uFEFF";
 
+const FAMILY_SIGNAL_LABELS: Record<FamilySignal, string> = {
+  surname_address: "επώνυμο+διεύθυνση",
+  address_phone: "διεύθυνση+τηλέφωνο",
+  father_name_match: "πατρώνυμο",
+  mother_name_match: "μητρώνυμο",
+  firstname_matches_member_mother: "όνομα=μητέρα",
+};
+
 type SummaryStateOnly = Extract<WizardState, { step: "summary" }>;
 
 type Props = {
@@ -32,7 +41,7 @@ type Props = {
 
 export function SummaryStep({ state, dispatch }: Props) {
   const router = useRouter();
-  const { result, normalizedRows, filename } = state;
+  const { result, normalizedRows, perRow, filename } = state;
 
   function handleDownloadCSV() {
     if (result.skipped.length === 0) return;
@@ -40,13 +49,16 @@ export function SummaryStep({ state, dispatch }: Props) {
     // Headers: original Excel headers (από .raw της πρώτης row) + '_reason'
     const sample = normalizedRows[0]?.raw ?? {};
     const headers = Object.keys(sample);
-    const allHeaders = [...headers, "_reason"];
+    const allHeaders = [...headers, "_reason", "_likely_family_of"];
 
     const lines: string[] = [allHeaders.map(csvEscape).join(",")];
     for (const skip of result.skipped) {
       const orig = normalizedRows.find((n) => n.rowIndex === skip.rowIndex)?.raw ?? {};
       const cells = headers.map((h) => csvEscape(orig[h]));
       cells.push(csvEscape(skip.reason));
+      const familyHints =
+        perRow.find((r) => r.rowIndex === skip.rowIndex)?.familyHints ?? [];
+      cells.push(csvEscape(formatFamilyHints(familyHints)));
       lines.push(cells.join(","));
     }
     const csv = lines.join("\n");
@@ -129,6 +141,18 @@ export function SummaryStep({ state, dispatch }: Props) {
 // ──────────────────────────────────────────────────────────────────
 // CSV helpers (inline — papaparse not installed)
 // ──────────────────────────────────────────────────────────────────
+
+function formatFamilyHints(hints: FamilyHint[]): string {
+  if (hints.length === 0) return "";
+  return hints
+    .map((h) => {
+      const signalLabels = h.signals
+        .map((s) => FAMILY_SIGNAL_LABELS[s])
+        .join("+");
+      return `${h.memberName} [${signalLabels}]`;
+    })
+    .join("; ");
+}
 
 function csvEscape(val: ExcelCellValue | string | unknown): string {
   if (val === null || val === undefined) return "";
