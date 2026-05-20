@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-21 (PR #116 — family role select hardening + migration 0030 + data fix για ΚΛΕΙΣΑΡΧΑΚΗΣ pair)
+> Last updated: 2026-05-21 (PR #118 — family link target role fix)
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -1477,6 +1477,17 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
 ## 🟢 Nice to Have / Future
 
+- [ ] **🟢 Member search disambiguation — S**
+
+  Στο "Σύνδεση με υπάρχον μέλος" search dropdown, μέλη με ίδιο first+last name (π.χ. ΚΛΕΙΣΑΡΧΑΚΗΣ ΔΗΜΗΤΡΙΟΣ x2 — γιος και ξαδέλφι) εμφανίζονται indistinguishable. Risk: user picks λάθος target.
+
+  Mitigation options:
+  - Add secondary line με birth_date / age + occupation
+  - Add parents' names (members.parents field)
+  - Prioritize existing family members στο top αν editing.family_id υπάρχει
+
+  Discovered alongside PR #118 (2026-05-21).
+
 - [ ] **🟢 Permission types unification (drift cleanup)**
 
   Stack: 🟣 Permission system · Tech Debt
@@ -2132,6 +2143,19 @@ session**:
 - Anything με per-department permissioning
 
 ## ✅ Recently Done
+
+### feat/family-link-target-role-fix (PR #118, merged 2026-05-21)
+
+Hotfix για CHECK constraint violation σε link-mode save με solo target. Discovered στο PR #116 smoke testing — production blocker.
+
+**Root cause:**
+Στο handleSubmit (l.894-898), όταν link target ήταν solo (target.family_id=NULL), το side-effect UPDATE έγραφε ΜΟΝΟ family_id χωρίς family_role. Pre-PR #116 ήταν silent NULL family_role corruption. Post-PR #116 το CHECK constraint blocks the violating write — Postgres error μπορεί να σταματήσει ολόκληρο το save flow.
+
+**Fix:**
+Side-effect payload πλέον περιέχει `family_role: defaultFamilyRole(target.birth_date)`. Age-based default (parent if >=18 ή null, child αν <18) consistent με other usage points του helper.
+
+**Pre-fix data restore (manual SQL):**
+ΚΛΕΙΣΑΡΧΑΚΗΣ pair (Ανδρέας γονέας + Δημήτρης γιος) re-linked με fresh family_id αφού smoke testing παρακάμψε το integrity invariant.
 
 ### feat/family-role-select-hardening (PR #116, merged 2026-05-21)
 
