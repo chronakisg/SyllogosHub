@@ -232,7 +232,6 @@ function MembersPageContent() {
   const { clubId, loading: clubLoading } = useCurrentClub();
   const [members, setMembers] = useState<MemberWithDepartments[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [leaderIds, setLeaderIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -447,7 +446,7 @@ function MembersPageContent() {
     if (!clubId) return;
     try {
       const supabase = getBrowserClient();
-      const [mRes, mdRes, depRes, dlRes] = await Promise.all([
+      const [mRes, mdRes, depRes] = await Promise.all([
         supabase
           .from("members")
           .select("*")
@@ -464,14 +463,10 @@ function MembersPageContent() {
           .eq("club_id", clubId)
           .order("display_order", { ascending: true })
           .order("name", { ascending: true }),
-        // department_leaders has no club_id column — fetch all, then filter
-        // client-side via validDeptIds Set (built από allDepartments below).
-        supabase.from("department_leaders").select("member_id, department_id"),
       ]);
       if (mRes.error) throw mRes.error;
       if (mdRes.error) throw mdRes.error;
       if (depRes.error) throw depRes.error;
-      if (dlRes.error) throw dlRes.error;
 
       const allDepartments = (depRes.data ?? []) as Department[];
       const deptById = new Map(allDepartments.map((d) => [d.id, d]));
@@ -494,19 +489,10 @@ function MembersPageContent() {
           a.name.localeCompare(b.name, "el", { sensitivity: "base" })
         ),
       }));
-      // Tenant scope: allDepartments είναι ήδη filtered .eq("club_id", clubId).
-      // Filter leaders to only those in current-club departments.
-      const validDeptIds = new Set<string>(allDepartments.map((d) => d.id));
-      const nextLeaderIds = new Set<string>(
-        (dlRes.data ?? [])
-          .filter((r) => validDeptIds.has(r.department_id))
-          .map((r) => r.member_id),
-      );
 
       setError(null);
       setMembers(merged);
       setDepartments(allDepartments);
-      setLeaderIds(nextLeaderIds);
     } catch (err) {
       setError(errorMessage(err, "Σφάλμα φόρτωσης μελών."));
     } finally {
@@ -590,7 +576,14 @@ function MembersPageContent() {
       if (statusFilter !== "all" && m.status !== statusFilter) return false;
       if (boardOnly && !m.is_board_member) return false;
       if (familyOnly && !m.family_id) return false;
-      if (onlyLeaders && !leaderIds.has(m.id)) return false;
+      if (
+        onlyLeaders &&
+        !m.departments.some(
+          (d) => d.role === "leader" || d.role === "assistant",
+        )
+      ) {
+        return false;
+      }
       if (unverifiedOnly) {
         const phoneIssue = !!m.phone && !m.phone_verified;
         const emailIssue = !!m.email && !m.email_verified;
@@ -696,7 +689,6 @@ function MembersPageContent() {
     familyOnly,
     unverifiedOnly,
     onlyLeaders,
-    leaderIds,
     ageFilter,
     departmentFilter,
     missingField,
