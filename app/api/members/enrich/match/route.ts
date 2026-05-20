@@ -25,6 +25,10 @@ import { requirePermission } from "@/lib/auth/requirePermission";
 import { getAdminClient } from "@/lib/supabase/admin";
 
 import {
+  detectFamilyCandidates,
+  type FamilyHint,
+} from "@/lib/enrich/family";
+import {
   MATCH_THRESHOLD_SECONDARY,
   MATCHABLE_SELECT,
   rankCandidates,
@@ -58,6 +62,7 @@ const MAX_MAPPED_ROWS = 10000;
 type PerRowResponse = {
   rowIndex: number;
   candidates: MatchCandidate[];
+  familyHints: FamilyHint[];
 };
 
 type RouteResponse = {
@@ -194,7 +199,11 @@ export async function POST(request: Request) {
     const candidates = ranked
       .filter((c) => c.score >= MATCH_THRESHOLD_SECONDARY)
       .slice(0, CANDIDATES_PER_ROW);
-    return { rowIndex: row.rowIndex, candidates };
+    // Family-of detection runs parallel για CSV annotation (see family.ts).
+    // Self-match exclusion handled downstream: only skipped rows get the
+    // _likely_family_of column populated.
+    const familyHints = detectFamilyCandidates(row, matchable);
+    return { rowIndex: row.rowIndex, candidates, familyHints };
   });
 
   const response: RouteResponse = { perRow, allMembers: matchable };
