@@ -506,7 +506,10 @@ function FieldDiffPanel({
   const memberRec = member as unknown as Record<string, unknown>;
   const rows = ENRICH_FIELDS.filter((field) => {
     const v = row.values[field];
-    return v !== null && v !== undefined && v !== "";
+    if (v === null || v === undefined || v === "") return false;
+    const existing = memberRec[field];
+    if (existing === v) return false; // hide no-op (excel value identical to existing)
+    return true;
   });
 
   if (rows.length === 0) {
