@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-19 (PR ζ.4 (#?) merged — feat/announcements-scope-aware / Announcements first scope-aware consumer: server-side audience guards + UI page-level scope derivation. ομαδάρχης concept fully shipped — Schema (ζ.1 #96) + Engine (ζ.2 #97) + Admin UI (ζ.3 #98) + First consumer (ζ.4))
+> Last updated: 2026-05-20 (PRs #103-#114 merged σε one session: enrichment polish queue #103-#110 + /members ομαδάρχης filter chain #111-#113 + table layout polish #114)
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -731,6 +731,20 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
   Plan doc: `MEMBER_ENRICH_PLAN.md` στο repo root.
   Files: `lib/enrich/*` (6), `app/api/members/enrich/*` (2), `app/members/enrich/*` (6).
+
+  **Polish queue follow-ups (PR #103-#110, 2026-05-20):**
+  - #103 Filter toggle (Όλες/Αποφάσεις/Εκκρεμότητες)
+  - #104 Match transparency badges (signal pills)
+  - #105 Uppercase Greek normalize με NFD diacritic strip
+  - #106 Diff panel no-op hide
+  - #107 Family-of detection με 5 rules + CSV `_likely_family_of`
+  - #108 Filter UX corrections (contrast + counter + cursor reset)
+  - #109 Match value highlighting (emerald, per-candidate + selected-card)
+  - #110 Family UI surface (amber box στο ReviewCard)
+
+  Plan docs στο repo:
+  - `MEMBER_ENRICH_PLAN.md` (base wizard architecture)
+  - `MEMBER_ENRICH_FAMILY_PLAN.md` (family detection rules)
 
 ### 🟣 Member Portal domain
 
@@ -1940,6 +1954,60 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
 ## 🔧 Tech Debt
 
+### 🟡 Dual-source ομαδάρχης state cleanup
+
+**Surfaced by:** PR #111 → #112 → #113 debug chain (2026-05-20)
+
+Two parallel tables hold leadership data:
+
+| Source | Status | Used by |
+|---|---|---|
+| `member_departments.role` | ✅ Populated production data | /members table badges (line 1525), /members "Μόνο ομαδάρχες" filter (PR #113) |
+| `department_leaders` | ⚠️ Empty (schema-only since migration 0029) | LeadersModal writes only (PR ζ.3) |
+
+**Migration plan (3 steps):**
+
+1. Data migration: copy `member_departments` WHERE `role IN ('leader', 'assistant')`
+   → `department_leaders`. Idempotent με `ON CONFLICT DO NOTHING`.
+2. /members table cutover: pivot badge render + filter να διαβάζει από
+   `department_leaders` αντί `member_departments.role`.
+3. Cleanup: drop `member_departments.role` column (after grace period).
+
+**Risk while dual-source state persists:**
+- LeadersModal entries create orphan data — δεν φαίνονται σε /members
+  μέχρι το cutover
+- Schema state divergence between μεταξύ tenants αν data migration
+  γίνει staged
+
+**Priority:** Medium — current state functional, no production block.
+
+### 🔧 Supabase RLS rollout planning
+
+**Surfaced by:** Production debugging σε PR #112 (May 17 advisor
+warning + parked decision)
+
+Current state: όλα τα public tables RLS-disabled per convention. May 17
+advisor warning "rls_disabled_in_public" parked με decision "το κρατάμε
+για μετά".
+
+**Phased rollout plan:**
+
+1. **Phase 1** — Read policies σε members table (`user_id = auth.uid()`).
+   Lowest risk, single table, read-only.
+2. **Phase 2** — Write policies per table. Adds INSERT/UPDATE/DELETE
+   restrictions. Requires audit κάθε write site για service-role escape
+   όπου χρειάζεται.
+3. **Phase 3** — Multi-tenant `club_id` matching. Full isolation.
+   Largest scope.
+
+**Pre-rollout requirements:**
+- Audit όλων των API routes για `getAdminClient()` vs `getServerClient()` use
+- Identify queries που require cross-club reads (πχ super-admin views)
+- Test plan για each phase
+
+**Priority:** Low — multi-PR initiative, no current security incident
+forcing action.
+
 - [ ] **AppShell session-mismatch redirect**
   Όταν admin κάνει login ως member σε άλλο tab, η admin
   session αντικαθίσταται. Στο πρώτο tab (admin) ο shell
@@ -2052,6 +2120,86 @@ session**:
 - Anything με per-department permissioning
 
 ## ✅ Recently Done
+
+### enrich/polish-queue (PR #103-#110, merged 2026-05-20)
+
+8-PR polish queue completing the Member Enrichment Wizard arc. PR #102
+base shipped functional MVP; this queue refined UX based on production
+testing με real 203-row Greek club Excel.
+
+**PRs (8):**
+- #103 Filter toggle (Όλες/Αποφάσεις/Εκκρεμότητες)
+- #104 Match transparency badges (Τηλέφωνο/Επώνυμο/Όνομα/Διεύθυνση pills)
+- #105 Uppercase Greek normalize (`toLocaleUpperCase('el')` + NFD strip)
+- #106 Diff panel hides no-op rows
+- #107 Family-of detection (5 rules: R1-R4 simple, R5 compound για ΜΑΡΙΑ FPs)
+- #108 Filter UX corrections (contrast bug + counter localization + cursor reset)
+- #109 Match value highlighting (emerald-100, per-candidate scope)
+- #110 Family UI surface (amber soft box στο ReviewCard)
+
+**Architectural lessons:**
+- **R5 compound rule** — common Greek names (ΜΑΡΙΑ, ΓΙΑΝΝΗΣ) δημιουργούσαν
+  false-positive family hints. R5 requires firstname=mother AND additional
+  signal (address overlap OR phone exact) → suppresses πλειονότητα των FPs.
+- **Color semantic split** — emerald (PR #109) και amber (PR #110) σερβίρουν
+  διαφορετικά roles: emerald = "confirmed match value" (within candidate
+  card), amber = "context, attention" (between cards). Visual hierarchy
+  prevents confusion μεταξύ "this matched" vs "potentially related".
+- **Plan-doc deviation tracking** — #103 smart-jump → #108 reset-to-first
+  reversed από production testing. Documented σε commit message για future
+  audit trail (avoids "regression?" questions later).
+
+Plan docs:
+- `MEMBER_ENRICH_PLAN.md`
+- `MEMBER_ENRICH_FAMILY_PLAN.md`
+
+### members/leaders-filter-and-layout (PR #111-#114, merged 2026-05-20)
+
+4-PR chain για /members page enhancement: φίλτρο "Μόνο ομαδάρχες" +
+cosmetic table layout. Filter introduction περιελάμβανε 3-PR debug story
+που εξέθεσε critical architectural gap.
+
+**PRs (4):**
+- #111 Filter introduction με URL state pattern (FAILED: 0/245 results
+  παρά τα visible 'Ομαδάρχης' badges στη λίστα)
+- #112 Refactor σε client-side scope (FAILED: same wrong data source,
+  refactor σωστός αλλά πάνω σε broken assumption)
+- #113 Correct fix — pivot σε `member_departments.role` (CORRECT)
+- #114 Cosmetic layout — `whitespace-nowrap` σε name + `flex-col` στα τμήμα badges
+
+**Debug chain story:**
+
+PR #111 fetched από `department_leaders` table (introduced PR ζ.3, migration
+0029). Production showed 0 results παρά την presence των ομαδαρχών στη
+λίστα (πχ Καψάσκη Ελένη με 3 badges).
+
+PR #112 hypothesized PostgREST nested join issue (`.eq('departments.club_id',
+clubId)` σε joined column). Refactored σε client-side filtering. STILL 0
+results — refactor ήταν σωστός αλλά query παρέμενε σε wrong table.
+
+Diagnostic με console.logs αποκάλυψε: `department_leaders.COUNT(*) = 0`.
+Table είναι schema-only — populated by LeadersModal αλλά zero data
+migration ποτέ από το παλιό `member_departments.role` column.
+
+PR #113 pivoted σε `member_departments.role` (actual data source,
+populated από /members Departments tab). One-line predicate using data
+already σε scope:
+
+```ts
+m.departments.some((d) => d.role === 'leader' || d.role === 'assistant')
+```
+
+Zero extra queries, zero extra state.
+
+**Architectural lesson:**
+- **Two parallel data sources** για ομαδάρχης concept existed without
+  migration plan documented. PR ζ.3 schema-only by explicit design, αλλά
+  no comment connected το νέο table με το legacy `member_departments.role`
+  pattern.
+- **Verify ποια data source είναι currently authoritative** πριν query
+  design — even αν schema φαίνεται "καινούργιο και cleaner". Production
+  state διαφέρει συχνά από schema intent.
+- See Tech Debt entry "Dual-source ομαδάρχης state cleanup" για cutover plan.
 
 ### feat/announcements-scope-aware (PR ζ.4, #?, committed 2026-05-19)
 
