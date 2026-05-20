@@ -14,6 +14,7 @@ import { normalizeGreek } from "@/lib/utils/greekSearch";
 import { levenshtein } from "./columnMapper";
 import { digitsOnly } from "./normalize";
 import type {
+  CandidateMatches,
   MatchCandidate,
   MatchSignal,
   NormalizedExcelRow,
@@ -116,6 +117,7 @@ export function scoreCandidate(
 ): MatchCandidate {
   let score = 0;
   const signals: MatchSignal[] = [];
+  const matches: CandidateMatches = {};
 
   const rowEmail = row.values.email ?? null;
   const rowLast = row.values.last_name ?? null;
@@ -128,6 +130,7 @@ export function scoreCandidate(
     if (normalizeGreek(rowEmail) === normalizeGreek(member.email)) {
       score += SCORE_EMAIL_EXACT;
       signals.push("email_exact");
+      matches.email = member.email;
     }
   }
 
@@ -137,6 +140,7 @@ export function scoreCandidate(
     if (memberPhone && row.phones.some((p) => p === memberPhone)) {
       score += SCORE_PHONE_EXACT;
       signals.push("phone_exact");
+      matches.phone = memberPhone;
     }
   }
 
@@ -145,6 +149,7 @@ export function scoreCandidate(
     if (normalizeGreek(rowLast) === normalizeGreek(member.last_name)) {
       score += SCORE_LASTNAME_EXACT;
       signals.push("lastname_exact");
+      matches.lastname = member.last_name;
     }
   }
 
@@ -155,9 +160,11 @@ export function scoreCandidate(
     if (a === b) {
       score += SCORE_FIRSTNAME_EXACT;
       signals.push("firstname_exact");
+      matches.firstname = member.first_name;
     } else if (levenshtein(a, b) <= 2) {
       score += SCORE_FIRSTNAME_FUZZY;
       signals.push("firstname_fuzzy");
+      matches.firstname = member.first_name;
     }
   }
 
@@ -166,6 +173,7 @@ export function scoreCandidate(
     if (normalizeGreek(rowFather) === normalizeGreek(member.father_name)) {
       score += SCORE_FATHER_NAME_EXACT;
       signals.push("father_name_exact");
+      matches.fatherName = member.father_name;
     }
   }
 
@@ -173,9 +181,11 @@ export function scoreCandidate(
   if (rowAddress && member.address) {
     const rowTokens = tokenize(rowAddress);
     const memberTokens = new Set(tokenize(member.address));
-    if (rowTokens.some((t) => memberTokens.has(t))) {
+    const overlapping = rowTokens.filter((t) => memberTokens.has(t));
+    if (overlapping.length > 0) {
       score += SCORE_ADDRESS_OVERLAP;
       signals.push("address_overlap");
+      matches.addressTokens = overlapping;
     }
   }
 
@@ -185,6 +195,7 @@ export function scoreCandidate(
     // — see MEMBER_ENRICH_PLAN.md §4.1
     score: Math.min(SCORE_MAX, score),
     signals,
+    matches,
   };
 }
 

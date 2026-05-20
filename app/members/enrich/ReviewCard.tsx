@@ -22,15 +22,17 @@
 // - computeAutoTicks παραμένει εδώ για mid-review member-change recompute
 //   (όταν admin εναλλάσσει candidate radio → fresh ticks for new member).
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 
 import { MEMBER_FIELD_LABELS } from "@/lib/audit/labels";
 import {
   MATCH_THRESHOLD_PRIMARY,
   type MatchableMember,
 } from "@/lib/enrich/match";
+import { digitsOnly } from "@/lib/enrich/normalize";
 import {
   ENRICH_FIELDS,
+  type CandidateMatches,
   type EnrichField,
   type EnrichmentDecision,
   type MatchCandidate,
@@ -53,6 +55,40 @@ const SIGNAL_LABELS: Record<MatchSignal, string> = {
   father_name_exact: "👨 Πατρώνυμο",
   address_overlap: "🏠 Διεύθυνση",
 };
+
+// ──────────────────────────────────────────────────────────────────
+// Highlight — cross-panel match visualization
+// ──────────────────────────────────────────────────────────────────
+
+const HIGHLIGHT_CLASS =
+  "rounded bg-emerald-100 px-1 -mx-1 text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-100";
+
+function Highlight({
+  active,
+  children,
+}: {
+  active: boolean;
+  children: ReactNode;
+}) {
+  return active ? <span className={HIGHLIGHT_CLASS}>{children}</span> : <>{children}</>;
+}
+
+function isAddressMatched(
+  addressTokens: string[] | undefined,
+  value: string | null | undefined,
+): boolean {
+  if (!addressTokens || addressTokens.length === 0 || !value) return false;
+  const normalized = normalizeGreek(value);
+  return addressTokens.some((t) => normalized.includes(normalizeGreek(t)));
+}
+
+function emailMatches(
+  matchEmail: string | undefined,
+  rowEmail: string | null | undefined,
+): boolean {
+  if (!matchEmail || !rowEmail) return false;
+  return normalizeGreek(matchEmail) === normalizeGreek(rowEmail);
+}
 
 // ──────────────────────────────────────────────────────────────────
 // Types
@@ -223,6 +259,11 @@ export function ReviewCard(props: Props) {
     [selection, allMembers],
   );
 
+  const selectedCandidate = useMemo(() => {
+    if (selection.mode !== "candidate") return null;
+    return candidates.find((c) => c.memberId === selection.memberId) ?? null;
+  }, [selection, candidates]);
+
   const filteredMembers = useMemo(() => {
     const q = manualSearchQuery.trim();
     if (q === "") return [];
@@ -284,7 +325,7 @@ export function ReviewCard(props: Props) {
         <header className="mb-2 text-xs text-muted">
           Δεδομένα Excel (row {rowIndex + 1})
         </header>
-        <ExcelDataDisplay row={normalizedRow} />
+        <ExcelDataDisplay row={normalizedRow} matches={selectedCandidate?.matches} />
       </div>
 
       {/* Candidates + manual + skip radio group */}
@@ -344,10 +385,42 @@ export function ReviewCard(props: Props) {
                   </div>
                 )}
                 <div className="mt-1 grid grid-cols-1 gap-x-3 gap-y-0.5 text-xs text-muted sm:grid-cols-2">
-                  <span>📞 {member.phone ?? "(κενό)"}</span>
-                  <span>📧 {member.email ?? "(κενό)"}</span>
+                  <span>
+                    📞{" "}
+                    {member.phone ? (
+                      <Highlight
+                        active={
+                          !!c.matches.phone &&
+                          digitsOnly(member.phone) === c.matches.phone
+                        }
+                      >
+                        {member.phone}
+                      </Highlight>
+                    ) : (
+                      "(κενό)"
+                    )}
+                  </span>
+                  <span>
+                    📧{" "}
+                    {member.email ? (
+                      <Highlight active={emailMatches(c.matches.email, member.email)}>
+                        {member.email}
+                      </Highlight>
+                    ) : (
+                      "(κενό)"
+                    )}
+                  </span>
                   <span className="sm:col-span-2">
-                    🏠 {member.address ?? "(κενό)"}
+                    🏠{" "}
+                    {member.address ? (
+                      <Highlight
+                        active={isAddressMatched(c.matches.addressTokens, member.address)}
+                      >
+                        {member.address}
+                      </Highlight>
+                    ) : (
+                      "(κενό)"
+                    )}
                   </span>
                 </div>
               </div>
@@ -468,23 +541,67 @@ export function ReviewCard(props: Props) {
 // Sub-components
 // ──────────────────────────────────────────────────────────────────
 
-function ExcelDataDisplay({ row }: { row: NormalizedExcelRow }) {
+function ExcelDataDisplay({
+  row,
+  matches,
+}: {
+  row: NormalizedExcelRow;
+  matches?: CandidateMatches;
+}) {
   const last = row.values.last_name ?? "";
   const first = row.values.first_name ?? "";
-  const fullName = [last, first].filter(Boolean).join(", ");
+  const hasName = Boolean(last || first);
+
+  const lastnameActive = !!(
+    matches?.lastname &&
+    last &&
+    normalizeGreek(matches.lastname) === normalizeGreek(last)
+  );
+  const firstnameActive = !!(
+    matches?.firstname &&
+    first &&
+    normalizeGreek(matches.firstname) === normalizeGreek(first)
+  );
+
   return (
     <div>
-      {fullName && (
-        <div className="text-base font-semibold">{fullName}</div>
+      {hasName && (
+        <div className="text-base font-semibold">
+          {last && <Highlight active={lastnameActive}>{last}</Highlight>}
+          {last && first && ", "}
+          {first && <Highlight active={firstnameActive}>{first}</Highlight>}
+        </div>
       )}
       <div className="mt-2 grid grid-cols-1 gap-x-3 gap-y-1 text-sm text-muted sm:grid-cols-2">
         {row.phones.length > 0 && (
           <span className="sm:col-span-2">
-            📞 {row.phones.join(" / ")}
+            📞{" "}
+            {row.phones.map((p, i) => (
+              <Fragment key={i}>
+                {i > 0 && " / "}
+                <Highlight active={matches?.phone === p}>{p}</Highlight>
+              </Fragment>
+            ))}
           </span>
         )}
-        {row.values.email && <span>📧 {row.values.email}</span>}
-        {row.values.address && <span>🏠 {row.values.address}</span>}
+        {row.values.email && (
+          <span>
+            📧{" "}
+            <Highlight active={emailMatches(matches?.email, row.values.email)}>
+              {row.values.email}
+            </Highlight>
+          </span>
+        )}
+        {row.values.address && (
+          <span>
+            🏠{" "}
+            <Highlight
+              active={isAddressMatched(matches?.addressTokens, row.values.address)}
+            >
+              {row.values.address}
+            </Highlight>
+          </span>
+        )}
         {row.values.birth_date && <span>🎂 {row.values.birth_date}</span>}
         {row.values.occupation && <span>💼 {row.values.occupation}</span>}
       </div>
