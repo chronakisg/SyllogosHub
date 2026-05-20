@@ -5,6 +5,8 @@
 //
 // Pure functions — zero IO, zero DB.
 
+import { toUpperCaseGreek } from "@/lib/utils/greekSearch";
+
 import type {
   ColumnTarget,
   ExcelCellValue,
@@ -12,6 +14,24 @@ import type {
   MappedColumn,
   NormalizedExcelRow,
 } from "./types";
+
+// ──────────────────────────────────────────────────────────────────
+// UPPERCASE_FIELDS — Greek civil-records convention
+// ──────────────────────────────────────────────────────────────────
+
+// Fields που γράφονται ΚΕΦΑΛΑΙΑ per Greek civil-records convention.
+// Note: occupation excluded (genuinely variable casing).
+// Note: email excluded (lowercase per spec, handled separately).
+const UPPERCASE_FIELDS: ReadonlySet<ColumnTarget> = new Set([
+  "first_name",
+  "last_name",
+  "father_name",
+  "mother_name",
+  "maiden_name",
+  "address",
+  "birthplace",
+  "residence",
+]);
 
 // ──────────────────────────────────────────────────────────────────
 // digitsOnly
@@ -191,7 +211,11 @@ export function normalizeRow(
     }
 
     const str = stringify(cell).trim();
-    if (str) values[col.target] = str;
+    if (str) {
+      values[col.target] = UPPERCASE_FIELDS.has(col.target)
+        ? toUpperCaseGreek(str)
+        : str;
+    }
   }
 
   return { rowIndex, raw, values, phones };
