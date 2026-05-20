@@ -184,6 +184,7 @@ export function ReviewStep({ state, dispatch }: Props) {
               decision: d,
             })
           }
+          familyHints={currentMatched.familyHints}
         />
       )}
 

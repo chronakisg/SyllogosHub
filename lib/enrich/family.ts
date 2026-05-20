@@ -52,6 +52,19 @@ const TOP_N_FAMILY_HINTS = 3;
  */
 export const FAMILY_HINT_THRESHOLD = SCORE_PER_SIGNAL;
 
+/**
+ * Greek-localized labels για display στο ReviewCard + skipped CSV.
+ * Single source of truth — consumers do not duplicate. Record type
+ * enforces exhaustiveness αν προστεθεί νέο FamilySignal variant.
+ */
+export const FAMILY_SIGNAL_LABELS: Record<FamilySignal, string> = {
+  surname_address: "επώνυμο+διεύθυνση",
+  address_phone: "διεύθυνση+τηλέφωνο",
+  father_name_match: "πατρώνυμο",
+  mother_name_match: "μητρώνυμο",
+  firstname_matches_member_mother: "όνομα=μητέρα",
+};
+
 // ──────────────────────────────────────────────────────────────────
 // Helpers (internal, pure)
 // ──────────────────────────────────────────────────────────────────

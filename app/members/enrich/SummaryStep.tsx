@@ -11,7 +11,7 @@
 import { type Dispatch } from "react";
 import { useRouter } from "next/navigation";
 
-import type { FamilyHint, FamilySignal } from "@/lib/enrich/family";
+import { FAMILY_SIGNAL_LABELS, type FamilyHint } from "@/lib/enrich/family";
 import type { ExcelCellValue } from "@/lib/enrich/types";
 
 import {
@@ -23,14 +23,6 @@ import {
 // αναγνωρίσει το CSV ως UTF-8 (ειδάλλως ελληνικά εμφανίζονται mojibake).
 // Explicit escape (όχι literal char) για να μην confuse-άρει diff tools.
 const BOM = "\uFEFF";
-
-const FAMILY_SIGNAL_LABELS: Record<FamilySignal, string> = {
-  surname_address: "επώνυμο+διεύθυνση",
-  address_phone: "διεύθυνση+τηλέφωνο",
-  father_name_match: "πατρώνυμο",
-  mother_name_match: "μητρώνυμο",
-  firstname_matches_member_mother: "όνομα=μητέρα",
-};
 
 type SummaryStateOnly = Extract<WizardState, { step: "summary" }>;
 

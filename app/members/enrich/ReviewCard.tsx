@@ -26,6 +26,10 @@ import { Fragment, useMemo, useState, type ReactNode } from "react";
 
 import { MEMBER_FIELD_LABELS } from "@/lib/audit/labels";
 import {
+  FAMILY_SIGNAL_LABELS,
+  type FamilyHint,
+} from "@/lib/enrich/family";
+import {
   MATCH_THRESHOLD_PRIMARY,
   type MatchableMember,
 } from "@/lib/enrich/match";
@@ -108,6 +112,7 @@ type Props = {
   allMembers: MatchableMember[];
   decision: EnrichmentDecision | undefined;
   onDecisionChange: (d: EnrichmentDecision) => void;
+  familyHints: FamilyHint[];
 };
 
 // ──────────────────────────────────────────────────────────────────
@@ -246,8 +251,14 @@ function computeInitialState(props: Props): {
 // ──────────────────────────────────────────────────────────────────
 
 export function ReviewCard(props: Props) {
-  const { rowIndex, normalizedRow, candidates, allMembers, onDecisionChange } =
-    props;
+  const {
+    rowIndex,
+    normalizedRow,
+    candidates,
+    allMembers,
+    onDecisionChange,
+    familyHints,
+  } = props;
 
   const [initial] = useState(() => computeInitialState(props));
   const [selection, setSelection] = useState<CardSelection>(initial.selection);
@@ -327,6 +338,8 @@ export function ReviewCard(props: Props) {
         </header>
         <ExcelDataDisplay row={normalizedRow} matches={selectedCandidate?.matches} />
       </div>
+
+      <FamilyHintsPanel hints={familyHints} />
 
       {/* Candidates + manual + skip radio group */}
       <fieldset className="rounded-lg border border-border bg-surface p-4">
@@ -605,6 +618,32 @@ function ExcelDataDisplay({
         {row.values.birth_date && <span>🎂 {row.values.birth_date}</span>}
         {row.values.occupation && <span>💼 {row.values.occupation}</span>}
       </div>
+    </div>
+  );
+}
+
+function FamilyHintsPanel({ hints }: { hints: FamilyHint[] }) {
+  if (hints.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+      <div className="text-xs font-medium text-amber-900 dark:text-amber-100">
+        💡 Πιθανές οικογενειακές σχέσεις
+      </div>
+      <ul className="mt-1 space-y-0.5 text-xs text-amber-800 dark:text-amber-200">
+        {hints.map((h) => {
+          const signalLabels = h.signals
+            .map((s) => FAMILY_SIGNAL_LABELS[s])
+            .join("+");
+          return (
+            <li key={h.memberId}>
+              {h.memberName}{" "}
+              <span className="text-amber-700/70 dark:text-amber-300/70">
+                [{signalLabels}]
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
