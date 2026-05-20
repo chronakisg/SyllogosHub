@@ -250,11 +250,11 @@ export function reducer(
 
       const visibleIndices = computeVisibleIndices(state, newFilter);
 
-      let newCursor = state.cursor;
-      if (visibleIndices.length > 0) {
-        const nextMatching = visibleIndices.find((i) => i >= state.cursor);
-        newCursor = nextMatching ?? visibleIndices[0];
-      }
+      // Filter switch = navigation reset, ΟΧΙ "continue from here".
+      // Jump to first visible row → counter shows "1 / N" matching user
+      // expectation. Empty result: preserve cursor (UI shows empty-state).
+      const newCursor =
+        visibleIndices.length > 0 ? visibleIndices[0] : state.cursor;
 
       return { ...state, filter: newFilter, cursor: newCursor };
     }

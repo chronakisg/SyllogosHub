@@ -27,7 +27,7 @@ import {
 
 function filterButtonClass(active: boolean): string {
   return `rounded-md px-3 py-1 transition ${
-    active ? "bg-accent text-accent-foreground" : "hover:bg-background"
+    active ? "bg-accent text-white font-medium" : "hover:bg-background"
   }`;
 }
 
@@ -128,12 +128,16 @@ export function ReviewStep({ state, dispatch }: Props) {
     visibleIndices.length === 0 ||
     visibleIndices[visibleIndices.length - 1] === state.cursor;
 
+  const visiblePosition = visibleIndices.indexOf(state.cursor) + 1;
+  const visibleTotal = visibleIndices.length;
+  const displayPosition = visiblePosition > 0 ? visiblePosition : 0;
+
   return (
     <div className="space-y-4">
       {/* Progress header + filter toggle */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface p-3 text-sm">
         <span>
-          Καρτέλα <strong>{state.cursor + 1}</strong> / {total}
+          Καρτέλα <strong>{displayPosition}</strong> / {visibleTotal}
         </span>
         <div className="flex gap-1 rounded-lg border border-border p-1">
           <button
