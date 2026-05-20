@@ -76,6 +76,7 @@ export type WizardState =
       allMembers: MatchableMember[];
       decisions: Map<number, EnrichmentDecision>;
       cursor: number;
+      filter: "all" | "decided" | "pending";
     }
   | {
       step: "summary";
@@ -104,6 +105,7 @@ export type WizardAction =
     }
   | { type: "SET_DECISION"; rowIndex: number; decision: EnrichmentDecision }
   | { type: "SET_CURSOR"; cursor: number }
+  | { type: "SET_FILTER"; filter: "all" | "decided" | "pending" }
   | {
       type: "COMMIT_DONE";
       result: CommitResponse;
@@ -215,6 +217,7 @@ export function reducer(
         allMembers,
         decisions: initialDecisions,
         cursor: 0,
+        filter: "all",
       };
     }
 
@@ -230,6 +233,22 @@ export function reducer(
       const max = Math.max(0, state.normalizedRows.length - 1);
       const clamped = Math.max(0, Math.min(action.cursor, max));
       return { ...state, cursor: clamped };
+    }
+
+    case "SET_FILTER": {
+      if (state.step !== "review") return state;
+      const newFilter = action.filter;
+      if (newFilter === state.filter) return state;
+
+      const visibleIndices = computeVisibleIndices(state, newFilter);
+
+      let newCursor = state.cursor;
+      if (visibleIndices.length > 0) {
+        const nextMatching = visibleIndices.find((i) => i >= state.cursor);
+        newCursor = nextMatching ?? visibleIndices[0];
+      }
+
+      return { ...state, filter: newFilter, cursor: newCursor };
     }
 
     case "COMMIT_DONE": {
@@ -253,6 +272,24 @@ export function reducer(
       return _exhaustive;
     }
   }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Review filter — visible row index computation
+// ──────────────────────────────────────────────────────────────────
+
+export function computeVisibleIndices(
+  state: Extract<WizardState, { step: "review" }>,
+  filter: "all" | "decided" | "pending",
+): number[] {
+  const indices: number[] = [];
+  for (let i = 0; i < state.normalizedRows.length; i++) {
+    const hasDecision = state.decisions.has(i);
+    if (filter === "all") indices.push(i);
+    else if (filter === "decided" && hasDecision) indices.push(i);
+    else if (filter === "pending" && !hasDecision) indices.push(i);
+  }
+  return indices;
 }
 
 // ──────────────────────────────────────────────────────────────────
