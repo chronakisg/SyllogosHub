@@ -112,13 +112,35 @@ export type MatchSignal =
   | "address_overlap";
 
 /**
+ * Per-signal matched value snapshot — populated from member data αυτή
+ * τη στιγμή που το signal fires. Επιτρέπει UI cross-panel highlight
+ * (Excel side + candidate side) χωρίς client-side re-derivation.
+ *
+ * Field semantics:
+ *   - email/lastname/firstname/fatherName: member's value (original casing)
+ *   - phone: digits-only string (already normalized μέσω digitsOnly)
+ *   - addressTokens: overlapping tokens between row.address και
+ *     member.address (post-tokenize, normalized Greek)
+ */
+export type CandidateMatches = {
+  email?: string;
+  phone?: string;
+  lastname?: string;
+  firstname?: string;
+  fatherName?: string;
+  addressTokens?: string[];
+};
+
+/**
  * Ένας πιθανός match για μια Excel row.
  * `score` είναι 0-100 (sum of signal weights, capped).
+ * `matches` περιέχει τα ίδια τα matched values για display highlighting.
  */
 export type MatchCandidate = {
   memberId: string;
   score: number;
   signals: MatchSignal[];
+  matches: CandidateMatches;
 };
 
 // ──────────────────────────────────────────────────────────────────
