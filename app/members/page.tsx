@@ -1398,7 +1398,7 @@ function MembersPageContent() {
                               }
                             />
                           )}
-                          <span>{formatMemberName(m)}</span>
+                          <span className="whitespace-nowrap">{formatMemberName(m)}</span>
                         </span>
                         {m.is_board_member && (
                           <span
@@ -1488,7 +1488,7 @@ function MembersPageContent() {
                       {m.departments.length === 0 ? (
                         <span className="text-muted">—</span>
                       ) : (
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-col items-start gap-1">
                           {m.departments.map((d) => (
                             <span
                               key={d.department_id}
