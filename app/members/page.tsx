@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as XLSX from "xlsx";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
@@ -1808,6 +1808,20 @@ function MemberModal({
   sendingId: string | null;
   clubId: string | null;
 }) {
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const familyRoleRef = useRef<HTMLSelectElement>(null);
+
+  const familyRoleHasError =
+    submitAttempted && form.family_mode !== "none" && !form.family_role;
+
+  function handleFormSubmit(e: React.FormEvent<HTMLFormElement>) {
+    setSubmitAttempted(true);
+    onSubmit(e);
+    if (form.family_mode !== "none" && !form.family_role) {
+      familyRoleRef.current?.focus();
+    }
+  }
+
   function toggleDepartment(deptId: string, checked: boolean) {
     setForm((s) =>
       checked
@@ -2109,7 +2123,7 @@ function MemberModal({
         </div>
 
         <form
-          onSubmit={onSubmit}
+          onSubmit={handleFormSubmit}
           className="flex min-h-0 flex-1 flex-col"
         >
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">
@@ -2369,6 +2383,9 @@ function MemberModal({
                       family_mode: "new",
                       family_id: null,
                       link_member_id: "",
+                      family_role:
+                        s.family_role ??
+                        defaultFamilyRole(s.birth_date || null),
                     }))
                   }
                   className="h-4 w-4"
@@ -2381,7 +2398,13 @@ function MemberModal({
                   name="family_mode"
                   checked={form.family_mode === "link"}
                   onChange={() =>
-                    setForm((s) => ({ ...s, family_mode: "link" }))
+                    setForm((s) => ({
+                      ...s,
+                      family_mode: "link",
+                      family_role:
+                        s.family_role ??
+                        defaultFamilyRole(s.birth_date || null),
+                    }))
                   }
                   className="h-4 w-4"
                 />
@@ -2443,6 +2466,7 @@ function MemberModal({
                     <span className="text-danger"> *</span>
                   </label>
                   <select
+                    ref={familyRoleRef}
                     required
                     value={form.family_role ?? ""}
                     onChange={(e) =>
@@ -2453,8 +2477,17 @@ function MemberModal({
                           | null,
                       }))
                     }
-                    className={inputClass + " mt-1"}
+                    className={
+                      inputClass +
+                      " mt-1" +
+                      (familyRoleHasError
+                        ? " border-red-500 ring-1 ring-red-500"
+                        : "")
+                    }
                   >
+                    <option value="" disabled>
+                      — Επιλογή ρόλου —
+                    </option>
                     <option value="parent">
                       {FAMILY_ROLE_LABELS.parent}
                     </option>

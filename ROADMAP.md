@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-20 (PRs #103-#114 merged σε one session: enrichment polish queue #103-#110 + /members ομαδάρχης filter chain #111-#113 + table layout polish #114)
+> Last updated: 2026-05-21 (PR #116 — family role select hardening + migration 0030 + data fix για ΚΛΕΙΣΑΡΧΑΚΗΣ pair)
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -745,6 +745,18 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   Plan docs στο repo:
   - `MEMBER_ENRICH_PLAN.md` (base wizard architecture)
   - `MEMBER_ENRICH_FAMILY_PLAN.md` (family detection rules)
+
+- [ ] **🟡 Family bidirectional unlink cleanup — S**
+
+  Όταν user κάνει "Χωρίς οικογένεια" σε member ενός 2-person family, ο orphaned partner μένει με family_id pointing σε family χωρίς άλλα members. UX confusion: ο orphan νομίζει ότι έχει ακόμα οικογένεια.
+
+  **Logic:** στο client-side save path (app/members/page.tsx), όταν family_id αλλάζει από non-null σε null ή σε διαφορετικό id:
+  1. Capture old_family_id
+  2. After UPDATE: query count members με old_family_id
+  3. Αν count === 1: UPDATE survivor set family_id=null, family_role=null
+  4. Confirmation dialog πριν το save: "Αυτή η ενέργεια θα αφήσει τον/την [Όνομα] χωρίς οικογένεια. Συνέχεια;"
+
+  Discovered alongside PR #116 (2026-05-20). Deferred for separate concern.
 
 ### 🟣 Member Portal domain
 
@@ -2120,6 +2132,33 @@ session**:
 - Anything με per-department permissioning
 
 ## ✅ Recently Done
+
+### feat/family-role-select-hardening (PR #116, merged 2026-05-21)
+
+Πρόληψη silent NULL family_role corruption στο family editor του /members modal.
+
+**Root cause:**
+HTML `<select>` με value="" χωρίς matching option fallback-άρει visually στο first option ("Γονέας") ενώ React state παραμένει null. Users έβλεπαν "Γονέας" στο dropdown αλλά το save περνούσε null. Συνέπεια: 1 historical orphan record (ΚΛΕΙΣΑΡΧΑΚΗΣ ΔΗΜΗΤΡΙΟΣ) με family_id set + family_role null.
+
+**Discovered:** 2026-05-20 σε production, manual edit του ΚΛΕΙΣΑΡΧΑΚΗΣ pair.
+
+**4 layers:**
+- Layer 1 — Placeholder option `<option value="" disabled>— Επιλογή ρόλου —</option>` ως first option στο role <select>. value="" τώρα matchάρει → no browser fallback.
+- Layer 2 — UI feedback polish: submitAttempted state + useRef για focus() + conditional border-red-500 ring-1 ring-red-500 όταν validation fails. Pre-existing client-side validation (handleSubmit l.869-872) διατηρήθηκε intact.
+- Layer 3 — Migration 0030: CHECK constraint `((family_id IS NULL) = (family_role IS NULL))` με NOT VALID + VALIDATE pattern. DB-level guarantee καλύπτει όλες τις πηγές (direct Supabase από browser, future API routes, bulk imports, manual SQL).
+- Layer 4 — Auto-prefill `defaultFamilyRole(birth_date)` σε mode switch από "Χωρίς οικογένεια" → "Νέα" ή "Σύνδεση" (UX assist, μη-destructive, user override respected).
+
+**Data fix (manual SQL, pre-PR):**
+- ΚΛΕΙΣΑΡΧΑΚΗΣ ΑΝΔΡΕΑΣ (id 0c976047...): family_role child → parent
+- ΚΛΕΙΣΑΡΧΑΚΗΣ ΔΗΜΗΤΡΙΟΣ (id a6216141...): family_role null → child
+- Audit query `WHERE (family_id IS NULL) <> (family_role IS NULL)` confirmed zero violators post-fix.
+
+**Production state:**
+- DB applied: ☑ (migration 0030 manual στο SQL Editor)
+- Constraint verified: members_family_role_consistency live
+
+**Deferred (separate PR):**
+- Bidirectional unlink cleanup (Bug C): orphaned single-survivor scenario όταν user clicks "Χωρίς οικογένεια" σε pair member. Tracked παραπάνω στο 🟡 High Priority → 👥 Members domain.
 
 ### enrich/polish-queue (PR #103-#110, merged 2026-05-20)
 
