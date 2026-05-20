@@ -34,10 +34,25 @@ import {
   type EnrichField,
   type EnrichmentDecision,
   type MatchCandidate,
+  type MatchSignal,
   type NormalizedExcelRow,
   type SkipReason,
 } from "@/lib/enrich/types";
 import { normalizeGreek } from "@/lib/utils/greekSearch";
+
+// ──────────────────────────────────────────────────────────────────
+// Constants — UI labels for match signals
+// ──────────────────────────────────────────────────────────────────
+
+const SIGNAL_LABELS: Record<MatchSignal, string> = {
+  email_exact: "✉ Email",
+  phone_exact: "📞 Τηλέφωνο",
+  lastname_exact: "👤 Επώνυμο",
+  firstname_exact: "👤 Όνομα",
+  firstname_fuzzy: "👤 Όνομα ~",
+  father_name_exact: "👨 Πατρώνυμο",
+  address_overlap: "🏠 Διεύθυνση",
+};
 
 // ──────────────────────────────────────────────────────────────────
 // Types
@@ -316,6 +331,18 @@ export function ReviewCard(props: Props) {
                   </span>
                   <span className="text-xs text-muted">score {c.score}</span>
                 </div>
+                {c.signals.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {c.signals.map((sig) => (
+                      <span
+                        key={sig}
+                        className="inline-flex items-center rounded-full bg-background px-2 py-0.5 text-xs text-muted"
+                      >
+                        {SIGNAL_LABELS[sig]}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="mt-1 grid grid-cols-1 gap-x-3 gap-y-0.5 text-xs text-muted sm:grid-cols-2">
                   <span>📞 {member.phone ?? "(κενό)"}</span>
                   <span>📧 {member.email ?? "(κενό)"}</span>
