@@ -136,6 +136,7 @@ type MembersUrlState = {
   age: "all" | "child" | "adult";
   family: boolean;
   unverified: boolean;
+  leaders: boolean;
   missing: string;
   sortColumn: SortColumn;
   sortDirection: "asc" | "desc";
@@ -149,6 +150,7 @@ const DEFAULT_URL_STATE: MembersUrlState = {
   age: "all",
   family: false,
   unverified: false,
+  leaders: false,
   missing: "",
   sortColumn: "name",
   sortDirection: "asc",
@@ -172,6 +174,7 @@ function buildMembersQueryString(state: MembersUrlState): string {
   if (state.age !== DEFAULT_URL_STATE.age) params.set("age", state.age);
   if (state.family) params.set("family", "1");
   if (state.unverified) params.set("unverified", "1");
+  if (state.leaders) params.set("leaders", "1");
   if (state.missing) params.set("missing", state.missing);
   if (state.sortColumn !== DEFAULT_URL_STATE.sortColumn) params.set("sort", state.sortColumn);
   if (state.sortDirection !== DEFAULT_URL_STATE.sortDirection) params.set("order", state.sortDirection);
@@ -217,6 +220,7 @@ function parseMembersUrlState(searchParams: URLSearchParams): MembersUrlState {
     age: rawAge === "child" || rawAge === "adult" ? rawAge : DEFAULT_URL_STATE.age,
     family: searchParams.get("family") === "1",
     unverified: searchParams.get("unverified") === "1",
+    leaders: searchParams.get("leaders") === "1",
     missing: searchParams.get("missing") ?? "",
     sortColumn,
     sortDirection: rawSortDir === "desc" ? "desc" : DEFAULT_URL_STATE.sortDirection,
@@ -228,6 +232,7 @@ function MembersPageContent() {
   const { clubId, loading: clubLoading } = useCurrentClub();
   const [members, setMembers] = useState<MemberWithDepartments[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [leaderIds, setLeaderIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -261,6 +266,7 @@ function MembersPageContent() {
   const ageFilter = urlState.age;
   const familyOnly = urlState.family;
   const unverifiedOnly = urlState.unverified;
+  const onlyLeaders = urlState.leaders;
   const missingField = urlState.missing;
   const sortBy = useMemo(
     () => ({
@@ -285,6 +291,8 @@ function MembersPageContent() {
     updateUrl({ ...urlState, family });
   const setUnverifiedOnly = (unverified: boolean) =>
     updateUrl({ ...urlState, unverified });
+  const setOnlyLeaders = (leaders: boolean) =>
+    updateUrl({ ...urlState, leaders });
   const setMissingField = (missing: string) =>
     updateUrl({ ...urlState, missing });
   const setSortBy = (next: SortState | ((prev: SortState) => SortState)) => {
@@ -439,7 +447,7 @@ function MembersPageContent() {
     if (!clubId) return;
     try {
       const supabase = getBrowserClient();
-      const [mRes, mdRes, depRes] = await Promise.all([
+      const [mRes, mdRes, depRes, dlRes] = await Promise.all([
         supabase
           .from("members")
           .select("*")
@@ -456,10 +464,16 @@ function MembersPageContent() {
           .eq("club_id", clubId)
           .order("display_order", { ascending: true })
           .order("name", { ascending: true }),
+        // department_leaders has no club_id column — filter via joined dept
+        supabase
+          .from("department_leaders")
+          .select("member_id, departments!inner(club_id)")
+          .eq("departments.club_id", clubId),
       ]);
       if (mRes.error) throw mRes.error;
       if (mdRes.error) throw mdRes.error;
       if (depRes.error) throw depRes.error;
+      if (dlRes.error) throw dlRes.error;
 
       const allDepartments = (depRes.data ?? []) as Department[];
       const deptById = new Map(allDepartments.map((d) => [d.id, d]));
@@ -482,9 +496,14 @@ function MembersPageContent() {
           a.name.localeCompare(b.name, "el", { sensitivity: "base" })
         ),
       }));
+      const nextLeaderIds = new Set<string>(
+        (dlRes.data ?? []).map((r) => r.member_id),
+      );
+
       setError(null);
       setMembers(merged);
       setDepartments(allDepartments);
+      setLeaderIds(nextLeaderIds);
     } catch (err) {
       setError(errorMessage(err, "Σφάλμα φόρτωσης μελών."));
     } finally {
@@ -568,6 +587,7 @@ function MembersPageContent() {
       if (statusFilter !== "all" && m.status !== statusFilter) return false;
       if (boardOnly && !m.is_board_member) return false;
       if (familyOnly && !m.family_id) return false;
+      if (onlyLeaders && !leaderIds.has(m.id)) return false;
       if (unverifiedOnly) {
         const phoneIssue = !!m.phone && !m.phone_verified;
         const emailIssue = !!m.email && !m.email_verified;
@@ -672,6 +692,8 @@ function MembersPageContent() {
     boardOnly,
     familyOnly,
     unverifiedOnly,
+    onlyLeaders,
+    leaderIds,
     ageFilter,
     departmentFilter,
     missingField,
@@ -1093,6 +1115,7 @@ function MembersPageContent() {
     ageFilter !== "all" ||
     familyOnly ||
     unverifiedOnly ||
+    onlyLeaders ||
     !!missingField;
 
   if (role.loading) {
@@ -1221,6 +1244,10 @@ function MembersPageContent() {
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={unverifiedOnly} onChange={(e) => setUnverifiedOnly(e.target.checked)} className="h-4 w-4 rounded border-border" />
             Μόνο μη-επιβεβαιωμένα
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={onlyLeaders} onChange={(e) => setOnlyLeaders(e.target.checked)} className="h-4 w-4 rounded border-border" />
+            Μόνο ομαδάρχες
           </label>
           <button
             type="button"
