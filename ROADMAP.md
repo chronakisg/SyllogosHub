@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-21 (session: slice fix + 4 parked entries + perfect principle lock)
+> Last updated: 2026-05-21 (2 prod fixes: slice cap #122 + family link semantics #124 + Σύζυγος semantic park)
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -1655,6 +1655,34 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
   Estimated: S (1 filter removal + badge component reuse)
 
+- [ ] **🟢 family_role auto-upgrade: Σύζυγος → Γονέας όταν προστίθεται παιδί**
+
+  Stack: 📊 Διαχειριστικό · UX semantics
+
+  Discovered: 2026-05-21 (post-PR #124 production observation)
+
+  **Παρατήρηση:** Σε οικογένεια όπου ο/η σύζυγος γίνεται και γονέας με την
+  προσθήκη παιδιού, το role display "Σύζυγος" είναι misleading. Real example:
+  Ανδρέας (Γονέας) + Αικατερίνη (Σύζυγος) + Δημήτρης jr (Παιδί) → η Αικατερίνη
+  εμφανίζεται ως "Σύζυγος · 51 ετών" στη family list, αλλά είναι ουσιαστικά
+  και Γονέας του Δημήτρη.
+
+  **Trade-off που χρειάζεται design:**
+  - Auto-upgrade Σύζυγος→Γονέας όταν υπάρχει παιδί στο ίδιο family_id;
+    Risk: data corruption για childless couples (αλλάζει σιωπηλά)
+  - Confirmation prompt στον user όταν προσθέτει παιδί σε family με Σύζυγο;
+  - Two-role system (primary + secondary) σε Phase 2?
+  - Display layer fix only ("Σύζυγος/Γονέας" όταν υπάρχουν παιδιά);
+
+  **Connects με:** Phase 2 Genealogy design lock (καλύτερο να σχεδιαστεί
+  μαζί — relationship inference είναι κοινή θεματολογία).
+
+  **Workaround σήμερα:** Manual edit role του συζύγου σε Γονέας μετά την
+  προσθήκη παιδιού.
+
+  Estimated: S (display-only) ή M (auto-upgrade με safeguards) ή parked
+  ως Phase 2 sub-item.
+
 - [ ] **🌳 Genealogy module — L (multi-session feature, dedicated effort)**
 
   **Διάκριση από Phase 1 (current state):** _Παρέα ≠ νοικοκυριό ≠ γενεαλογία._ Το `members.family_id` + `family_role` σύστημα είναι **household-level grouping** και παραμένει για bookings/seating/contact. Η γενεαλογία είναι **ξεχωριστή dimension** που μοντελοποιεί parent/child edges για αδέρφια διαφορετικών νοικοκυριών, παππού-εγγονό, ξαδέρφια.
@@ -2365,6 +2393,47 @@ session**:
 - Anything με per-department permissioning
 
 ## ✅ Recently Done
+
+### fix/family-link-semantics-complete (PR #124, merged 2026-05-21)
+
+Complete redesign των family link semantics — replaces closed PR #123 + extends PR #117 hotfix.
+
+**Production bugs που έλυσε:**
+- **Case 1 inversion** (Κλεισαρχάκης Ανδρέας + Δημήτρης jr): δύο parents γίνονταν
+  σε both-solo link — semantic inversion αντί parent/child
+- **Case 3 orphan warning** (Andreas's family + Αικατερίνη): "θα αφήσει τον
+  Δημήτρη χωρίς οικογένεια" — anchor's family was being silently dissolved
+- **Case 3 orphan repeat** (Andreas's family + second child): ίδιο pattern
+- **Edit-only validation block**: αλλαγή role υπάρχοντος family member έβγαζε
+  "Επιλέξτε μέλος για σύνδεση οικογένειας." χωρίς λόγο
+
+**Σχεδιαστική αρχή (locked):**
+`form.family_role` περιγράφει τον **"added one"** — το άτομο που μπαίνει σε
+family που πριν δεν ήταν. Anchor's existing family ΠΟΤΕ δεν διαλύεται.
+
+**4 cases explicit branching:**
+
+| Case | anchor | target | Συμπεριφορά |
+|------|--------|--------|------------|
+| 1 | solo | solo | Fresh family. target=form.role, anchor=inverse |
+| 2 | solo | family | anchor joins target. anchor=form.role |
+| 3 | family | solo | target joins anchor. target=form.role, anchor unchanged |
+| 4 | family | family | BLOCKED με Greek error |
+| (edit-only) | family | (no pick) | resolvedFamilyId=anchor's, no side effects |
+
+**Helpers:**
+- `inverseRole(role)`: parent↔child (asymmetric), spouse/other (symmetric)
+- Dynamic dropdown label: "Ρόλος του/της [target.first_name]" σε link mode
+
+**Production-tested (2026-05-21):**
+- Edit-only short-circuit ✓ (Αικατερίνη Σύζυγος→Γονέας)
+- Case 3 add spouse ✓ (ΤΕΣΤ ΣΥΖΥΓΟΣ → Andreas's family, no orphan warning)
+- Case 4 block ✓ (Κλεισαρχάκη-Κόμη Αικατερίνη → Andreas while in Αικατερίνη's family)
+
+Pre-fix data restore: ΚΛΕΙΣΑΡΧΑΚΗΣ pair (Ανδρέας/Δημήτρης jr) manual SQL restored
+νωρίτερα στο session — snapshot table `members_role_restore_20260521` exists.
+
+Net stats: 1 file (app/members/page.tsx), +111/-28.
 
 ### fix/family-link-show-all-surname-matches (next PR, merged 2026-05-21)
 
