@@ -8,11 +8,21 @@ import { getBrowserClient } from "@/lib/supabase/client";
 import AnnouncementFormModal, {
   type AnnouncementFormInitial,
   type AnnouncementFormValues,
+  type AudienceSpec,
 } from "@/components/AnnouncementFormModal";
 import ConfirmDeleteAnnouncementModal from "@/components/ConfirmDeleteAnnouncementModal";
-import type { Department } from "@/lib/supabase/types";
+import type {
+  AnnouncementAudienceType,
+  Department,
+} from "@/lib/supabase/types";
 
 type Status = "loading" | "ready" | "error";
+
+type AudienceItem = {
+  type: AnnouncementAudienceType;
+  department_id: string | null;
+  department_name: string | null;
+};
 
 type AnnouncementRow = {
   id: string;
@@ -21,8 +31,7 @@ type AnnouncementRow = {
   pinned: boolean;
   published: boolean;
   created_at: string;
-  department_id: string | null;
-  department_name: string | null;
+  audiences: AudienceItem[];
   created_by: string | null;
   created_by_name: string | null;
 };
@@ -310,7 +319,25 @@ export default function AnnouncementsPage() {
                     id: a.id,
                     title: a.title,
                     body: a.body,
-                    department_id: a.department_id,
+                    audiences: a.audiences.flatMap<AudienceSpec>((aud) => {
+                      if (aud.type === "department") {
+                        if (!aud.department_id) return [];
+                        return [
+                          {
+                            type: "department",
+                            department_id: aud.department_id,
+                          },
+                        ];
+                      }
+                      if (
+                        aud.type === "global" ||
+                        aud.type === "board" ||
+                        aud.type === "leaders"
+                      ) {
+                        return [{ type: aud.type }];
+                      }
+                      return [];
+                    }),
                     pinned: a.pinned,
                     published: a.published,
                   },
@@ -358,6 +385,20 @@ export default function AnnouncementsPage() {
   );
 }
 
+function audienceLabels(audiences: AudienceItem[]): string[] {
+  // Priority order: global → board → leaders → departments (alphabetical)
+  const out: string[] = [];
+  if (audiences.some((a) => a.type === "global")) out.push("🌐 Όλοι");
+  if (audiences.some((a) => a.type === "board")) out.push("👔 ΔΣ");
+  if (audiences.some((a) => a.type === "leaders")) out.push("🏅 Ομαδάρχες");
+  const deptNames = audiences
+    .filter((a) => a.type === "department" && a.department_name)
+    .map((a) => a.department_name as string)
+    .sort((a, b) => a.localeCompare(b, "el", { sensitivity: "base" }));
+  if (deptNames.length > 0) out.push(`📚 ${deptNames.join(", ")}`);
+  return out;
+}
+
 function AnnouncementCard({
   announcement,
   onEdit,
@@ -367,10 +408,11 @@ function AnnouncementCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const audienceText = audienceLabels(announcement.audiences).join(" · ");
   const metadata = [
     formatGreekDate(announcement.created_at),
     announcement.created_by_name,
-    announcement.department_name ? `Τμήμα: ${announcement.department_name}` : null,
+    audienceText || null,
   ].filter(Boolean);
 
   return (

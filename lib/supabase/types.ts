@@ -1628,6 +1628,27 @@ export type Database = {
           },
         ];
       };
+      announcement_audiences: {
+        Row: AnnouncementAudience;
+        Insert: AnnouncementAudienceInsert;
+        Update: Partial<AnnouncementAudience>;
+        Relationships: [
+          {
+            foreignKeyName: "announcement_audiences_announcement_id_fkey";
+            columns: ["announcement_id"];
+            isOneToOne: false;
+            referencedRelation: "announcements";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "announcement_audiences_department_id_fkey";
+            columns: ["department_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       classes: {
         Row: Class;
         Insert: ClassInsert;

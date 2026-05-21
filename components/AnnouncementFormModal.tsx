@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import type { Department } from "@/lib/supabase/types";
+
+export type AudienceSpec =
+  | { type: "global" }
+  | { type: "board" }
+  | { type: "leaders" }
+  | { type: "department"; department_id: string };
 
 export type AnnouncementFormInitial = {
   id?: string;
   title: string;
   body: string;
-  department_id: string | null;
+  audiences: AudienceSpec[];
   pinned: boolean;
   published: boolean;
 };
@@ -15,7 +21,7 @@ export type AnnouncementFormInitial = {
 export type AnnouncementFormValues = {
   title: string;
   body: string;
-  department_id: string | null;
+  audiences: AudienceSpec[];
   pinned: boolean;
   published: boolean;
 };
@@ -38,13 +44,39 @@ interface AnnouncementFormModalProps {
   onSubmit: (values: AnnouncementFormValues) => Promise<void>;
 }
 
-const DEFAULT_VALUES: AnnouncementFormValues = {
-  title: "",
-  body: "",
-  department_id: null,
-  pinned: false,
-  published: true,
+type AudienceSelection = {
+  global: boolean;
+  board: boolean;
+  leaders: boolean;
+  departmentIds: Set<string>;
 };
+
+function initialSelectionFrom(audiences: AudienceSpec[] | undefined): AudienceSelection {
+  const sel: AudienceSelection = {
+    global: false,
+    board: false,
+    leaders: false,
+    departmentIds: new Set<string>(),
+  };
+  for (const a of audiences ?? []) {
+    if (a.type === "global") sel.global = true;
+    else if (a.type === "board") sel.board = true;
+    else if (a.type === "leaders") sel.leaders = true;
+    else if (a.type === "department") sel.departmentIds.add(a.department_id);
+  }
+  return sel;
+}
+
+function serializeSelection(sel: AudienceSelection): AudienceSpec[] {
+  const out: AudienceSpec[] = [];
+  if (sel.global) out.push({ type: "global" });
+  if (sel.board) out.push({ type: "board" });
+  if (sel.leaders) out.push({ type: "leaders" });
+  for (const id of sel.departmentIds) {
+    out.push({ type: "department", department_id: id });
+  }
+  return out;
+}
 
 export default function AnnouncementFormModal({
   mode,
@@ -61,20 +93,14 @@ export default function AnnouncementFormModal({
 
   // Lazy init από initial prop — read-once at mount. Parent forces remount
   // (μέσω key prop) όταν αλλάζει target, οπότε εδώ δεν χρειάζεται sync effect.
-  const [title, setTitle] = useState<string>(
-    () => initial?.title ?? DEFAULT_VALUES.title,
+  const [title, setTitle] = useState<string>(() => initial?.title ?? "");
+  const [body, setBody] = useState<string>(() => initial?.body ?? "");
+  const [selection, setSelection] = useState<AudienceSelection>(() =>
+    initialSelectionFrom(initial?.audiences)
   );
-  const [body, setBody] = useState<string>(
-    () => initial?.body ?? DEFAULT_VALUES.body,
-  );
-  const [departmentId, setDepartmentId] = useState<string | null>(
-    () => initial?.department_id ?? DEFAULT_VALUES.department_id,
-  );
-  const [pinned, setPinned] = useState<boolean>(
-    () => initial?.pinned ?? DEFAULT_VALUES.pinned,
-  );
+  const [pinned, setPinned] = useState<boolean>(() => initial?.pinned ?? false);
   const [published, setPublished] = useState<boolean>(
-    () => initial?.published ?? DEFAULT_VALUES.published,
+    () => initial?.published ?? true
   );
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -95,9 +121,35 @@ export default function AnnouncementFormModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [isSaving, onClose]);
 
+  // Audience checkbox helpers
+  const toggleGlobal = (checked: boolean) =>
+    setSelection((s) => ({ ...s, global: checked }));
+  const toggleBoard = (checked: boolean) =>
+    setSelection((s) => ({ ...s, board: checked }));
+  const toggleLeaders = (checked: boolean) =>
+    setSelection((s) => ({ ...s, leaders: checked }));
+  const toggleDepartment = (id: string, checked: boolean) =>
+    setSelection((s) => {
+      const next = new Set(s.departmentIds);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return { ...s, departmentIds: next };
+    });
+
+  const audienceCount = useMemo(
+    () =>
+      (selection.global ? 1 : 0) +
+      (selection.board ? 1 : 0) +
+      (selection.leaders ? 1 : 0) +
+      selection.departmentIds.size,
+    [selection]
+  );
+
   function validate(): string | null {
     if (title.trim().length < 1) return "Ο τίτλος είναι υποχρεωτικός.";
     if (body.trim().length < 1) return "Το κείμενο είναι υποχρεωτικό.";
+    if (audienceCount === 0)
+      return "Επιλέξτε τουλάχιστον έναν αποδέκτη.";
     return null;
   }
 
@@ -112,7 +164,7 @@ export default function AnnouncementFormModal({
     await onSubmit({
       title: title.trim(),
       body: body.trim(),
-      department_id: departmentId,
+      audiences: serializeSelection(selection),
       pinned,
       published,
     });
@@ -133,10 +185,10 @@ export default function AnnouncementFormModal({
       }}
     >
       <div
-        className="w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-surface"
+        className="w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-surface"
         onClick={(e) => e.stopPropagation()}
       >
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           {/* Header */}
           <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
             <h2
@@ -157,7 +209,7 @@ export default function AnnouncementFormModal({
           </div>
 
           {/* Body */}
-          <div className="space-y-4 px-5 py-4">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
             <div>
               <label
                 htmlFor="ann-title"
@@ -196,31 +248,78 @@ export default function AnnouncementFormModal({
               />
             </div>
 
+            {/* Audience selection */}
             <div>
-              <label
-                htmlFor="ann-dept"
-                className="mb-1 block text-sm font-medium text-foreground"
-              >
+              <label className="mb-1 block text-sm font-medium text-foreground">
                 Αποδέκτες
               </label>
-              <select
-                id="ann-dept"
-                value={departmentId ?? ""}
-                onChange={(e) =>
-                  setDepartmentId(e.target.value === "" ? null : e.target.value)
-                }
-                disabled={isSaving}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-foreground focus:outline-none disabled:opacity-60"
-              >
+
+              {/* Universal audiences (όλος ο σύλλογος / ΔΣ / Ομαδάρχες) */}
+              <div className="rounded-lg border border-border p-3 space-y-2 bg-background/40">
                 {canPostGlobal && (
-                  <option value="">Όλος ο σύλλογος</option>
+                  <label className="flex items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={selection.global}
+                      onChange={(e) => toggleGlobal(e.target.checked)}
+                      disabled={isSaving}
+                      className="h-4 w-4"
+                    />
+                    <span>🌐 Όλος ο σύλλογος</span>
+                  </label>
                 )}
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
+                <label className="flex items-center gap-2 text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={selection.board}
+                    onChange={(e) => toggleBoard(e.target.checked)}
+                    disabled={isSaving || !canPostGlobal}
+                    className="h-4 w-4"
+                  />
+                  <span>👔 Διοικητικό Συμβούλιο (ΔΣ)</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={selection.leaders}
+                    onChange={(e) => toggleLeaders(e.target.checked)}
+                    disabled={isSaving || !canPostGlobal}
+                    className="h-4 w-4"
+                  />
+                  <span>🏅 Ομαδάρχες</span>
+                </label>
+              </div>
+
+              {/* Department audiences */}
+              {departments.length > 0 && (
+                <div className="mt-2 rounded-lg border border-border p-3 space-y-2 max-h-48 overflow-auto bg-background/40">
+                  <div className="text-xs font-medium text-muted">Τμήματα:</div>
+                  {departments.map((d) => (
+                    <label
+                      key={d.id}
+                      className="flex items-center gap-2 text-sm text-foreground"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selection.departmentIds.has(d.id)}
+                        onChange={(e) =>
+                          toggleDepartment(d.id, e.target.checked)
+                        }
+                        disabled={isSaving}
+                        className="h-4 w-4"
+                      />
+                      <span>{d.name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {audienceCount > 0 && (
+                <p className="mt-1 text-xs text-muted">
+                  {audienceCount} επιλεγμένος{audienceCount === 1 ? "" : "οι"} αποδέκτης
+                  {audienceCount === 1 ? "" : "ες"}
+                </p>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-x-6 gap-y-2">
