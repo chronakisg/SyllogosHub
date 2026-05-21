@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import * as XLSX from "xlsx";
 import { errorMessage, getBrowserClient } from "@/lib/supabase/client";
 import { useRole } from "@/lib/hooks/useRole";
 import { useCurrentClub } from "@/lib/hooks/useCurrentClub";
@@ -1221,29 +1220,131 @@ function MembersPageContent() {
     }
   }
 
-  function exportToExcel() {
-    const rows = filtered.map((m) => ({
-      Επώνυμο: m.last_name,
-      Όνομα: m.first_name,
-      "Τηλέφωνο 1": m.phone ?? "",
-      "Τηλέφωνο 2": m.phone2 ?? "",
-      Email: m.email ?? "",
-      Τμήματα: m.departments
-        .map((d) =>
-          d.role === "member"
-            ? d.name
-            : `${d.name} (${DEPARTMENT_ROLE_LABELS[d.role]})`
-        )
-        .join(", "),
-      Κατάσταση: m.status === "active" ? "Ενεργό" : "Ανενεργό",
-      "Δ.Σ.": m.is_board_member ? "Ναι" : "Όχι",
-      Θέση: m.board_position ?? "",
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Μέλη");
+  async function exportToExcel() {
+    // Format ταιριάζει στο docs/ΜΗΤΡΩΟ_SKA_gia_perasma_XRONAKIS.xlsx:
+    // Sheet name "ΑΙΤΗΣΕΙΣ ΜΟΝΟ", 14 columns, Arial Greek font, mixed header sizes.
+    const ExcelJS = (await import("exceljs")).default;
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "SyllogosHub";
+    const ws = workbook.addWorksheet("ΑΙΤΗΣΕΙΣ ΜΟΝΟ");
+
+    // Column definitions: header + key + width (από target file).
+    // Header sizes σε mixed bold pattern (J,K=10pt; L,M,N=11pt; rest=9pt).
+    ws.columns = [
+      { header: "AA", key: "aa", width: 5.43 },
+      { header: "ΕΠΩΝΥΜΟ", key: "last_name", width: 29.29 },
+      { header: "ΟΝΟΜΑ", key: "first_name", width: 24 },
+      { header: "ΟΝΟΜΑ ΠΑΤΡΟΣ", key: "father_name", width: 27.86 },
+      { header: "ΔΙΕΥΘΥΝΣΗ", key: "address", width: 32 },
+      { header: "ΑΡΙΘΜΟΣ ΜΗΤΡΩΟΥ", key: "registry_number", width: 13 },
+      { header: "EMAIL", key: "email", width: 41.43 },
+      { header: "ΤΗΛΕΦΩΝΟ", key: "phone", width: 33.71 },
+      { header: "ΕΤΟΣ", key: "year", width: 9.14 },
+      { header: "ΗΜΕΡΟΜΗΝΙΑ ΑΙΤΗΣΗΣ  ", key: "application_date", width: 12.86 },
+      { header: "ΑΡΙΘΜΟΣ ΑΙΤΗΣΗΣ", key: "application_number", width: 12.71 },
+      { header: "ΟΝΟΜΑ ΜΗΤΡΟΣ", key: "mother_name", width: 22.57 },
+      { header: "ΓΕΝΟΣ", key: "maiden_name", width: 27.14 },
+      { header: "ΕΠΑΓΓΕΛΜΑ", key: "occupation", width: 27.43 },
+    ];
+
+    // Format date to dd-MM-yyyy zero-padded
+    const fmtDate = (iso: string | null): string => {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      const dd = String(d.getDate()).padStart(2, "0");
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const yyyy = d.getFullYear();
+      return `${dd}-${mm}-${yyyy}`;
+    };
+
+    // Combine phone1 + phone2 με " - " separator (όπως legacy)
+    const combinePhones = (p1: string | null, p2: string | null): string => {
+      if (p1 && p2) return `${p1} - ${p2}`;
+      return p1 ?? p2 ?? "";
+    };
+
+    // Extract year from birth_date
+    const birthYear = (iso: string | null): string => {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      return String(d.getFullYear());
+    };
+
+    // Add data rows
+    filtered.forEach((m) => {
+      ws.addRow({
+        aa: "", // empty per spec
+        last_name: m.last_name ?? "",
+        first_name: m.first_name ?? "",
+        father_name: m.father_name ?? "",
+        address: m.address ?? "",
+        registry_number: m.registry_number ?? "",
+        email: m.email ?? "",
+        phone: combinePhones(m.phone, m.phone2),
+        year: birthYear(m.birth_date),
+        application_date: fmtDate(m.application_date),
+        application_number: m.application_number ?? "",
+        mother_name: m.mother_name ?? "",
+        maiden_name: m.maiden_name ?? "",
+        occupation: m.occupation ?? "",
+      });
+    });
+
+    // Header row styling
+    const headerRow = ws.getRow(1);
+    headerRow.height = 36.75;
+    headerRow.eachCell((cell, colIdx) => {
+      // Mixed sizes per target: J(10),K(10),L(11),M(11),N(11), rest 9
+      let size = 9;
+      if (colIdx === 10 || colIdx === 11) size = 10;
+      else if (colIdx >= 12) size = 11;
+      cell.font = { name: "Arial Greek", size, bold: true };
+      cell.alignment = {
+        horizontal: colIdx === 1 ? "left" : "center",
+        vertical: "middle",
+      };
+      cell.border = {
+        top: { style: "thin" },
+        bottom: { style: "thin" },
+        left: { style: "thin" },
+        right: { style: "thin" },
+      };
+      // Yellow fill στο F (ΑΡΙΘΜΟΣ ΜΗΤΡΩΟΥ) — col index 6
+      if (colIdx === 6) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFFFFF00" },
+        };
+      }
+    });
+
+    // Data rows styling
+    for (let r = 2; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r);
+      row.height = 24.95;
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.font = { name: "Arial Greek", size: 10 };
+        cell.alignment = { vertical: "middle" };
+      });
+    }
+
+    // Generate blob + trigger download
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
     const stamp = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `members-${stamp}.xlsx`);
+    a.download = `members-${stamp}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   const filtersActive =
