@@ -964,6 +964,23 @@ export type AnnouncementInsert = {
 
 export type AnnouncementUpdate = Partial<Omit<Announcement, "id" | "club_id" | "created_at">>;
 
+export type AnnouncementAudienceType = "global" | "board" | "leaders" | "department";
+
+export type AnnouncementAudience = {
+  id: string;
+  announcement_id: string;
+  audience_type: AnnouncementAudienceType;
+  department_id: string | null;
+  created_at: string;
+};
+
+export type AnnouncementAudienceInsert = {
+  id?: string;
+  announcement_id: string;
+  audience_type: AnnouncementAudienceType;
+  department_id?: string | null;
+};
+
 export type Class = {
   id: string;
   club_id: string;
