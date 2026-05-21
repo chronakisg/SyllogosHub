@@ -2618,7 +2618,7 @@ function MemberModal({
               {form.family_mode !== "none" && (
                 <div className="mt-3 border-t border-border pt-3">
                   <label className="block text-xs font-medium text-muted">
-                    Ρόλος στην οικογένεια
+                    Ρόλος {editing?.first_name ? `του/της ${editing.first_name}` : "στην οικογένεια"}
                     <span className="text-danger"> *</span>
                   </label>
                   <select
