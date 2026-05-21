@@ -12,32 +12,105 @@ export type AnnouncementWithMeta = Announcement & {
 const EPOCH = "1970-01-01T00:00:00Z";
 
 /**
- * Επιστρέφει τα department_ids στα οποία ανήκει ο member.
- *
- * Χωρίς extra club_id filter στο member_departments — το authoritative
- * club scoping γίνεται downstream στο announcements query (defense in depth).
+ * Aggregate audience-relevance context για member: ποιες audience types
+ * δικαιολογούν να βλέπει ανακοινώσεις.
  */
-async function getMemberDepartmentIds(memberId: string): Promise<string[]> {
+type MemberAudienceContext = {
+  isBoard: boolean;
+  isLeader: boolean;
+  deptIds: string[];
+};
+
+async function getMemberAudienceContext(
+  member: Member
+): Promise<MemberAudienceContext> {
   const admin = getAdminClient();
-  const { data, error } = await admin
+
+  // Member's own departments (via member_departments — for audience='department')
+  const memberDeptsRes = await admin
     .from("member_departments")
     .select("department_id")
-    .eq("member_id", memberId);
+    .eq("member_id", member.id);
+
+  const deptIds = memberDeptsRes.error
+    ? []
+    : (memberDeptsRes.data ?? []).map((r) => r.department_id);
+
+  // Leader/assistant status (via department_leaders — for audience='leaders')
+  const leaderRes = await admin
+    .from("department_leaders")
+    .select("member_id")
+    .eq("member_id", member.id)
+    .limit(1);
+
+  const isLeader = leaderRes.error
+    ? false
+    : (leaderRes.data ?? []).length > 0;
+
+  return {
+    isBoard: member.is_board_member,
+    isLeader,
+    deptIds,
+  };
+}
+
+/**
+ * Επιστρέφει τα announcement_ids που είναι ορατά στον member βάσει
+ * audience matching:
+ *   - global → πάντα
+ *   - board → if member.is_board_member
+ *   - leaders → if member has row σε department_leaders
+ *   - department X → if X ∈ member's departments
+ */
+async function getVisibleAnnouncementIds(
+  clubId: string,
+  ctx: MemberAudienceContext
+): Promise<Set<string>> {
+  const admin = getAdminClient();
+  const visible = new Set<string>();
+
+  // Fetch all audience rows για το club (filter via club_id JOIN με announcements)
+  const { data, error } = await admin
+    .from("announcement_audiences")
+    .select(
+      "announcement_id, audience_type, department_id, announcements!inner(club_id, published)"
+    )
+    .eq("announcements.club_id", clubId)
+    .eq("announcements.published", true);
 
   if (error) {
-    console.error("getMemberDepartmentIds failed:", error);
-    return [];
+    console.error("getVisibleAnnouncementIds failed:", error);
+    return visible;
   }
 
-  return data?.map((row) => row.department_id) ?? [];
+  for (const row of data ?? []) {
+    const t = row.audience_type as string;
+    const annId = row.announcement_id as string;
+    if (t === "global") {
+      visible.add(annId);
+    } else if (t === "board" && ctx.isBoard) {
+      visible.add(annId);
+    } else if (t === "leaders" && ctx.isLeader) {
+      visible.add(annId);
+    } else if (
+      t === "department" &&
+      row.department_id &&
+      ctx.deptIds.includes(row.department_id as string)
+    ) {
+      visible.add(annId);
+    }
+  }
+  return visible;
 }
 
 /**
  * Επιστρέφει τα N πιο πρόσφατα δημοσιευμένα announcements που αφορούν
- * τον συγκεκριμένο member.
+ * τον συγκεκριμένο member βάσει audience matching (announcement_audiences).
  *
- * Audience: club-wide (department_id IS NULL) ∪ departments του member
- * (από member_departments). Ordering: pinned πρώτα, μετά created_at desc.
+ * Audience semantic: union of (global ∪ board-if-applicable ∪
+ * leaders-if-applicable ∪ member's department announcements).
+ * Ordering: pinned πρώτα, μετά created_at desc.
+ *
  * Marks is_new = true αν created_at > member.last_announcement_check_at
  * (treat null check timestamp ως epoch ⇒ πάντα νέα).
  *
@@ -49,24 +122,18 @@ export async function getRecentAnnouncements(
 ): Promise<AnnouncementWithMeta[]> {
   if (!member.club_id) return [];
 
-  const deptIds = await getMemberDepartmentIds(member.id);
-  const admin = getAdminClient();
+  const ctx = await getMemberAudienceContext(member);
+  const visibleIds = await getVisibleAnnouncementIds(member.club_id, ctx);
 
-  let query = admin
+  if (visibleIds.size === 0) return [];
+
+  const admin = getAdminClient();
+  const { data, error } = await admin
     .from("announcements")
     .select("*")
     .eq("club_id", member.club_id)
-    .eq("published", true);
-
-  if (deptIds.length === 0) {
-    query = query.is("department_id", null);
-  } else {
-    query = query.or(
-      `department_id.is.null,department_id.in.(${deptIds.join(",")})`,
-    );
-  }
-
-  const { data, error } = await query
+    .eq("published", true)
+    .in("id", Array.from(visibleIds))
     .order("pinned", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -84,35 +151,29 @@ export async function getRecentAnnouncements(
 }
 
 /**
- * Επιστρέφει το πλήθος των unread announcements για τον member —
- * δηλαδή announcements με created_at > last_announcement_check_at,
- * με το ίδιο audience filter που χρησιμοποιεί το getRecentAnnouncements.
+ * Πλήθος unread announcements για τον member (created_at > last check_at)
+ * με ίδιο audience filter με το getRecentAnnouncements.
  *
- * Αν ο member δεν έχει club_id (orphaned), επιστρέφει 0 χωρίς query.
+ * Αν ο member δεν έχει club_id, επιστρέφει 0 χωρίς query.
  */
 export async function getUnreadCount(member: Member): Promise<number> {
   if (!member.club_id) return 0;
 
-  const deptIds = await getMemberDepartmentIds(member.id);
+  const ctx = await getMemberAudienceContext(member);
+  const visibleIds = await getVisibleAnnouncementIds(member.club_id, ctx);
+
+  if (visibleIds.size === 0) return 0;
+
   const admin = getAdminClient();
   const threshold = member.last_announcement_check_at ?? EPOCH;
 
-  let query = admin
+  const { count, error } = await admin
     .from("announcements")
     .select("id", { count: "exact", head: true })
     .eq("club_id", member.club_id)
     .eq("published", true)
+    .in("id", Array.from(visibleIds))
     .gt("created_at", threshold);
-
-  if (deptIds.length === 0) {
-    query = query.is("department_id", null);
-  } else {
-    query = query.or(
-      `department_id.is.null,department_id.in.(${deptIds.join(",")})`,
-    );
-  }
-
-  const { count, error } = await query;
 
   if (error) {
     console.error("getUnreadCount failed:", error);
@@ -123,38 +184,15 @@ export async function getUnreadCount(member: Member): Promise<number> {
 }
 
 /**
- * Επιστρέφει το συνολικό πλήθος δημοσιευμένων announcements που αφορούν
- * τον member (same audience filter με getRecentAnnouncements, χωρίς timestamp
- * filter). Χρησιμοποιείται στο header του AnnouncementsPanel ως "Ανακοινώσεις (N)".
- *
- * Αν ο member δεν έχει club_id (orphaned), επιστρέφει 0 χωρίς query.
+ * Συνολικό πλήθος δημοσιευμένων announcements που αφορούν τον member
+ * (same audience filter, χωρίς timestamp). Χρησιμοποιείται στο header
+ * του AnnouncementsPanel.
  */
 export async function getTotalCount(member: Member): Promise<number> {
   if (!member.club_id) return 0;
 
-  const deptIds = await getMemberDepartmentIds(member.id);
-  const admin = getAdminClient();
+  const ctx = await getMemberAudienceContext(member);
+  const visibleIds = await getVisibleAnnouncementIds(member.club_id, ctx);
 
-  let query = admin
-    .from("announcements")
-    .select("id", { count: "exact", head: true })
-    .eq("club_id", member.club_id)
-    .eq("published", true);
-
-  if (deptIds.length === 0) {
-    query = query.is("department_id", null);
-  } else {
-    query = query.or(
-      `department_id.is.null,department_id.in.(${deptIds.join(",")})`,
-    );
-  }
-
-  const { count, error } = await query;
-
-  if (error) {
-    console.error("getTotalCount failed:", error);
-    return 0;
-  }
-
-  return count ?? 0;
+  return visibleIds.size;
 }
