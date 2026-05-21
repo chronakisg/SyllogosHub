@@ -746,6 +746,76 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   - `MEMBER_ENRICH_PLAN.md` (base wizard architecture)
   - `MEMBER_ENRICH_FAMILY_PLAN.md` (family detection rules)
 
+- [ ] **🟡 Member modal: Τμήματα + Ρόλος tabs merge + role system unification (L)**
+
+  Stack: 📊 Διαχειριστικό · UX redesign + data layer cleanup
+
+  Discovered: 2026-05-21 (post-PR #124 production observation).
+
+  **Παρατήρηση:** Δύο διαφορετικά tabs ("Τμήματα" + "Ρόλος") στο /members modal δείχνουν συμπληρωματική info για το ίδιο μέλος. Παράλληλα, το "Ρόλος" tab δείχνει μόνο legacy checkboxes (Μέλος Δ.Σ. + Πρόεδρος) — προ-υπάρχει του role-based permissions system του PR #22, δεν αξιοποιεί τα `member_role_assignments` του.
+
+  **Proposed UX (από conversation 2026-05-21):**
+
+  Tab "Τμήματα - Ρόλος" με δύο gated sections (2 checkboxes στην κορυφή):
+
+```
+  ┌─ Τμήματα - Ρόλος ─────────────────────────┐
+  │ ☑ Σε τμήμα                                 │
+  │   ┌─────────────────────────────────────┐  │
+  │   │ ☑ Χορευτικό   Ρόλος: [Μέλος ▾]      │  │
+  │   │ ☑ Λύρα        Ρόλος: [Ομαδάρχης ▾]  │  │
+  │   │ ☐ Μαντολινάτα                        │  │
+  │   └─────────────────────────────────────┘  │
+  │                                             │
+  │ ☑ Έχει ρόλο                                │
+  │   ┌─────────────────────────────────────┐  │
+  │   │ ☑ Πρόεδρος ΔΣ                       │  │
+  │   │ ☑ Ταμίας                             │  │
+  │   │ ☐ Γραμματέας                         │  │
+  │   │ ☐ Απλό Μέλος                         │  │
+  │   └─────────────────────────────────────┘  │
+  └────────────────────────────────────────────┘
+```
+
+  **Scope decomposition (L total, ~3-4 PRs):**
+
+  1. **UI unification** (M)
+     - Merge "Τμήματα" + "Ρόλος" tabs into single "Τμήματα - Ρόλος"
+     - 2 top-level checkboxes με expandable sections
+     - Per-department role dropdown (επαναφορά του April 30 design)
+
+  2. **Ρόλος section refactor** (M)
+     - Replace legacy `is_board_member` + `is_president` checkboxes
+     - Multi-select από `member_role_assignments` table (PR #22 system)
+     - Migration: existing legacy flags → role assignments rows
+
+  3. **Dual-source ομαδάρχης state cleanup** (M, βλ. memory #16)
+     - `member_departments.role` (populated) vs `department_leaders` (empty schema)
+     - Data migration: copy `member_departments` WHERE role IN ('leader', 'assistant') → `department_leaders` με ON CONFLICT DO NOTHING
+     - Pivot UI sites να διαβάζουν από `department_leaders`
+     - Drop column `member_departments.role` (after grace period)
+
+  4. **Legacy field deprecation** (S)
+     - Mark `is_board_member`, `is_president`, `board_position` ως deprecated στα types
+     - Display layer continues να τα διαβάζει για display fallback
+     - Eventually drop columns (separate cleanup PR)
+
+  **Prerequisite: design lock session** (multi-hour, no code):
+  - UX flows για όλους τους cases (member μόνο σε τμήμα / μόνο ρόλο / και τα δύο / κανένα)
+  - Migration plan για legacy flags με snapshot safety
+  - Permission gating (ποιος μπορεί να αλλάζει ποιο)
+  - Mobile-friendly layout (2 nested sections σε narrow viewport)
+
+  **Connects με:**
+  - PR #22 role-based permissions system (foundation)
+  - Memory #16 dual-source ομαδάρχης state (cleanup prerequisite)
+  - PR #80 dual-admin pattern (is_hub_admin flag, similar deprecation question)
+
+  **Quality standard (memory #20):** Project goes to commercial release —
+  άξιο dedicated design + atomic PRs αντί quick UI patch.
+
+  Estimated: L (multi-session, 3-4 PRs after design lock)
+
 ### 🟣 Member Portal domain
 
 > Stack description βλ. 🏗️ Architectural Stacks → 🟣 Member Portal Stack.
