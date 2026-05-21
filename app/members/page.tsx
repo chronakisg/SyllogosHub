@@ -38,8 +38,16 @@ type MemberDeptAssignment = {
   role: DepartmentRole;
 };
 
+// leader_departments: ποια departments είναι ομαδάρχης/βοηθός
+// (από department_leaders table — single source of truth post-PR #0032)
+type LeaderDepartmentRef = {
+  department_id: string;
+  role: "leader" | "assistant";
+};
+
 type MemberWithDepartments = Member & {
   departments: MemberDeptAssignment[];
+  leader_departments: LeaderDepartmentRef[];
 };
 
 type FamilyMode = "none" | "new" | "link";
@@ -462,7 +470,7 @@ function MembersPageContent() {
     if (!clubId) return;
     try {
       const supabase = getBrowserClient();
-      const [mRes, mdRes, depRes] = await Promise.all([
+      const [mRes, mdRes, depRes, dlRes] = await Promise.all([
         supabase
           .from("members")
           .select("*")
@@ -479,10 +487,15 @@ function MembersPageContent() {
           .eq("club_id", clubId)
           .order("display_order", { ascending: true })
           .order("name", { ascending: true }),
+        // department_leaders δεν έχει club_id — filter client-side μέσω deptById
+        supabase
+          .from("department_leaders")
+          .select("department_id, member_id, role"),
       ]);
       if (mRes.error) throw mRes.error;
       if (mdRes.error) throw mdRes.error;
       if (depRes.error) throw depRes.error;
+      if (dlRes.error) throw dlRes.error;
 
       const allDepartments = (depRes.data ?? []) as Department[];
       const deptById = new Map(allDepartments.map((d) => [d.id, d]));
@@ -499,11 +512,27 @@ function MembersPageContent() {
         });
         byMember.set(row.member_id, list);
       }
+
+      // Authoritative leader/assistant state from department_leaders
+      const leaderByMember = new Map<string, LeaderDepartmentRef[]>();
+      for (const row of dlRes.data ?? []) {
+        // Scope to current club via deptById
+        if (!deptById.has(row.department_id)) continue;
+        if (row.role !== "leader" && row.role !== "assistant") continue;
+        const list = leaderByMember.get(row.member_id) ?? [];
+        list.push({
+          department_id: row.department_id,
+          role: row.role,
+        });
+        leaderByMember.set(row.member_id, list);
+      }
+
       const merged: MemberWithDepartments[] = (mRes.data ?? []).map((m) => ({
         ...m,
         departments: (byMember.get(m.id) ?? []).sort((a, b) =>
           a.name.localeCompare(b.name, "el", { sensitivity: "base" })
         ),
+        leader_departments: leaderByMember.get(m.id) ?? [],
       }));
 
       setError(null);
@@ -592,12 +621,7 @@ function MembersPageContent() {
       if (statusFilter !== "all" && m.status !== statusFilter) return false;
       if (boardOnly && !m.is_board_member) return false;
       if (familyOnly && !m.family_id) return false;
-      if (
-        onlyLeaders &&
-        !m.departments.some(
-          (d) => d.role === "leader" || d.role === "assistant",
-        )
-      ) {
+      if (onlyLeaders && m.leader_departments.length === 0) {
         return false;
       }
       if (unverifiedOnly) {
@@ -857,6 +881,29 @@ function MembersPageContent() {
         .eq("id", u.id)
         .eq("club_id", clubId);
       if (uErr) throw uErr;
+    }
+
+    // Sync department_leaders (canonical leader/assistant source post-migration 0032).
+    // Delete-and-insert pattern: simpler than diff για small per-member sets.
+    // Scoped via member_id alone — member belongs to one club per schema invariant.
+    const { error: dlDelErr } = await supabase
+      .from("department_leaders")
+      .delete()
+      .eq("member_id", memberId);
+    if (dlDelErr) throw dlDelErr;
+
+    const leaderRows = next
+      .filter((d) => d.role === "leader" || d.role === "assistant")
+      .map((d) => ({
+        department_id: d.department_id,
+        member_id: memberId,
+        role: d.role as "leader" | "assistant",
+      }));
+    if (leaderRows.length > 0) {
+      const { error: dlInsErr } = await supabase
+        .from("department_leaders")
+        .insert(leaderRows);
+      if (dlInsErr) throw dlInsErr;
     }
   }
 
@@ -1965,24 +2012,29 @@ function MembersPageContent() {
                         <span className="text-muted">—</span>
                       ) : (
                         <div className="flex flex-col items-start gap-1">
-                          {m.departments.map((d) => (
-                            <span
-                              key={d.department_id}
-                              className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[11px] text-accent"
-                            >
-                              {d.name}
-                              {d.role === "leader" && (
-                                <span title="Ομαδάρχης" aria-label="Ομαδάρχης">
-                                  · 🏅 Ομαδάρχης
-                                </span>
-                              )}
-                              {d.role === "assistant" && (
-                                <span title="Βοηθός" aria-label="Βοηθός">
-                                  · 🤝 Βοηθός
-                                </span>
-                              )}
-                            </span>
-                          ))}
+                          {m.departments.map((d) => {
+                            const leaderRef = m.leader_departments.find(
+                              (l) => l.department_id === d.department_id
+                            );
+                            return (
+                              <span
+                                key={d.department_id}
+                                className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[11px] text-accent"
+                              >
+                                {d.name}
+                                {leaderRef?.role === "leader" && (
+                                  <span title="Ομαδάρχης" aria-label="Ομαδάρχης">
+                                    · 🏅 Ομαδάρχης
+                                  </span>
+                                )}
+                                {leaderRef?.role === "assistant" && (
+                                  <span title="Βοηθός" aria-label="Βοηθός">
+                                    · 🤝 Βοηθός
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })}
                         </div>
                       )}
                     </td>
