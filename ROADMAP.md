@@ -1557,6 +1557,44 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
 ### Family & Genealogy
 
+- [ ] **🎯 Genealogy Phase 2 — Design Lock Session (NEXT family-related session)**
+
+  **Production trigger (2026-05-21):**
+  Κλεισαρχάκης case εμφανίστηκε στο /members family link mode.
+  4 nodes + 3 parent-child edges που ΔΕΝ μπορούν να μοντελοποιηθούν
+  σε Phase 1:
+  - Δημήτρης senior (external, πιθανώς πεθαμένος)
+  - Ανδρέας (member, παιδί Δημήτρη sr)
+  - Γιώργος (member, παιδί Δημήτρη sr — αδερφός Ανδρέα)
+  - Δημήτρης junior (member, παιδί Ανδρέα — εγγονός Δημήτρη sr)
+
+  Phase 1 limitation: Ανδρέας + Γιώργος ζουν σε διαφορετικά
+  νοικοκυριά → δεν μοιράζονται family_id → αδελφική σχέση
+  ΔΕΝ εκφράζεται.
+
+  **Prerequisite — Design lock session (no code) απαιτείται πριν
+  implementation:**
+  - Full schema specification (genealogy_nodes columns + constraints
+    + indexes + cascade behavior)
+  - External vs internal node distinction (πώς αναπαριστάμε
+    πεθαμένους / μη-μέλη)
+  - FK direction με members table + nullable behavior
+  - Linkage με existing family_id (orthogonal layer, όχι replacement)
+  - Auto-computed relations scope (αδέρφια / ξαδέρφια / παππούδες —
+    όλα ή subset;)
+  - Tribute fields για βραβεύσεις (award_year, reason, text)
+  - Tree visualization library choice (react-d3-tree vs family-chart)
+    με POC σε standalone HTML πριν decision
+  - UX flows: external node creation, sibling linkage, mobile tree view
+  - Edge cases: re-marriage, adoption, μη-βιολογικός παππούς,
+    missing parent data
+  - Phase breakdown σε 5-8 atomic PRs
+
+  **Quality standard:** Project goes to commercial release.
+  No half-implementations. Design lock πρώτα, implementation μετά.
+
+  Estimated: L (multi-session feature, design lock + 5-8 PRs)
+
 - [ ] **🌳 Genealogy module — L (multi-session feature, dedicated effort)**
 
   **Διάκριση από Phase 1 (current state):** _Παρέα ≠ νοικοκυριό ≠ γενεαλογία._ Το `members.family_id` + `family_role` σύστημα είναι **household-level grouping** και παραμένει για bookings/seating/contact. Η γενεαλογία είναι **ξεχωριστή dimension** που μοντελοποιεί parent/child edges για αδέρφια διαφορετικών νοικοκυριών, παππού-εγγονό, ξαδέρφια.
