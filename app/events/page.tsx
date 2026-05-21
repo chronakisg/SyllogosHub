@@ -236,13 +236,21 @@ export default function EventsPage() {
   const filtered = useMemo(() => {
     const q = normalizeGreek(search.trim());
     const today = todayInAthens();
-    return events.filter((e) => {
+    const list = events.filter((e) => {
       const datePart = e.event_date.slice(0, 10);
       if (activeTab === "upcoming" && datePart < today) return false;
       if (activeTab === "past" && datePart >= today) return false;
       if (q && !normalizeGreek(e.event_name).includes(q)) return false;
       return true;
     });
+    // Sort per tab:
+    // - Επερχόμενες (upcoming): ascending — closest επόμενη πρώτη
+    // - Παλαιότερες (past): descending — most recent past πρώτη (από DB ήδη)
+    // - Όλες (all): descending — most recent πρώτη
+    if (activeTab === "upcoming") {
+      return [...list].sort((a, b) => a.event_date.localeCompare(b.event_date));
+    }
+    return list;
   }, [events, search, activeTab]);
 
   const tabCounts = useMemo(() => {
