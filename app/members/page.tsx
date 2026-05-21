@@ -1351,6 +1351,66 @@ function MembersPageContent() {
     ]);
     const autoTable = autoTableModule.default;
 
+    // Fetch club branding (logo + primary color) από club_settings
+    type Branding = { logo_url: string | null; primary_color: string; name: string };
+    const branding: Branding = {
+      logo_url: null,
+      primary_color: "#800000",
+      name: "Σύλλογος",
+    };
+    if (clubId) {
+      try {
+        const supabase = getBrowserClient();
+        const [settingsRes, clubRes] = await Promise.all([
+          supabase
+            .from("club_settings")
+            .select("logo_url, primary_color")
+            .eq("club_id", clubId)
+            .maybeSingle(),
+          supabase.from("clubs").select("name").eq("id", clubId).maybeSingle(),
+        ]);
+        if (settingsRes.data) {
+          branding.logo_url = settingsRes.data.logo_url;
+          branding.primary_color = settingsRes.data.primary_color || "#800000";
+        }
+        if (clubRes.data) {
+          branding.name = clubRes.data.name;
+        }
+      } catch {
+        // Silent fallback to defaults
+      }
+    }
+
+    // Hex → RGB tuple helper (για jsPDF + autoTable colors)
+    const hexToRgb = (hex: string): [number, number, number] => {
+      const clean = hex.replace("#", "");
+      const r = parseInt(clean.substring(0, 2), 16);
+      const g = parseInt(clean.substring(2, 4), 16);
+      const b = parseInt(clean.substring(4, 6), 16);
+      if (isNaN(r) || isNaN(g) || isNaN(b)) return [128, 0, 0];
+      return [r, g, b];
+    };
+    const brandRgb = hexToRgb(branding.primary_color);
+    // Light tint για table header (mix 15% brand με white)
+    const tintRgb: [number, number, number] = [
+      Math.round(brandRgb[0] * 0.15 + 255 * 0.85),
+      Math.round(brandRgb[1] * 0.15 + 255 * 0.85),
+      Math.round(brandRgb[2] * 0.15 + 255 * 0.85),
+    ];
+
+    // Convert ArrayBuffer → base64 (hoisted: used by both font loading + logo embedding)
+    const toBase64 = (buf: ArrayBuffer): string => {
+      const bytes = new Uint8Array(buf);
+      let binary = "";
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(
+          ...bytes.subarray(i, Math.min(i + chunk, bytes.length))
+        );
+      }
+      return btoa(binary);
+    };
+
     // Load NotoSans Greek static fonts (Regular + Bold)
     // Critical: STATIC fonts only — variable fonts crash jsPDF.
     const [regResp, boldResp] = await Promise.all([
@@ -1366,19 +1426,6 @@ function MembersPageContent() {
       boldResp.arrayBuffer(),
     ]);
 
-    // Convert ArrayBuffer → base64 (jsPDF requires base64 string)
-    const toBase64 = (buf: ArrayBuffer): string => {
-      const bytes = new Uint8Array(buf);
-      let binary = "";
-      const chunk = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode(
-          ...bytes.subarray(i, Math.min(i + chunk, bytes.length))
-        );
-      }
-      return btoa(binary);
-    };
-
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
 
     doc.addFileToVFS("NotoSansGreek-Regular.ttf", toBase64(regBuffer));
@@ -1386,22 +1433,52 @@ function MembersPageContent() {
     doc.addFileToVFS("NotoSansGreek-Bold.ttf", toBase64(boldBuffer));
     doc.addFont("NotoSansGreek-Bold.ttf", "NotoSansGreek", "bold");
 
-    // Title block
+    // Title block με branding (logo αριστερά, title + meta δεξιά)
+    const LOGO_SIZE = 50;
+    let titleX = 40;
+
+    if (branding.logo_url) {
+      try {
+        const logoResp = await fetch(branding.logo_url);
+        if (logoResp.ok) {
+          const logoBuffer = await logoResp.arrayBuffer();
+          const logoB64 = toBase64(logoBuffer);
+          // Format inference από URL extension
+          const ext = branding.logo_url.toLowerCase().split(".").pop() || "";
+          const format = ext === "jpg" || ext === "jpeg" ? "JPEG" : "PNG";
+          doc.addImage(
+            `data:image/${format.toLowerCase()};base64,${logoB64}`,
+            format,
+            40,
+            18,
+            LOGO_SIZE,
+            LOGO_SIZE
+          );
+          titleX = 40 + LOGO_SIZE + 12;
+        }
+      } catch {
+        // Logo load failed, continue without
+      }
+    }
+
     doc.setFont("NotoSansGreek", "bold");
     doc.setFontSize(14);
-    doc.text("Μητρώο Μελών - Σύλλογος Κρητών Αιγάλεω", 40, 30);
+    doc.setTextColor(brandRgb[0], brandRgb[1], brandRgb[2]);
+    doc.text(`Μητρώο Μελών — ${branding.name}`, titleX, 36);
     doc.setFont("NotoSansGreek", "normal");
     doc.setFontSize(9);
+    doc.setTextColor(80, 80, 80);
     const stampDate = new Date().toLocaleDateString("el-GR");
     doc.text(
       `Εξαγωγή: ${stampDate} · ${filtered.length} μέλη`,
-      40,
-      48
+      titleX,
+      54
     );
+    doc.setTextColor(0, 0, 0); // reset για table
 
     // 14-column table (matching xlsx format)
     autoTable(doc, {
-      startY: 60,
+      startY: 78,
       head: [
         [
           "AA",
@@ -1448,15 +1525,15 @@ function MembersPageContent() {
         font: "NotoSansGreek",
         fontStyle: "bold",
         fontSize: 7,
-        fillColor: [240, 240, 240],
-        textColor: [0, 0, 0],
+        fillColor: tintRgb,
+        textColor: brandRgb,
         halign: "center",
       },
       columnStyles: {
         0: { cellWidth: 18, halign: "center" },
         5: { fillColor: [255, 255, 200] },
       },
-      margin: { top: 60, right: 25, bottom: 30, left: 25 },
+      margin: { top: 78, right: 25, bottom: 30, left: 25 },
       didDrawPage: () => {
         doc.setFont("NotoSansGreek", "normal");
         doc.setFontSize(7);
