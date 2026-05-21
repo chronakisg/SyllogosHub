@@ -89,6 +89,7 @@ export type Member = {
   first_name: string;
   last_name: string;
   phone: string | null;
+  phone2: string | null;
   email: string | null;
   status: MemberStatus;
   is_board_member: boolean;
@@ -129,6 +130,7 @@ export type MemberInsert = {
   first_name: string;
   last_name: string;
   phone?: string | null;
+  phone2?: string | null;
   email?: string | null;
   status?: MemberStatus;
   is_board_member?: boolean;
