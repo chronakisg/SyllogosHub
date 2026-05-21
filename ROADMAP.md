@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-21 (feat: family link same-surname suggestions, επόμενο PR)
+> Last updated: 2026-05-21 (5 family PRs #116-#120 + docs spec enrichment)
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -1474,11 +1474,11 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
   - Add parents' names (members.parents field)
   - Prioritize existing family members στο top αν editing.family_id υπάρχει
 
-  Partial mitigation σε feat/family-link-same-surname-suggestions (επόμενο PR):
+  Partial mitigation σε feat/family-link-same-surname-suggestions (PR #120):
   same-surname pre-population όταν search query empty + maiden_name matching +
   "Σε άλλη οικογένεια" badge. Remaining: birth_date hint, parents' names display.
 
-  Discovered alongside PR #118 (2026-05-21).
+  Discovered alongside PR #117 (2026-05-21).
 
 - [ ] **🟢 Permission types unification (drift cleanup)**
 
@@ -1557,13 +1557,96 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
 ### Family & Genealogy
 
-- [ ] **Genealogy module** (Επίπεδο 3 — Genealogical tree)
-  - Schema: `genealogy_nodes` με `father_node_id` + `mother_node_id`
-  - Internal members + external ancestors (πεθαμένοι, μη-μέλη)
-  - Auto-computed σχέσεις (αδέρφια, ξαδέρφια, παππούδες)
-  - Tribute features για βραβεύσεις πεθαμένων μελών
-  - Tree visualization (`react-d3-tree` ή `family-chart`)
-  - Estimated: L (multi-session feature)
+- [ ] **🌳 Genealogy module — L (multi-session feature, dedicated effort)**
+
+  **Διάκριση από Phase 1 (current state):** _Παρέα ≠ νοικοκυριό ≠ γενεαλογία._ Το `members.family_id` + `family_role` σύστημα είναι **household-level grouping** και παραμένει για bookings/seating/contact. Η γενεαλογία είναι **ξεχωριστή dimension** που μοντελοποιεί parent/child edges για αδέρφια διαφορετικών νοικοκυριών, παππού-εγγονό, ξαδέρφια.
+
+  **Use cases που ΔΕΝ χωράνε στο Phase 1 household model:**
+  - Αδέρφια σε διαφορετικά νοικοκυριά (π.χ. Γιώργος + Κώστας Χρονάκης, κάθε ένας με δική του γυναίκα+παιδιά)
+  - Παππού → Πατέρας → Εγγονός (ο μεσαίος έχει dual role που δεν χωράει σε ένα `family_role` column)
+  - Βραβεύσεις πεθαμένων μελών (παραδοσιακοί σύλλογοι αναγνωρίζουν προσφορά προγόνων)
+  - Family seating proximity hints για αδέρφια σε διαφορετικά τραπέζια
+  - Ομώνυμοι disambiguation (δύο ΚΛΕΙΣΑΡΧΑΚΗΣ ΔΗΜΗΤΡΙΟΣ = ξεχωριστά πρόσωπα με ξεχωριστή parentage)
+
+  **Schema:**
+
+```sql
+  CREATE TABLE genealogy_nodes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    club_id uuid REFERENCES clubs(id),
+
+    -- Internal vs external (mutually exclusive)
+    member_id uuid REFERENCES members(id) ON DELETE CASCADE,
+    external_first_name text,
+    external_last_name text,
+
+    -- Bio data
+    birth_year smallint,
+    death_year smallint,
+    birth_place text,
+    photo_url text,
+    notes text,
+
+    -- Tree edges (self-FK)
+    father_node_id uuid REFERENCES genealogy_nodes(id),
+    mother_node_id uuid REFERENCES genealogy_nodes(id),
+
+    -- Tribute fields (βραβεύσεις πεθαμένων)
+    award_year smallint,
+    award_reason text,
+    tribute_text text,
+
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
+
+    CONSTRAINT internal_or_external CHECK (
+      (member_id IS NOT NULL) OR
+      (external_first_name IS NOT NULL AND external_last_name IS NOT NULL)
+    )
+  );
+```
+
+  **Αρχιτεκτονικά principles:**
+  - Ένα node είναι είτε **internal** (linked σε member) είτε **external** (πρόγονος μη-μέλος)
+  - Σχέσεις (αδέρφια, ξαδέρφια, παππούδες) υπολογίζονται αυτόματα από father/mother chain — όχι stored
+  - Tribute fields επιτρέπουν honor σε πεθαμένα μέλη που πρόσφεραν στον σύλλογο
+  - External ancestors μπορεί να μην έχουν member record καθόλου
+  - Editing permissions: μόνο admin/πρόεδρος (ευαίσθητα δεδομένα)
+
+  **Φάσεις υλοποίησης:**
+
+  - **Φάση Α — Schema + types** (S-M): migration για genealogy_nodes, types.ts hand-crafted GenealogyNode + Row/Insert/Update, helper queries (getAncestors, getDescendants, getSiblings, getCousins).
+
+  - **Φάση Β — CRUD UI** (M): νέο tab "Συγγένεια" στο member modal (παράλληλο με "Οικογένεια"), dropdowns Πατέρας/Μητέρα (member ή "+ Νέος εξωτερικός"), read-only auto-display αδερφών/ξαδερφών/παππούδων.
+
+  - **Φάση Γ — External ancestors management** (M): dedicated `/settings/genealogy/ancestors` ή inline create flow, form για external nodes με photo upload + bio fields, linking όταν νέο μέλος ανακαλύπτεται ως descendant.
+
+  - **Φάση Δ — Tree visualization** (L): library candidate `react-d3-tree` ή `family-chart`, standalone σελίδα `/genealogy` ή modal expanded view, zoomable + drag-able + click-to-details, print-friendly variant για ετήσια βραβεία.
+
+  - **Φάση Ε — Smart features + integrations** (M): "Ξαδέρφια του Χ" / "Πόσα παιδιά έχει ο Χ" / "Λίστα προγόνων", GEDCOM export (industry-standard genealogy format), tribute page `/honors` ή `/tributes` με photo + bio + award reason, member status «μέλος εις μνήμη» (deceased), family seating proximity hints (extends Phase 1 detection).
+
+  **Trigger conditions για promotion από Nice-to-Have → High Priority:**
+  - Σύλλογος-πελάτης με explicit ζήτηση για γενεαλογικά features
+  - Βραβεύσεις πεθαμένων μελών γίνονται production-level need
+  - Family seating proximity hints γίνονται critical UX gap
+  - Member Portal Phase X που εκμεταλλεύεται genealogy edges
+  - Ομώνυμοι disambiguation γίνεται production blocker (multiple incidents)
+
+  **Connection με existing schema:**
+  - `members.family_id` παραμένει **untouched** ως household concept
+  - `genealogy_nodes` νέο dimension, ξεχωριστό
+  - Hybrid queries possible: "ίδιο family_id ΚΑΙ shared genealogy ancestor"
+  - Optional migration helper: αν πατέρας Χ + παιδί Υ μοιράζονται family_id, μπορούμε να προτείνουμε auto-edge στο genealogy
+
+  **Decision history (past chats):**
+  - 2026-04-30: schema design + tribute features (Επίπεδο 3 selected over flat household extensions)
+  - 2026-04-30: 3-level evaluation (απλό household / extended / full genealogical tree), Επίπεδο 3 confirmed
+  - 2026-05-02: Γιώργος+Κώστας Χρονάκης example surfaced αδέρφια-διαφορετικών-νοικοκυριών gap
+  - 2026-05-21: confirmed επίσημα ως Phase 2, ROADMAP enrichment + memory entry #18 για policy lock
+
+  ---
+
+  > **ΣΗΜΕΙΩΣΗ ΓΙΑ FUTURE CLAUDE SESSIONS:** Όταν εμφανίζεται family-related ambiguity (αδέρφια, παππούδες, βραβεύσεις, role dropdown semantics, ομώνυμοι), **ΠΡΩΤΟ ΒΗΜΑ = conversation_search + read αυτής της section** πριν προτείνεις refactor. Memory entry #18 ισχύει.
 
 - [ ] **Family seating proximity hint**
   - Όταν διαφορετικές παρέες ανήκουν στην ίδια οικογένεια, hint στο seating
@@ -2136,7 +2219,7 @@ session**:
 
 ## ✅ Recently Done
 
-### feat/family-link-same-surname-suggestions (επόμενο PR)
+### feat/family-link-same-surname-suggestions (PR #120, merged 2026-05-21)
 
 Όταν user clicks "Σύνδεση με υπάρχον μέλος" και η search query είναι empty, εμφανίζει pre-populated suggestions με same-surname members (masculine + feminine variants) + maiden_name matches. Reduces user effort + helps disambiguation σε families με κοινό επίθετο.
 
@@ -2157,7 +2240,7 @@ session**:
 
 **Partial mitigation** για 🟢 "Member search disambiguation" Nice-to-Have entry. Remaining mitigations (birth_date, parents' names) tracked εκεί.
 
-### feat/family-bidirectional-unlink-cleanup (Bug C, επόμενο PR)
+### feat/family-bidirectional-unlink-cleanup (PR #119 — Bug C, merged 2026-05-21)
 
 Cleanup orphan single-survivor όταν user αφαιρεί member από family ενός 2-person family. Bug C από session 2026-05-20.
 
@@ -2176,7 +2259,7 @@ Cleanup orphan single-survivor όταν user αφαιρεί member από family
 
 **UI debt:** window.confirm used. Switch σε branded dialog όταν existing pattern identified.
 
-### feat/family-link-target-role-fix (PR #118, merged 2026-05-21)
+### feat/family-link-target-role-fix (PR #117, merged 2026-05-21)
 
 Hotfix για CHECK constraint violation σε link-mode save με solo target. Discovered στο PR #116 smoke testing — production blocker.
 
