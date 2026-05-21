@@ -122,6 +122,20 @@ function defaultFamilyRole(birthDate: string | null): FamilyRole {
   return "parent";
 }
 
+/**
+ * Reciprocal family_role για link operations.
+ * parent ↔ child είναι το μόνο asymmetric pair.
+ * spouse και other είναι symmetric (self-reciprocal).
+ *
+ * Χρησιμοποιείται όταν δύο solo members linkάρονται (Case 1):
+ * ο user δίνει role για το added person, το άλλο παίρνει inverse.
+ */
+function inverseRole(role: FamilyRole): FamilyRole {
+  if (role === "parent") return "child";
+  if (role === "child") return "parent";
+  return role;
+}
+
 const inputClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
 
@@ -872,37 +886,99 @@ function MembersPageContent() {
       return;
     }
 
-    // Resolve family_id based on selected mode
+    // Resolve family_id + side-effect updates based on 4-case link semantics.
+    //
+    // Κανόνας: form.family_role περιγράφει τον "added one" — το άτομο που
+    // εισέρχεται σε family που πριν δεν ήταν. Anchor's existing family
+    // ΠΟΤΕ δεν διαλύεται (no orphan).
+    //
+    // Cases:
+    //  1) anchor solo + target solo    → fresh family, target=form.role, anchor=inverse
+    //  2) anchor solo + target in family → anchor joins target, anchor=form.role
+    //  3) anchor in family + target solo → target joins anchor, target=form.role
+    //  4) anchor in family + target in family → block (explicit conflict)
     let resolvedFamilyId: string | null = null;
+    let anchorRoleAssigned = false;
+    let anchorRoleValue: FamilyRole | null = null;
     if (form.family_mode === "new") {
       resolvedFamilyId = generateUuid();
+      // anchor role = form.role (single-member family at creation)
     } else if (form.family_mode === "link") {
-      if (!form.link_member_id) {
-        setFormError("Επιλέξτε μέλος για σύνδεση οικογένειας.");
-        return;
-      }
-      const target = members.find((m) => m.id === form.link_member_id);
-      if (!target) {
-        setFormError("Δεν βρέθηκε το επιλεγμένο μέλος.");
-        return;
-      }
-      if (target.family_id) {
-        resolvedFamilyId = target.family_id;
+      const anchorHasFamily = !!(editing && editing.family_id);
+
+      // Edit-only short-circuit: editing υπάρχον family member χωρίς να
+      // πιάνει νέο target — απλώς role/info update στην current family.
+      // Δεν χρειάζεται link_member_id, no side effects, no Case 4 conflict.
+      if (anchorHasFamily && !form.link_member_id) {
+        resolvedFamilyId = editing!.family_id;
+        // family_role = form.family_role (uses default payload path)
+        // Skip 4-case logic entirely
       } else {
-        // Generate fresh family_id and update target as well
-        resolvedFamilyId = generateUuid();
-        const supabase = getBrowserClient();
-        const { error: updErr } = await supabase
-          .from("members")
-          .update({
-            family_id: resolvedFamilyId,
-            family_role: defaultFamilyRole(target.birth_date),
-          })
-          .eq("id", target.id)
-          .eq("club_id", clubId);
-        if (updErr) {
-          setFormError(errorMessage(updErr, "Σφάλμα σύνδεσης οικογένειας."));
+        // Actual link operation — link_member_id required
+        if (!form.link_member_id) {
+          setFormError("Επιλέξτε μέλος για σύνδεση οικογένειας.");
           return;
+        }
+        const target = members.find((m) => m.id === form.link_member_id);
+        if (!target) {
+          setFormError("Δεν βρέθηκε το επιλεγμένο μέλος.");
+          return;
+        }
+        const targetHasFamily = !!target.family_id;
+
+        if (anchorHasFamily && targetHasFamily) {
+          // Case 4: explicit conflict — refuse silent merge
+          setFormError(
+            "Το επιλεγμένο μέλος ανήκει ήδη σε άλλη οικογένεια. " +
+              "Αφαιρέστε το πρώτα από την υπάρχουσα οικογένειά του."
+          );
+          return;
+        }
+
+        if (anchorHasFamily && !targetHasFamily) {
+          // Case 3: target joins anchor (anchor family preserved)
+          resolvedFamilyId = editing!.family_id!;
+          const supabase = getBrowserClient();
+          const { error: updErr } = await supabase
+            .from("members")
+            .update({
+              family_id: resolvedFamilyId,
+              family_role: form.family_role, // form.role describes target (added one)
+            })
+            .eq("id", target.id)
+            .eq("club_id", clubId);
+          if (updErr) {
+            setFormError(errorMessage(updErr, "Σφάλμα σύνδεσης οικογένειας."));
+            return;
+          }
+          // anchor keeps existing role
+          anchorRoleAssigned = true;
+          anchorRoleValue = editing!.family_role;
+        } else if (!anchorHasFamily && targetHasFamily) {
+          // Case 2: anchor joins target (target family preserved)
+          resolvedFamilyId = target.family_id;
+          // anchor role = form.role (form describes anchor, the added one)
+        } else {
+          // Case 1: both solo — fresh family, asymmetric assignment
+          resolvedFamilyId = generateUuid();
+          const supabase = getBrowserClient();
+          const { error: updErr } = await supabase
+            .from("members")
+            .update({
+              family_id: resolvedFamilyId,
+              family_role: form.family_role, // target = form.role
+            })
+            .eq("id", target.id)
+            .eq("club_id", clubId);
+          if (updErr) {
+            setFormError(errorMessage(updErr, "Σφάλμα σύνδεσης οικογένειας."));
+            return;
+          }
+          // anchor = inverseRole(form.role)
+          anchorRoleAssigned = true;
+          anchorRoleValue = form.family_role
+            ? inverseRole(form.family_role)
+            : null;
         }
       }
     }
@@ -917,8 +993,9 @@ function MembersPageContent() {
       is_president: form.is_president,
       birth_date: form.birth_date || null,
       family_id: resolvedFamilyId,
-      family_role:
-        resolvedFamilyId && form.family_role ? form.family_role : null,
+      family_role: resolvedFamilyId
+        ? (anchorRoleAssigned ? anchorRoleValue : form.family_role)
+        : null,
       father_name: form.father_name.trim() || null,
       mother_name: form.mother_name.trim() || null,
       maiden_name: form.maiden_name.trim() || null,
@@ -2595,7 +2672,13 @@ function MemberModal({
               {form.family_mode !== "none" && (
                 <div className="mt-3 border-t border-border pt-3">
                   <label className="block text-xs font-medium text-muted">
-                    Ρόλος στην οικογένεια
+                    Ρόλος {(() => {
+                      if (form.family_mode === "link" && form.link_member_id) {
+                        const t = members.find((m) => m.id === form.link_member_id);
+                        if (t) return `του/της ${t.first_name}`;
+                      }
+                      return "στην οικογένεια";
+                    })()}
                     <span className="text-danger"> *</span>
                   </label>
                   <select
