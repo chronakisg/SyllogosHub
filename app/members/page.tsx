@@ -1220,6 +1220,28 @@ function MembersPageContent() {
     }
   }
 
+  // Shared helpers για export functions (xlsx + pdf)
+  const fmtDate = (iso: string | null): string => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    return `${dd}-${mm}-${d.getFullYear()}`;
+  };
+
+  const combinePhones = (p1: string | null, p2: string | null): string => {
+    if (p1 && p2) return `${p1} - ${p2}`;
+    return p1 ?? p2 ?? "";
+  };
+
+  const birthYear = (iso: string | null): string => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return String(d.getFullYear());
+  };
+
   async function exportToExcel() {
     // Format ταιριάζει στο docs/ΜΗΤΡΩΟ_SKA_gia_perasma_XRONAKIS.xlsx:
     // Sheet name "ΑΙΤΗΣΕΙΣ ΜΟΝΟ", 14 columns, Arial Greek font, mixed header sizes.
@@ -1246,31 +1268,6 @@ function MembersPageContent() {
       { header: "ΓΕΝΟΣ", key: "maiden_name", width: 27.14 },
       { header: "ΕΠΑΓΓΕΛΜΑ", key: "occupation", width: 27.43 },
     ];
-
-    // Format date to dd-MM-yyyy zero-padded
-    const fmtDate = (iso: string | null): string => {
-      if (!iso) return "";
-      const d = new Date(iso);
-      if (isNaN(d.getTime())) return "";
-      const dd = String(d.getDate()).padStart(2, "0");
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const yyyy = d.getFullYear();
-      return `${dd}-${mm}-${yyyy}`;
-    };
-
-    // Combine phone1 + phone2 με " - " separator (όπως legacy)
-    const combinePhones = (p1: string | null, p2: string | null): string => {
-      if (p1 && p2) return `${p1} - ${p2}`;
-      return p1 ?? p2 ?? "";
-    };
-
-    // Extract year from birth_date
-    const birthYear = (iso: string | null): string => {
-      if (!iso) return "";
-      const d = new Date(iso);
-      if (isNaN(d.getTime())) return "";
-      return String(d.getFullYear());
-    };
 
     // Add data rows
     filtered.forEach((m) => {
@@ -1347,6 +1344,210 @@ function MembersPageContent() {
     URL.revokeObjectURL(url);
   }
 
+  async function exportToPdf() {
+    const [{ jsPDF }, autoTableModule] = await Promise.all([
+      import("jspdf"),
+      import("jspdf-autotable"),
+    ]);
+    const autoTable = autoTableModule.default;
+
+    // Fetch club branding (logo + primary color) από club_settings
+    type Branding = { logo_url: string | null; primary_color: string; name: string };
+    const branding: Branding = {
+      logo_url: null,
+      primary_color: "#800000",
+      name: "Σύλλογος",
+    };
+    if (clubId) {
+      try {
+        const supabase = getBrowserClient();
+        const [settingsRes, clubRes] = await Promise.all([
+          supabase
+            .from("club_settings")
+            .select("logo_url, primary_color")
+            .eq("club_id", clubId)
+            .maybeSingle(),
+          supabase.from("clubs").select("name").eq("id", clubId).maybeSingle(),
+        ]);
+        if (settingsRes.data) {
+          branding.logo_url = settingsRes.data.logo_url;
+          branding.primary_color = settingsRes.data.primary_color || "#800000";
+        }
+        if (clubRes.data) {
+          branding.name = clubRes.data.name;
+        }
+      } catch {
+        // Silent fallback to defaults
+      }
+    }
+
+    // Hex → RGB tuple helper (για jsPDF + autoTable colors)
+    const hexToRgb = (hex: string): [number, number, number] => {
+      const clean = hex.replace("#", "");
+      const r = parseInt(clean.substring(0, 2), 16);
+      const g = parseInt(clean.substring(2, 4), 16);
+      const b = parseInt(clean.substring(4, 6), 16);
+      if (isNaN(r) || isNaN(g) || isNaN(b)) return [128, 0, 0];
+      return [r, g, b];
+    };
+    const brandRgb = hexToRgb(branding.primary_color);
+    // Light tint για table header (mix 15% brand με white)
+    const tintRgb: [number, number, number] = [
+      Math.round(brandRgb[0] * 0.15 + 255 * 0.85),
+      Math.round(brandRgb[1] * 0.15 + 255 * 0.85),
+      Math.round(brandRgb[2] * 0.15 + 255 * 0.85),
+    ];
+
+    // Convert ArrayBuffer → base64 (hoisted: used by both font loading + logo embedding)
+    const toBase64 = (buf: ArrayBuffer): string => {
+      const bytes = new Uint8Array(buf);
+      let binary = "";
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(
+          ...bytes.subarray(i, Math.min(i + chunk, bytes.length))
+        );
+      }
+      return btoa(binary);
+    };
+
+    // Load NotoSans Greek static fonts (Regular + Bold)
+    // Critical: STATIC fonts only — variable fonts crash jsPDF.
+    const [regResp, boldResp] = await Promise.all([
+      fetch("/fonts/NotoSansGreek-Regular.ttf"),
+      fetch("/fonts/NotoSansGreek-Bold.ttf"),
+    ]);
+    if (!regResp.ok || !boldResp.ok) {
+      alert("Σφάλμα φόρτωσης γραμματοσειράς. Το PDF δεν μπορεί να δημιουργηθεί.");
+      return;
+    }
+    const [regBuffer, boldBuffer] = await Promise.all([
+      regResp.arrayBuffer(),
+      boldResp.arrayBuffer(),
+    ]);
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+
+    doc.addFileToVFS("NotoSansGreek-Regular.ttf", toBase64(regBuffer));
+    doc.addFont("NotoSansGreek-Regular.ttf", "NotoSansGreek", "normal");
+    doc.addFileToVFS("NotoSansGreek-Bold.ttf", toBase64(boldBuffer));
+    doc.addFont("NotoSansGreek-Bold.ttf", "NotoSansGreek", "bold");
+
+    // Title block με branding (logo αριστερά, title + meta δεξιά)
+    const LOGO_SIZE = 50;
+    let titleX = 40;
+
+    if (branding.logo_url) {
+      try {
+        const logoResp = await fetch(branding.logo_url);
+        if (logoResp.ok) {
+          const logoBuffer = await logoResp.arrayBuffer();
+          const logoB64 = toBase64(logoBuffer);
+          // Format inference από URL extension
+          const ext = branding.logo_url.toLowerCase().split(".").pop() || "";
+          const format = ext === "jpg" || ext === "jpeg" ? "JPEG" : "PNG";
+          doc.addImage(
+            `data:image/${format.toLowerCase()};base64,${logoB64}`,
+            format,
+            40,
+            18,
+            LOGO_SIZE,
+            LOGO_SIZE
+          );
+          titleX = 40 + LOGO_SIZE + 12;
+        }
+      } catch {
+        // Logo load failed, continue without
+      }
+    }
+
+    doc.setFont("NotoSansGreek", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(brandRgb[0], brandRgb[1], brandRgb[2]);
+    doc.text(`Μητρώο Μελών — ${branding.name}`, titleX, 36);
+    doc.setFont("NotoSansGreek", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(80, 80, 80);
+    const stampDate = new Date().toLocaleDateString("el-GR");
+    doc.text(
+      `Εξαγωγή: ${stampDate} · ${filtered.length} μέλη`,
+      titleX,
+      54
+    );
+    doc.setTextColor(0, 0, 0); // reset για table
+
+    // 14-column table (matching xlsx format)
+    autoTable(doc, {
+      startY: 78,
+      head: [
+        [
+          "AA",
+          "ΕΠΩΝΥΜΟ",
+          "ΟΝΟΜΑ",
+          "ΟΝΟΜΑ ΠΑΤΡΟΣ",
+          "ΔΙΕΥΘΥΝΣΗ",
+          "ΑΡ. ΜΗΤΡΩΟΥ",
+          "EMAIL",
+          "ΤΗΛΕΦΩΝΟ",
+          "ΕΤΟΣ",
+          "ΗΜ. ΑΙΤΗΣΗΣ",
+          "ΑΡ. ΑΙΤΗΣΗΣ",
+          "ΟΝΟΜΑ ΜΗΤΡΟΣ",
+          "ΓΕΝΟΣ",
+          "ΕΠΑΓΓΕΛΜΑ",
+        ],
+      ],
+      body: filtered.map((m) => [
+        "",
+        m.last_name ?? "",
+        m.first_name ?? "",
+        m.father_name ?? "",
+        m.address ?? "",
+        m.registry_number ?? "",
+        m.email ?? "",
+        combinePhones(m.phone, m.phone2),
+        birthYear(m.birth_date),
+        fmtDate(m.application_date),
+        m.application_number ?? "",
+        m.mother_name ?? "",
+        m.maiden_name ?? "",
+        m.occupation ?? "",
+      ]),
+      styles: {
+        font: "NotoSansGreek",
+        fontSize: 6.5,
+        cellPadding: 2,
+        overflow: "linebreak",
+        lineColor: [180, 180, 180],
+        lineWidth: 0.3,
+      },
+      headStyles: {
+        font: "NotoSansGreek",
+        fontStyle: "bold",
+        fontSize: 7,
+        fillColor: tintRgb,
+        textColor: brandRgb,
+        halign: "center",
+      },
+      columnStyles: {
+        0: { cellWidth: 18, halign: "center" },
+        5: { fillColor: [255, 255, 200] },
+      },
+      margin: { top: 78, right: 25, bottom: 30, left: 25 },
+      didDrawPage: () => {
+        doc.setFont("NotoSansGreek", "normal");
+        doc.setFontSize(7);
+        const pageNum = doc.getCurrentPageInfo().pageNumber;
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        doc.text(`Σελίδα ${pageNum}`, pageW - 60, pageH - 15);
+      },
+    });
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    doc.save(`members-${stamp}.pdf`);
+  }
+
   const filtersActive =
     !!search ||
     !!departmentFilter ||
@@ -1394,14 +1595,44 @@ function MembersPageContent() {
           >
             Εισαγωγή
           </button>
-          <button
-            type="button"
-            onClick={exportToExcel}
-            disabled={filtered.length === 0}
-            className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background disabled:opacity-50"
-          >
-            Εξαγωγή Excel
-          </button>
+          <details className="relative">
+            <summary
+              className={
+                "inline-flex cursor-pointer list-none items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm transition hover:bg-background [&::-webkit-details-marker]:hidden" +
+                (filtered.length === 0 ? " pointer-events-none opacity-50" : "")
+              }
+            >
+              Εξαγωγή <span aria-hidden>▾</span>
+            </summary>
+            <ul className="absolute right-0 top-full z-10 mt-1 min-w-[140px] overflow-hidden rounded-lg border border-border bg-background shadow-md">
+              <li>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    const det = e.currentTarget.closest("details");
+                    if (det) det.removeAttribute("open");
+                    exportToExcel();
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-foreground/5"
+                >
+                  Excel
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    const det = e.currentTarget.closest("details");
+                    if (det) det.removeAttribute("open");
+                    exportToPdf();
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-foreground/5"
+                >
+                  PDF
+                </button>
+              </li>
+            </ul>
+          </details>
           <button
             type="button"
             onClick={openCreate}
