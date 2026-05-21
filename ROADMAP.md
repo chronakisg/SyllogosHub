@@ -816,6 +816,28 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
   Estimated: L (multi-session, 3-4 PRs after design lock)
 
+- [ ] **🟡 phone2 propagation σε υπολειπόμενα read/write sites (M)**
+
+  Stack: 📊 Διαχειριστικό · cross-site data sync
+
+  Discovered: 2026-05-21 (post-feat/member-phone2 base PR).
+
+  Base PR (members modal + DB + types + CSV) merged ως starter.
+  Επόμενο PR completes the propagation σε όλα τα secondary surfaces:
+
+  **5 sites που λείπουν:**
+
+  1. **Members list ΤΗΛΕΦΩΝΟ column** — show phone2 secondary line με smaller font (TBD design με George)
+  2. **Search filter** — match σε phone OR phone2 (currently μόνο phone)
+  3. **Portal profile form** (`app/portal/(member)/profile/ProfileEditForm.tsx` + `page.tsx`) — 3 sites: state, input, data init
+  4. **/me/[token] magic link form** (`app/me/[token]/page.tsx`) — 5 sites: type, useState, prefill, payload, JSX input
+  5. **3 API routes** — phone2 σε ALLOWED_FIELDS whitelist + SELECT for audit diff:
+     - `app/api/me/[token]/route.ts` (GET, 2 edits)
+     - `app/api/me/[token]/update/route.ts` (POST, 2 edits)
+     - `app/api/portal/profile/update/route.ts` (POST, 1 edit)
+
+  Estimated: M (mechanical additions, no design decisions πέρα από list display).
+
 ### 🟣 Member Portal domain
 
 > Stack description βλ. 🏗️ Architectural Stacks → 🟣 Member Portal Stack.
