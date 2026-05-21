@@ -1929,8 +1929,7 @@ function MemberModal({
       .filter((m) =>
         normalizeGreek(`${m.last_name} ${m.first_name}`).includes(q) ||
         normalizeGreek(`${m.first_name} ${m.last_name}`).includes(q)
-      )
-      .slice(0, 8);
+      );
   }, [members, familySearchDebounced, editing?.id]);
 
   const surnameSuggestions = useMemo(() => {
@@ -1966,7 +1965,7 @@ function MemberModal({
         "el"
       );
     });
-    return tagged.slice(0, 8);
+    return tagged;
   }, [editing, familySearchDebounced, members]);
 
   const linkedTarget = useMemo(
@@ -2519,7 +2518,7 @@ function MemberModal({
                     className={inputClass}
                   />
                   {familySearchDebounced && familyMatches.length > 0 && (
-                    <ul className="max-h-40 overflow-y-auto rounded-lg border border-border">
+                    <ul className="max-h-64 overflow-y-auto rounded-lg border border-border">
                       {familyMatches.map((m) => (
                         <li key={m.id}>
                           <button
@@ -2550,7 +2549,7 @@ function MemberModal({
                       <p className="px-3 py-1 text-xs font-medium text-muted">
                         Προτεινόμενα μέλη με ίδιο επίθετο
                       </p>
-                      <ul className="max-h-40 overflow-y-auto rounded-lg border border-border">
+                      <ul className="max-h-64 overflow-y-auto rounded-lg border border-border">
                         {surnameSuggestions.map(({ member: m, matchReason }) => (
                           <li key={m.id}>
                             <button

@@ -1,6 +1,6 @@
 # SyllogosHub — Roadmap
 
-> Last updated: 2026-05-21 (5 family PRs #116-#120 + docs spec enrichment)
+> Last updated: 2026-05-21 (session: slice fix + 4 parked entries + perfect principle lock)
 > Maintained alongside the codebase. Update this file as part of the same PR
 > when adding/completing tasks.
 
@@ -1557,6 +1557,104 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
 ### Family & Genealogy
 
+- [ ] **🎯 Genealogy Phase 2 — Design Lock Session (NEXT family-related session)**
+
+  **Production trigger (2026-05-21):**
+  Κλεισαρχάκης case εμφανίστηκε στο /members family link mode.
+  4 nodes + 3 parent-child edges που ΔΕΝ μπορούν να μοντελοποιηθούν
+  σε Phase 1 (household model):
+  - Δημήτρης senior (external — πιθανώς πεθαμένος / μη-μέλος)
+  - Ανδρέας (member, παιδί Δημήτρη sr, Πρόεδρος ΔΣ)
+  - Γιώργος (member, παιδί Δημήτρη sr — αδερφός Ανδρέα, σε
+    διαφορετικό νοικοκυριό)
+  - Δημήτρης junior (member, παιδί Ανδρέα — εγγονός Δημήτρη sr)
+
+  Phase 1 limitation: Ανδρέας + Γιώργος ζουν σε διαφορετικά
+  νοικοκυριά → δεν μοιράζονται family_id → η αδελφική σχέση
+  ΔΕΝ εκφράζεται με κανέναν τρόπο. family_role="αδερφός" θα
+  έσπαζε το household principle.
+
+  **Prerequisite — Design lock session (NO CODE) απαιτείται πριν
+  implementation:**
+  - Full schema specification (genealogy_nodes columns + constraints
+    + indexes + cascade behavior)
+  - External vs internal node distinction (αναπαράσταση πεθαμένων
+    / μη-μελών)
+  - FK direction με members table + nullable behavior
+  - Linkage με existing family_id (orthogonal layer, ΟΧΙ replacement)
+  - Auto-computed relations scope (αδέρφια / ξαδέρφια / παππούδες
+    — όλα ή subset;)
+  - Tribute fields για βραβεύσεις (award_year, reason, text)
+  - Tree visualization library choice (react-d3-tree vs family-chart)
+    με POC σε standalone HTML πριν decision
+  - UX flows: external node creation, sibling linkage, mobile tree
+  - Edge cases: re-marriage, adoption, μη-βιολογικός παππούς,
+    missing parent data
+  - Phase breakdown σε 5-8 atomic PRs
+
+  **Quality standard:** Project goes to commercial release.
+  No half-implementations. Design lock first, implementation after.
+
+  Estimated: L (multi-session feature, design lock + 5-8 PRs)
+
+- [ ] **🟢 Smart relevance sort για family link suggestions**
+
+  Stack: 📊 Διαχειριστικό · UX scaling
+
+  Discovered: 2026-05-21 (κατά slice cap fix).
+
+  Σήμερα: family link suggestions sort = (1) solo members first,
+  (2) alphabetical κατά first_name. Λειτουργεί για 5-10 matches.
+  Καταρρέει σε clubs 1.5K-2.5K μέλη όπου common surnames
+  (ΠΑΠΑΔΟΠΟΥΛΟΣ, ΓΕΩΡΓΙΟΥ) μπορεί να έχουν 50-100 matches.
+
+  **Proposed relevance-based sort (όταν anchor υπάρχει):**
+  1. Solo first (current — keep)
+  2. **Πατρώνυμο match** (`father_name = anchor.first_name`)
+     → πιθανά παιδιά του anchor
+  3. **Anchor's first_name in their `father_name`** → father-child
+     ένδειξη
+  4. **Same `father_name`** ως ο anchor → πιθανά αδέρφια
+     (Phase 1 limited — true sibling detection χρειάζεται Phase 2)
+  5. **Maiden name match με anchor's last_name** → πιθανές
+     νύφες/σύζυγοι
+  6. Alphabetical fallback (current behavior για ties)
+
+  Example: για anchor=ΑΝΔΡΕΑΣ, ο ΝΙΚΟΛΑΟΣ (father_name=ΑΝΔΡΕΑΣ)
+  θα ήταν 1ος στη λίστα αντί 9ος.
+
+  **Σχέση με Phase 2:** Το rule #4 (sibling detection via shared
+  father_name) είναι Phase 1 heuristic. Σε Phase 2 με genealogy
+  nodes, το ίδιο γίνεται με DB-level relations. Σχεδιαστικά αξίζει
+  να μπει ως sub-spec στη Phase 2 design lock session, ώστε να
+  σχεδιαστεί το complete relevance algorithm.
+
+  Estimated: M (scoring algorithm + sort + smoke testing σε
+  multi-surname cases)
+
+- [ ] **🟢 Same-surname suggestions: include already-linked members με badge**
+
+  Stack: 📊 Διαχειριστικό · UX consistency
+
+  Discovered: 2026-05-21 (Γιώργος Κλεισαρχάκης case).
+
+  **Inconsistency:** Δύο surfaces του same data behave differently:
+  - **Same-surname pre-populated suggestions** (empty input):
+    ΕΞΑΙΡΟΥΝ members με `family_id IS NOT NULL` (silent filter)
+  - **Live search input** (typed query): ΕΜΦΑΝΙΖΟΥΝ already-linked
+    members με badge "ήδη σε οικογένεια"
+
+  UX confusion: ο user βλέπει πληροφορία να εμφανίζεται/εξαφανίζεται
+  ανάλογα με το input mode του ίδιου dropdown.
+
+  **Fix:** Same-surname suggestions εμφανίζουν ΟΛΟΥΣ τους matching
+  candidates (consistent με search). Already-linked members:
+  - Visual badge "ήδη σε οικογένεια"
+  - Click γίνεται blocked με tooltip ("ανήκει σε άλλο νοικοκυριό
+    — defer μέχρι Phase 2 για inter-household relations")
+
+  Estimated: S (1 filter removal + badge component reuse)
+
 - [ ] **🌳 Genealogy module — L (multi-session feature, dedicated effort)**
 
   **Διάκριση από Phase 1 (current state):** _Παρέα ≠ νοικοκυριό ≠ γενεαλογία._ Το `members.family_id` + `family_role` σύστημα είναι **household-level grouping** και παραμένει για bookings/seating/contact. Η γενεαλογία είναι **ξεχωριστή dimension** που μοντελοποιεί parent/child edges για αδέρφια διαφορετικών νοικοκυριών, παππού-εγγονό, ξαδέρφια.
@@ -1921,6 +2019,55 @@ npx tsx --env-file=.env.local scripts/provision-backup-admin.ts \
 
 ### Tech Debt & Cleanup
 
+- [ ] **🟢 Audit coverage gap για admin /members mutations**
+
+  Stack: 📊 Διαχειριστικό · Audit infrastructure
+
+  Discovered: 2026-05-21 (παρατήρηση Ιστορικό αλλαγών πρωί).
+
+  Audit log foundation (PR #49) hooks ζουν σε 4 paths:
+  - /api/me/[token]/update (self_via_token)
+  - /api/portal/profile/update (self_via_portal)
+  - /api/events/[id] PATCH (admin — Phase A.1, PR #60)
+  - Member Enrichment Wizard (admin_via_enrich)
+
+  **Gap:** Όλες οι /members admin mutations (family link/unlink,
+  family_role transitions, board flags, status, occupation,
+  departments — οτιδήποτε πέρα από enrichment) γίνονται
+  **client-side direct Supabase writes**. Δεν υπάρχει API route,
+  δεν υπάρχει audit hook.
+
+  Concrete production evidence (2026-05-21): οι 5 family PRs
+  #116-#120 + manual Κλεισαρχάκης pair restoration στο SQL Editor
+  ΔΕΝ έγραψαν audit entries.
+
+  **Two implementation paths:**
+
+  **Option A — Full /members audit Phase (mirror του events Phase A):**
+  - /api/members/[id] PATCH route με audit hook + permission gate
+    + tenant scoping
+  - Migrate /members modal mutations + family link/unlink
+    + departments tab + role tab
+  - 20+ client sites χρειάζονται migration
+  - Estimated: M-L (~3-4 ώρες, multi-commit, intensive smoke testing)
+
+  **Option B — Family slice μόνο:**
+  - /api/members/[id]/family endpoint (link/unlink/role)
+  - Audit hooks εκεί only
+  - Defer το rest
+  - Estimated: S-M (~1-2 ώρες)
+
+  Recommendation: Option A — ταιριάζει με "perfect" principle.
+  Single-domain coverage gap creates uneven audit trail.
+
+  **Σημείωση:** Manual SQL Editor changes ΠΑΝΤΑ θα bypass-άρουν
+  audit. By design — audit είναι application-layer hook.
+
+  Connects με: existing cross-table audit ROADMAP entry (Phase A
+  rollout plan για όλα τα admin domains).
+
+  Estimated: M-L
+
 - [ ] **Sponsor search helper consolidation**
   - 2 sponsor sites χρησιμοποιούν διαφορετικά helpers + surfaces:
     * app/finances/SponsorsPanel.tsx: sponsorListName(s) — name-only
@@ -2218,6 +2365,28 @@ session**:
 - Anything με per-department permissioning
 
 ## ✅ Recently Done
+
+### fix/family-link-show-all-surname-matches (next PR, merged 2026-05-21)
+
+Production fix για Νικόλαο Κλεισαρχάκη case — invisible από family link
+suggestions του Ανδρέα παρά το ότι ήταν solo, με matching surname, και
+γιος του (πατρώνυμο = ΑΝΔΡΕΑΣ).
+
+Root cause: `.slice(0, 8)` σε ΚΑΙ τις 2 useMemo paths του family link
+modal. Νικόλαος ήταν 9ος alphabetically στους solo ΚΛΕΙΣΑΡΧΑΚΗΣ
+candidates — cut off από arbitrary limit.
+
+Changes:
+- familyMatches (typed-search): remove .slice(0, 8)
+- surnameSuggestions (empty-query): remove .slice(0, 8)
+- Dropdown containers: max-h-40 → max-h-64 (9 visible rows)
+
+Production-tested: ΣΚΑ 244 μέλη, μέγιστος same-surname group ~10
+(ΚΛΕΙΣΑΡΧΑΚΗΣ family). Καλύπτει 100% των current cases.
+
+Out of scope: relevance-based sort για clubs με 50+ matches per
+surname — tracked ως parked entry "Smart relevance sort για
+family link suggestions".
 
 ### feat/family-link-same-surname-suggestions (PR #120, merged 2026-05-21)
 
