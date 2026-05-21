@@ -420,8 +420,8 @@ export default function EventsPage() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-border bg-background/50 text-xs uppercase tracking-wider text-muted">
               <tr>
-                <th className="px-4 py-3">Όνομα</th>
                 <th className="px-4 py-3">Ημερομηνία</th>
+                <th className="px-4 py-3">Όνομα</th>
                 <th className="px-4 py-3">Τραπέζια</th>
                 <th className="px-4 py-3">Κρατήσεις</th>
                 <th className="px-4 py-3 text-right">Ενέργειες</th>
@@ -452,6 +452,9 @@ export default function EventsPage() {
                 filtered.map((ev) => (
                   <Fragment key={ev.id}>
                     <tr className="hover:bg-background/40">
+                      <td className="px-4 py-3 text-muted">
+                        {new Date(ev.event_date).toLocaleDateString("el-GR")}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="font-medium">{ev.event_name}</div>
                         {(ev.location ||
@@ -467,9 +470,6 @@ export default function EventsPage() {
                               .join(" · ")}
                           </div>
                         )}
-                      </td>
-                      <td className="px-4 py-3 text-muted">
-                        {new Date(ev.event_date).toLocaleDateString("el-GR")}
                       </td>
                       <td className="px-4 py-3 text-muted">{ev.table_count}</td>
                       <td className="px-4 py-3 text-muted">
