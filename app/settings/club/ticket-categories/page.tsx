@@ -90,8 +90,6 @@ export default function TicketCategoriesPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const [reorderingId, setReorderingId] = useState<string | null>(null);
-
   const load = useCallback(async () => {
     if (!clubId) return;
     try {
@@ -101,7 +99,7 @@ export default function TicketCategoriesPage() {
         .select("*")
         .eq("club_id", clubId)
         .order("is_archived", { ascending: true })
-        .order("display_order", { ascending: true });
+        .order("name", { ascending: true });
       if (err) throw err;
       setCategories((data ?? []) as TicketCategory[]);
       setError(null);
@@ -121,21 +119,13 @@ export default function TicketCategoriesPage() {
     () =>
       categories
         .filter((c) => !c.is_archived)
-        .sort((a, b) => a.display_order - b.display_order),
+        .sort((a, b) => a.name.localeCompare(b.name, "el", { sensitivity: "base" })),
     [categories]
   );
 
   const archived = useMemo(
     () => categories.filter((c) => c.is_archived),
     [categories]
-  );
-
-  const nextOrder = useMemo(
-    () =>
-      active.length === 0
-        ? 1
-        : Math.max(...active.map((c) => c.display_order)) + 1,
-    [active]
   );
 
   function openCreate() {
@@ -220,7 +210,6 @@ export default function TicketCategoriesPage() {
       try {
         const insert: TicketCategoryInsert = {
           club_id: clubId,
-          display_order: nextOrder,
           ...patch,
         };
         const { data: row, error: iErr } = await supabase
@@ -272,71 +261,22 @@ export default function TicketCategoriesPage() {
 
   async function handleRestore(c: TicketCategory) {
     if (!clubId) return;
-    const restoredOrder = nextOrder;
     setCategories((prev) =>
       prev.map((x) =>
-        x.id === c.id
-          ? { ...x, is_archived: false, display_order: restoredOrder }
-          : x
+        x.id === c.id ? { ...x, is_archived: false } : x
       )
     );
     try {
       const supabase = getBrowserClient();
       const { error: uErr } = await supabase
         .from("ticket_categories")
-        .update({ is_archived: false, display_order: restoredOrder })
+        .update({ is_archived: false })
         .eq("id", c.id)
         .eq("club_id", clubId);
       if (uErr) throw uErr;
     } catch (err) {
       setCategories((prev) => prev.map((x) => (x.id === c.id ? c : x)));
       setError(errorMessage(err, "Σφάλμα επαναφοράς κατηγορίας."));
-    }
-  }
-
-  async function handleReorder(c: TicketCategory, direction: -1 | 1) {
-    if (reorderingId !== null || !clubId) return;
-    const idx = active.findIndex((x) => x.id === c.id);
-    const swap = active[idx + direction];
-    if (!swap) return;
-
-    setReorderingId(c.id);
-    setCategories((prev) =>
-      prev.map((x) => {
-        if (x.id === c.id) return { ...x, display_order: swap.display_order };
-        if (x.id === swap.id) return { ...x, display_order: c.display_order };
-        return x;
-      })
-    );
-
-    try {
-      const supabase = getBrowserClient();
-      const [r1, r2] = await Promise.all([
-        supabase
-          .from("ticket_categories")
-          .update({ display_order: swap.display_order })
-          .eq("id", c.id)
-          .eq("club_id", clubId),
-        supabase
-          .from("ticket_categories")
-          .update({ display_order: c.display_order })
-          .eq("id", swap.id)
-          .eq("club_id", clubId),
-      ]);
-      if (r1.error) throw r1.error;
-      if (r2.error) throw r2.error;
-    } catch (err) {
-      setCategories((prev) =>
-        prev.map((x) => {
-          if (x.id === c.id) return { ...x, display_order: c.display_order };
-          if (x.id === swap.id)
-            return { ...x, display_order: swap.display_order };
-          return x;
-        })
-      );
-      setError(errorMessage(err, "Σφάλμα αλλαγής σειράς."));
-    } finally {
-      setReorderingId(null);
     }
   }
 
@@ -407,7 +347,7 @@ export default function TicketCategoriesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {active.map((c, idx) => (
+              {active.map((c) => (
                 <tr key={c.id}>
                   <td className="px-3 py-2 font-medium">{c.name}</td>
                   <td className="px-3 py-2 text-muted">
@@ -428,28 +368,6 @@ export default function TicketCategoriesPage() {
                   </td>
                   <td className="px-3 py-2 text-right">
                     <div className="inline-flex justify-end gap-1">
-                      <button
-                        type="button"
-                        onClick={() => handleReorder(c, -1)}
-                        disabled={idx === 0 || reorderingId !== null}
-                        className="rounded-md border border-border px-2 py-1 text-[11px] transition hover:bg-foreground/5 disabled:opacity-40"
-                        title="Μετακίνηση πάνω"
-                        aria-label="Μετακίνηση πάνω"
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleReorder(c, 1)}
-                        disabled={
-                          idx === active.length - 1 || reorderingId !== null
-                        }
-                        className="rounded-md border border-border px-2 py-1 text-[11px] transition hover:bg-foreground/5 disabled:opacity-40"
-                        title="Μετακίνηση κάτω"
-                        aria-label="Μετακίνηση κάτω"
-                      >
-                        ↓
-                      </button>
                       <button
                         type="button"
                         onClick={() => openEdit(c)}

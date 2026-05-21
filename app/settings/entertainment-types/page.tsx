@@ -25,15 +25,13 @@ const inputClass =
 type Form = {
   name: string;
   description: string;
-  display_order: string;
   active: boolean;
 };
 
-function emptyForm(nextOrder: number): Form {
+function emptyForm(): Form {
   return {
     name: "",
     description: "",
-    display_order: String(nextOrder),
     active: true,
   };
 }
@@ -50,7 +48,7 @@ export default function EntertainmentTypesPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<EntertainmentType | null>(null);
-  const [form, setForm] = useState<Form>(emptyForm(0));
+  const [form, setForm] = useState<Form>(emptyForm());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -63,7 +61,6 @@ export default function EntertainmentTypesPage() {
           .from("entertainment_types")
           .select("*")
           .eq("club_id", clubId)
-          .order("display_order", { ascending: true })
           .order("name", { ascending: true }),
         supabase
           .from("entertainers")
@@ -135,17 +132,17 @@ export default function EntertainmentTypesPage() {
     load();
   }, [load, clubLoading]);
 
-  const nextOrder = useMemo(
+  const sortedTypes = useMemo(
     () =>
-      types.length === 0
-        ? 1
-        : Math.max(...types.map((t) => t.display_order)) + 1,
+      [...types].sort((a, b) =>
+        a.name.localeCompare(b.name, "el", { sensitivity: "base" })
+      ),
     [types]
   );
 
   function openCreate() {
     setEditing(null);
-    setForm(emptyForm(nextOrder));
+    setForm(emptyForm());
     setFormError(null);
     setModalOpen(true);
   }
@@ -155,7 +152,6 @@ export default function EntertainmentTypesPage() {
     setForm({
       name: t.name,
       description: t.description ?? "",
-      display_order: String(t.display_order),
       active: t.active,
     });
     setFormError(null);
@@ -180,7 +176,6 @@ export default function EntertainmentTypesPage() {
       setFormError("Το όνομα είναι υποχρεωτικό.");
       return;
     }
-    const order = parseInt(form.display_order, 10) || 0;
     setSaving(true);
     try {
       const supabase = getBrowserClient();
@@ -188,7 +183,6 @@ export default function EntertainmentTypesPage() {
         const update: EntertainmentTypeUpdate = {
           name,
           description: form.description.trim() || null,
-          display_order: order,
           active: form.active,
         };
         const { error: uErr } = await supabase
@@ -202,7 +196,6 @@ export default function EntertainmentTypesPage() {
           club_id: clubId,
           name,
           description: form.description.trim() || null,
-          display_order: order,
           active: form.active,
         };
         const { error: iErr } = await supabase
@@ -233,34 +226,6 @@ export default function EntertainmentTypesPage() {
       await load();
     } catch (err) {
       setError(errorMessage(err, "Σφάλμα ενημέρωσης κατάστασης."));
-    }
-  }
-
-  async function move(t: EntertainmentType, direction: -1 | 1) {
-    if (!clubId) return;
-    const sorted = [...types].sort(
-      (a, b) => a.display_order - b.display_order
-    );
-    const idx = sorted.findIndex((x) => x.id === t.id);
-    const swap = sorted[idx + direction];
-    if (!swap) return;
-    try {
-      const supabase = getBrowserClient();
-      const { error: e1 } = await supabase
-        .from("entertainment_types")
-        .update({ display_order: swap.display_order })
-        .eq("id", t.id)
-        .eq("club_id", clubId);
-      if (e1) throw e1;
-      const { error: e2 } = await supabase
-        .from("entertainment_types")
-        .update({ display_order: t.display_order })
-        .eq("id", swap.id)
-        .eq("club_id", clubId);
-      if (e2) throw e2;
-      await load();
-    } catch (err) {
-      setError(errorMessage(err, "Σφάλμα αλλαγής σειράς."));
     }
   }
 
@@ -342,7 +307,6 @@ export default function EntertainmentTypesPage() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-border bg-background/40 text-xs uppercase tracking-wider text-muted">
               <tr>
-                <th className="px-3 py-2 w-12">#</th>
                 <th className="px-3 py-2">Όνομα</th>
                 <th className="px-3 py-2">Περιγραφή</th>
                 <th className="px-3 py-2 text-right">Χρήση</th>
@@ -351,9 +315,8 @@ export default function EntertainmentTypesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {types.map((t, idx) => (
+              {sortedTypes.map((t) => (
                 <tr key={t.id}>
-                  <td className="px-3 py-2 text-muted">{t.display_order}</td>
                   <td className="px-3 py-2 font-medium">{t.name}</td>
                   <td className="px-3 py-2 max-w-md truncate text-xs text-muted">
                     {t.description ?? "—"}
@@ -386,26 +349,6 @@ export default function EntertainmentTypesPage() {
                   </td>
                   <td className="px-3 py-2 text-right">
                     <div className="inline-flex justify-end gap-1">
-                      <button
-                        type="button"
-                        onClick={() => move(t, -1)}
-                        disabled={idx === 0}
-                        className="rounded-md border border-border px-2 py-1 text-[11px] transition hover:bg-foreground/5 disabled:opacity-40"
-                        title="Μετακίνηση πάνω"
-                        aria-label="Μετακίνηση πάνω"
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => move(t, 1)}
-                        disabled={idx === types.length - 1}
-                        className="rounded-md border border-border px-2 py-1 text-[11px] transition hover:bg-foreground/5 disabled:opacity-40"
-                        title="Μετακίνηση κάτω"
-                        aria-label="Μετακίνηση κάτω"
-                      >
-                        ↓
-                      </button>
                       <button
                         type="button"
                         onClick={() => openEdit(t)}
@@ -502,29 +445,17 @@ function EntertainmentTypeModal({
               className={inputClass}
             />
           </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Σειρά Εμφάνισης">
-              <input
-                type="number"
-                value={form.display_order}
-                onChange={(e) =>
-                  setForm((s) => ({ ...s, display_order: e.target.value }))
-                }
-                className={inputClass}
-              />
-            </Field>
-            <label className="flex items-end gap-2 pb-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.active}
-                onChange={(e) =>
-                  setForm((s) => ({ ...s, active: e.target.checked }))
-                }
-                className="h-4 w-4 rounded border-border"
-              />
-              Ενεργό
-            </label>
-          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.active}
+              onChange={(e) =>
+                setForm((s) => ({ ...s, active: e.target.checked }))
+              }
+              className="h-4 w-4 rounded border-border"
+            />
+            Ενεργό
+          </label>
           {formError && (
             <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
               {formError}
