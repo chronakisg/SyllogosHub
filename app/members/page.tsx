@@ -54,6 +54,7 @@ type FormState = {
   first_name: string;
   last_name: string;
   phone: string;
+  phone2: string;
   email: string;
   status: MemberStatus;
   is_board_member: boolean;
@@ -87,6 +88,7 @@ const EMPTY_FORM: FormState = {
   first_name: "",
   last_name: "",
   phone: "",
+  phone2: "",
   email: "",
   status: "active",
   is_board_member: false,
@@ -743,6 +745,7 @@ function MembersPageContent() {
       first_name: member.first_name,
       last_name: member.last_name,
       phone: member.phone ?? "",
+      phone2: member.phone2 ?? "",
       email: member.email ?? "",
       status: member.status,
       is_board_member: member.is_board_member,
@@ -987,6 +990,7 @@ function MembersPageContent() {
       first_name,
       last_name,
       phone: form.phone.trim() || null,
+      phone2: form.phone2.trim() || null,
       email: form.email.trim() || null,
       is_board_member: isBoardMember,
       board_position: boardPosition,
@@ -1221,7 +1225,8 @@ function MembersPageContent() {
     const rows = filtered.map((m) => ({
       Επώνυμο: m.last_name,
       Όνομα: m.first_name,
-      Τηλέφωνο: m.phone ?? "",
+      "Τηλέφωνο 1": m.phone ?? "",
+      "Τηλέφωνο 2": m.phone2 ?? "",
       Email: m.email ?? "",
       Τμήματα: m.departments
         .map((d) =>
@@ -2156,8 +2161,6 @@ function MemberModal({
     });
   }, [editing, members, form.family_mode, form.link_member_id]);
 
-  const age = calculateAge(form.birth_date || null);
-
   const [tab, setTab] = useState<MemberTab>("info");
 
   const infoMissing =
@@ -2331,7 +2334,7 @@ function MemberModal({
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1 flex items-center justify-between text-xs font-medium text-muted">
-                <span>Τηλέφωνο</span>
+                <span>Τηλέφωνο 1</span>
                 {editing && (
                   <VerifyBadge
                     type="phone"
@@ -2357,6 +2360,21 @@ function MemberModal({
                 className={inputClass}
               />
             </label>
+            <label className="block">
+              <span className="mb-1 text-xs font-medium text-muted">
+                Τηλέφωνο 2
+              </span>
+              <input
+                type="tel"
+                value={form.phone2}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, phone2: e.target.value }))
+                }
+                className={inputClass}
+              />
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1 flex items-center justify-between text-xs font-medium text-muted">
                 <span>Email</span>
@@ -2385,24 +2403,16 @@ function MemberModal({
                 className={inputClass}
               />
             </label>
+            <Field label="Ημερομηνία Γέννησης">
+              <DateInput
+                value={form.birth_date}
+                onChange={(v) =>
+                  setForm((s) => ({ ...s, birth_date: v }))
+                }
+                className={inputClass}
+              />
+            </Field>
           </div>
-
-                <Field label="Ημερομηνία Γέννησης">
-                  <div className="flex items-center gap-2">
-                    <DateInput
-                      value={form.birth_date}
-                      onChange={(iso) =>
-                        setForm((s) => ({ ...s, birth_date: iso }))
-                      }
-                      className={inputClass}
-                    />
-                    {age != null && (
-                      <span className="shrink-0 text-xs text-muted">
-                        ({age} ετών)
-                      </span>
-                    )}
-                  </div>
-                </Field>
 
                 <h3 className="text-sm font-semibold text-foreground mt-4 mb-2 pb-1 border-b border-border">
                   Γονείς
