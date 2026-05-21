@@ -122,6 +122,27 @@ function defaultFamilyRole(birthDate: string | null): FamilyRole {
   return "parent";
 }
 
+/**
+ * Επιστρέφει τον σωματικά αντίστροφο family_role για το άλλο μέλος
+ * σε link operation. parent↔child είναι το μόνο asymmetric pair —
+ * spouse και other είναι symmetric (αμφίδρομα reciprocal).
+ *
+ * Χρησιμοποιείται όταν editing member επιλέγει το δικό του role στη
+ * φόρμα και linkάρεται με έναν solo target — το target παίρνει τον
+ * inverse, αντί age-based default.
+ *
+ * Examples:
+ *   inverseRole("parent") → "child"
+ *   inverseRole("child")  → "parent"
+ *   inverseRole("spouse") → "spouse"
+ *   inverseRole("other")  → "other"
+ */
+function inverseRole(role: FamilyRole): FamilyRole {
+  if (role === "parent") return "child";
+  if (role === "child") return "parent";
+  return role;
+}
+
 const inputClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20";
 
@@ -896,7 +917,9 @@ function MembersPageContent() {
           .from("members")
           .update({
             family_id: resolvedFamilyId,
-            family_role: defaultFamilyRole(target.birth_date),
+            family_role: form.family_role
+              ? inverseRole(form.family_role)
+              : defaultFamilyRole(target.birth_date),
           })
           .eq("id", target.id)
           .eq("club_id", clubId);
