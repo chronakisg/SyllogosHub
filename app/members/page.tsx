@@ -1351,14 +1351,20 @@ function MembersPageContent() {
     ]);
     const autoTable = autoTableModule.default;
 
-    // Load NotoSans Greek font (regular + bold variant)
-    // Variable font supports both weights via single TTF.
-    const fontResp = await fetch("/fonts/NotoSansGreek-Regular.ttf");
-    if (!fontResp.ok) {
+    // Load NotoSans Greek static fonts (Regular + Bold)
+    // Critical: STATIC fonts only — variable fonts crash jsPDF.
+    const [regResp, boldResp] = await Promise.all([
+      fetch("/fonts/NotoSansGreek-Regular.ttf"),
+      fetch("/fonts/NotoSansGreek-Bold.ttf"),
+    ]);
+    if (!regResp.ok || !boldResp.ok) {
       alert("Σφάλμα φόρτωσης γραμματοσειράς. Το PDF δεν μπορεί να δημιουργηθεί.");
       return;
     }
-    const fontBuffer = await fontResp.arrayBuffer();
+    const [regBuffer, boldBuffer] = await Promise.all([
+      regResp.arrayBuffer(),
+      boldResp.arrayBuffer(),
+    ]);
 
     // Convert ArrayBuffer → base64 (jsPDF requires base64 string)
     const toBase64 = (buf: ArrayBuffer): string => {
@@ -1372,13 +1378,13 @@ function MembersPageContent() {
       }
       return btoa(binary);
     };
-    const fontB64 = toBase64(fontBuffer);
 
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
 
-    doc.addFileToVFS("NotoSansGreek-Regular.ttf", fontB64);
+    doc.addFileToVFS("NotoSansGreek-Regular.ttf", toBase64(regBuffer));
     doc.addFont("NotoSansGreek-Regular.ttf", "NotoSansGreek", "normal");
-    doc.addFont("NotoSansGreek-Regular.ttf", "NotoSansGreek", "bold");
+    doc.addFileToVFS("NotoSansGreek-Bold.ttf", toBase64(boldBuffer));
+    doc.addFont("NotoSansGreek-Bold.ttf", "NotoSansGreek", "bold");
 
     // Title block
     doc.setFont("NotoSansGreek", "bold");
